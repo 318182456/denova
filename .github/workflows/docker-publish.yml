@@ -1,0 +1,221 @@
+name: Docker
+
+# Publishes a container image for every upstream release. GitHub cannot notify
+# a fork about upstream releases, so a schedule polls the latest release and
+# builds only tags that have no image yet. The image is built from the upstream
+# release sources plus this repository's container files, so fork-only changes
+# never leak into a release image.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream release tag, for example v0.5.0 (default: latest upstream release)'
+        required: false
+        type: string
+      force:
+        description: 'Rebuild even if the image tag already exists'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [master]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose.yaml
+      - 'docker/**'
+      - .github/workflows/docker-publish.yml
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: ${{ vars.UPSTREAM_REPOSITORY || 'alfredxw/denova' }}
+
+jobs:
+  resolve:
+    name: Resolve upstream release
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      image: ${{ steps.resolve.outputs.image }}
+      latest: ${{ steps.resolve.outputs.latest }}
+      publish: ${{ steps.resolve.outputs.publish }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          # Container file changes republish the current release with the fix.
+          FORCE: ${{ github.event_name == 'push' || inputs.force == true }}
+        run: |
+          set -euo pipefail
+          latest=$(gh api "repos/$UPSTREAM_REPOSITORY/releases/latest" --jq .tag_name)
+          tag=${INPUT_TAG:-$latest}
+          if [[ ! "$tag" =~ ^v[0-9A-Za-z._-]+$ ]]; then
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          fi
+          gh api "repos/$UPSTREAM_REPOSITORY/releases/tags/$tag" --jq .tag_name >/dev/null
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/denova"
+          publish=true
+          if [[ "$FORCE" != true ]] && docker manifest inspect "$image:$tag" >/dev/null 2>&1; then
+            publish=false
+            echo "Image $image:$tag already exists; nothing to publish." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "image=$image"
+            echo "latest=$([[ "$tag" == "$latest" ]] && echo true || echo false)"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: resolve
+    if: needs.resolve.outputs.publish == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      IMAGE: ${{ needs.resolve.outputs.image }}
+      DENOVA_IMAGE: ${{ needs.resolve.outputs.image }}
+      IMAGE_TAG: ${{ needs.resolve.outputs.tag }}-${{ matrix.arch }}
+      # Release binaries report the tag without its leading v.
+      VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: overlay
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.UPSTREAM_REPOSITORY }}
+          ref: ${{ needs.resolve.outputs.tag }}
+          path: src
+      - name: Apply container files and read toolchain versions
+        id: versions
+        run: |
+          set -euo pipefail
+          cp -r overlay/Dockerfile overlay/.dockerignore overlay/compose.yaml overlay/docker src/
+          go_version=$(awk '/^toolchain go/ {sub(/^go/, "", $2); print $2; exit}' src/go.mod)
+          go_version=${go_version:-$(awk '/^go / {print $2; exit}' src/go.mod)}
+          pnpm_version=$(jq -r '.packageManager // "pnpm@11.15.1"' src/web/package.json | sed 's/^pnpm@//; s/+.*//')
+          node_version=$(grep -oP "node-version:\s*['\"]?\K[0-9.]+" src/.github/actions/setup-web/action.yml 2>/dev/null || echo 22)
+          {
+            echo "go=$go_version"
+            echo "pnpm=$pnpm_version"
+            echo "node=$node_version"
+            echo "revision=$(git -C src rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build complete application
+        uses: docker/build-push-action@v6
+        with:
+          context: src
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
+          build-args: |
+            GO_VERSION=${{ steps.versions.outputs.go }}
+            NODE_VERSION=${{ steps.versions.outputs.node }}
+            PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
+            DENOVA_VERSION=${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.versions.outputs.revision }}
+            org.opencontainers.image.version=${{ env.TAG }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=denova-${{ matrix.arch }}
+          cache-to: type=gha,scope=denova-${{ matrix.arch }},mode=max
+      - name: Verify startup, authentication and persistence
+        working-directory: src
+        run: |
+          set -euo pipefail
+          umask 077
+          export DENOVA_USERNAME=admin DENOVA_PASSWORD="$(openssl rand -hex 24)"
+          printf 'DENOVA_USERNAME=%s\nDENOVA_PASSWORD=%s\nWEB_PORT=8082\n' "$DENOVA_USERNAME" "$DENOVA_PASSWORD" > .env
+          docker compose up -d --wait --wait-timeout 240
+          curl -fsS http://localhost:8082/ > /tmp/home.html
+          grep -q '<html' /tmp/home.html
+          curl -fsS http://localhost:8082/api/auth/status | jq -e '.local == false and .authenticated == false'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8082/api/agent-chat/projects)" = 401
+          jq -n '{username:env.DENOVA_USERNAME,password:env.DENOVA_PASSWORD}' > /tmp/login.json
+          curl -fsS -c /tmp/cookies -H 'Content-Type: application/json' --data-binary @/tmp/login.json http://localhost:8082/api/auth/login | jq -e '.authenticated == true'
+          curl -fsS -b /tmp/cookies http://localhost:8082/api/agent-chat/projects > /dev/null
+          test "$(docker compose exec -T denova denova --version | tr -d '\r')" = "$VERSION"
+          docker compose exec -T denova rg --version
+          docker compose exec -T denova chromium --version
+          docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -f /opt/denova/web/index.html'
+          docker compose exec -T denova sh -c 'printf persisted > /data/.denova/container-smoke'
+          docker compose exec -T denova sha256sum /data/.denova/config.toml > /tmp/config-before
+          docker compose restart
+          docker compose up -d --wait --wait-timeout 120
+          test "$(docker compose exec -T denova cat /data/.denova/container-smoke)" = persisted
+          docker compose exec -T denova sha256sum /data/.denova/config.toml > /tmp/config-after
+          cmp /tmp/config-before /tmp/config-after
+          curl -fsS -b /tmp/cookies http://localhost:8082/api/auth/status | jq -e '.authenticated == true'
+          curl -fsS -b /tmp/cookies http://localhost:8082/api/agent-chat/projects > /dev/null
+      - name: Publish tested architecture
+        run: docker push "$IMAGE:$IMAGE_TAG"
+      - name: Diagnostic logs
+        if: failure()
+        working-directory: src
+        run: if [ -f .env ]; then docker compose logs --tail=100; fi
+      - name: Clean up runtime check
+        if: always()
+        working-directory: src
+        run: if [ -f .env ]; then docker compose down -v; fi
+
+  manifest:
+    name: Publish multi-architecture tags
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      IMAGE: ${{ needs.resolve.outputs.image }}
+      LATEST: ${{ needs.resolve.outputs.latest }}
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify both platforms
+        run: |
+          set -euo pipefail
+          tags=(-t "$IMAGE:$TAG")
+          # Only the newest upstream release moves latest; manual rebuilds of
+          # older tags must not roll existing deployments back.
+          if [[ "$LATEST" == true ]]; then tags+=(-t "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:$TAG-amd64" "$IMAGE:$TAG-arm64"
+          docker buildx imagetools inspect "$IMAGE:$TAG" --raw | tee /tmp/manifest.json
+          jq -e '([.manifests[].platform | select(.os == "linux") | .architecture] | sort) == ["amd64","arm64"]' /tmp/manifest.json
+          echo "Published $IMAGE:$TAG (latest=$LATEST)" >> "$GITHUB_STEP_SUMMARY"
