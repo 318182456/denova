@@ -1,6 +1,6 @@
 # Docker 部署
 
-镜像：`ghcr.io/318182456/denova`，支持 Linux amd64 / arm64，Docker 会自动选择架构。标签与上游 Release 一致（如 `v0.5.0`），`latest` 指向上游最新 Release。
+镜像：`ghcr.io/318182456/denova`，仅提供 Linux amd64。标签与上游 Release 一致（如 `v0.5.0`），`latest` 指向上游最新 Release。
 
 ## 启动
 
@@ -28,7 +28,7 @@ docker compose up -d
 
 `.github/workflows/docker-publish.yml` 每小时检查上游仓库（默认 `alfredxw/denova`，可用仓库变量 `UPSTREAM_REPOSITORY` 修改）的最新 Release。发现镜像仓库中还没有的版本时，使用上游该 tag 的源码加上本仓库的 `Dockerfile`、`.dockerignore`、`compose.yaml` 和 `docker/` 构建，因此镜像内容与上游 Release 一致，不包含本仓库的其他改动。Go、Node、pnpm 版本从上游源码读取。
 
-构建在 GitHub 的 amd64 与 arm64 原生运行器上分别完成，并验证页面、登录保护、登录、版本号、内置工具、重启后的配置和数据保留，两者都通过后才发布多架构标签。
+构建在 GitHub 的 amd64 运行器上完成，并验证页面、登录保护、登录、版本号、内置工具、重启后的配置和数据保留，通过后才发布版本标签。
 
 - 手动发布：在 Actions 中运行 `Docker` 工作流，可指定 tag，勾选 `force` 可重建已存在的版本。
 - 修改上述容器文件并推送到 `master` 后，会自动重建当前最新版本。

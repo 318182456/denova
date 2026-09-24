@@ -96,8 +96,6 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-          - arch: arm64
-            runner: ubuntu-24.04-arm
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
       IMAGE: ${{ needs.resolve.outputs.image }}
@@ -194,7 +192,7 @@ jobs:
         run: if [ -f .env ]; then docker compose down -v; fi
 
   manifest:
-    name: Publish multi-architecture tags
+    name: Publish release tags
     needs: [resolve, build]
     runs-on: ubuntu-24.04
     env:
@@ -208,14 +206,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish and verify both platforms
+      - name: Publish and verify platforms
         run: |
           set -euo pipefail
           tags=(-t "$IMAGE:$TAG")
           # Only the newest upstream release moves latest; manual rebuilds of
           # older tags must not roll existing deployments back.
           if [[ "$LATEST" == true ]]; then tags+=(-t "$IMAGE:latest"); fi
-          docker buildx imagetools create "${tags[@]}" "$IMAGE:$TAG-amd64" "$IMAGE:$TAG-arm64"
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:$TAG-amd64"
           docker buildx imagetools inspect "$IMAGE:$TAG" --raw | tee /tmp/manifest.json
-          jq -e '([.manifests[].platform | select(.os == "linux") | .architecture] | sort) == ["amd64","arm64"]' /tmp/manifest.json
+          jq -e '([.manifests[].platform | select(.os == "linux") | .architecture] | sort) == ["amd64"]' /tmp/manifest.json
           echo "Published $IMAGE:$TAG (latest=$LATEST)" >> "$GITHUB_STEP_SUMMARY"
