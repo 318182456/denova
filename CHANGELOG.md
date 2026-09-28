@@ -12,6 +12,20 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Fixed / 修复
+
+- Native Agent 在写作、通用对话与游戏中压缩历史后，只保留活动上下文，并在版本一致时直接恢复，减少长会话的历史读取与检查点开销；已有会话和旧检查点仍可读取、恢复。
+- After compaction, Native Agent keeps an active context window for Writing, General, and Game and reuses aligned checkpoints, reducing long-session history reads and checkpoint work. Existing conversations and older checkpoints remain readable and recoverable.
+
+- 修复 Native Agent 在本轮引用文件或项目指令修改后，工具审批失败或暂停任务无法继续的问题。新任务恢复时保留本轮已接受的上下文，下一轮读取最新内容。
+- Fix Native Agent tool approvals and paused-task continuation after referenced files or project instructions change. New tasks retain accepted context on resume and read current content on the next turn.
+
+- 写作与通用对话复用外部运行时会话时，跳过不必要的完整历史加载，减少长会话的准备开销。
+- Skip unnecessary full-history loading when Writing and General conversations reuse an external runtime session, reducing preparation overhead for long conversations.
+
+- 修复写作与通用对话使用外部运行时时，取消排队中的写入后无法继续会话或切换运行时的问题。
+- Fix external-runtime Writing and General conversations remaining blocked after cancelling a queued write, preventing continuation or runtime switching.
+
 ## [v0.5.0] - 2026-09-22
 
 ### Brief / 简要说明

@@ -14,12 +14,40 @@ func (run *Run) updateEngineTranscript(state json.RawMessage, persist bool) erro
 	if state == nil {
 		return nil
 	}
+	run.mu.RLock()
+	outputCommit := run.snapshot.OutputCommit
+	run.mu.RUnlock()
 	run.session.mu.Lock()
+	if run.session.canonicalMessages {
+		next, err := decodeEngineTranscript(state)
+		if err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
+		var previous engineTranscript
+		if err := json.Unmarshal(run.session.messageCheckpoint.Metadata, &previous); err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
+		next.HistoryHead = previous.HistoryHead
+		if outputCommit != nil {
+			next.HistoryHead.Revision = ""
+			if next.ActiveModelUser == nil {
+				next.HistoryHead.Revision = outputCommit.Revision
+			}
+		}
+		state, err = json.Marshal(next)
+		if err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
+	}
 	run.session.engineState = append(json.RawMessage(nil), state...)
 	var err error
 	if persist {
 		err = run.session.persistTranscriptLocked(context.Background())
 	}
+	state = append(json.RawMessage(nil), run.session.engineState...)
 	run.session.mu.Unlock()
 	run.mu.Lock()
 	run.snapshot.State = append(json.RawMessage(nil), state...)
@@ -148,19 +176,8 @@ func (run *Run) finish(result Result, err error) {
 		ID: run.id, CommandID: run.commandID, ReceiptCursor: receiptCursor,
 		Status: result.Status, Reason: result.Reason, Output: output,
 	})
-	if finishedActive && len(run.session.pending) > 0 && !run.session.closed && !run.session.closing && !run.session.treeControl.sealed() && err == nil {
-		candidate := run.session.pending[0]
-		startedAt := time.Now().UTC()
-		if startErr := run.session.appendRecordLocked(context.Background(), turnStartedRecord, persistedTurn{
-			RunID: candidate.id, CommandID: candidate.commandID, At: startedAt,
-		}); startErr != nil {
-			err = errors.Join(err, startErr)
-		} else {
-			next = candidate
-			run.session.pending = run.session.pending[1:]
-			next.markStarted(startedAt)
-			run.session.active = next
-		}
+	if finishedActive && err == nil {
+		next, err = run.session.advancePendingLocked(run.id)
 	}
 	run.session.retireRunLocked(run)
 	storageErr := run.session.storageErr
@@ -185,6 +202,30 @@ func (run *Run) finish(result Result, err error) {
 	if run.ownership == runOwnsTemporarySession {
 		_ = run.session.Delete(context.Background())
 	}
+}
+
+// advancePendingLocked hands off only after a successful settlement and an open
+// tree fence. Both settlement and fence release may be the last event to arrive.
+// The caller holds session.mu and starts the returned Run exactly once.
+func (session *Session) advancePendingLocked(completedID string) (*Run, error) {
+	if session.active != nil || len(session.pending) == 0 || session.closed || session.closing || session.treeControl.sealed() {
+		return nil, nil
+	}
+	completed := session.recovery.Runs[completedID]
+	if completed.Status != ResultCompleted && completed.Status != ResultAborted {
+		return nil, nil
+	}
+	next := session.pending[0]
+	startedAt := time.Now().UTC()
+	if err := session.appendRecordLocked(context.Background(), turnStartedRecord, persistedTurn{
+		RunID: next.id, CommandID: next.commandID, At: startedAt,
+	}); err != nil {
+		return nil, err
+	}
+	session.pending = session.pending[1:]
+	next.markStarted(startedAt)
+	session.active = next
+	return next, nil
 }
 
 func (run *Run) abort(reason string) {

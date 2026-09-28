@@ -35,22 +35,25 @@ func canonicalMessageCheckpoint(encoded json.RawMessage) (persistedMessageCheckp
 		return persistedMessageCheckpoint{}, err
 	}
 	pending := cloneMessages(state.Messages[committed:])
-	state.Messages = nil
+	if state.Archive == nil {
+		state.Messages = nil
+	}
 	metadata, err := json.Marshal(state)
 	if err != nil {
 		return persistedMessageCheckpoint{}, err
 	}
-	return persistedMessageCheckpoint{Hash: hash, MessageCount: committed, Metadata: metadata, Pending: pending}, nil
+	return persistedMessageCheckpoint{Hash: hash, MessageCount: state.Archive.raw(committed), Archive: state.Archive, Metadata: metadata, Pending: pending}, nil
 }
 
 // canonicalUpdate describes one existing product boundary. The Session lock
 // spans the host commit so inbox acceptance cannot race its logical revision.
 type canonicalUpdate struct {
-	Stage    CommitStage
-	Snapshot runstate.TurnSnapshot
-	State    json.RawMessage
-	Hash     string
-	Tool     *persistedTool
+	Stage            CommitStage
+	Snapshot         runstate.TurnSnapshot
+	State            json.RawMessage
+	Hash             string
+	Tool             *persistedTool
+	CapabilityStates map[string]json.RawMessage
 }
 
 func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit func(CanonicalCheckpoint) error) error {
@@ -93,10 +96,11 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 				return JournalCheckpoint{}, err
 			}
 			state.DefinitionKey, state.BehaviorKey, state.MaterializedFingerprint, state.PreparationStage = "", "", "", ""
+			state.PreparedContext = nil
 			state.DefinitionOperationID, state.DefinitionCommandID, state.DefinitionCycle = run.id, string(nextSnapshot.CommandID), nextSnapshot.Cycle
 			state.ContextSequence = 0
 			state.LastResponseOrdinal = 0
-			state.ActiveUserIndex, state.ActiveModelUser = len(state.Messages), UserMessageWithAttachments(input.Text, input.Attachments)
+			state.ActiveUserIndex, state.ActiveModelUser = state.Archive.count(state.Messages), UserMessageWithAttachments(input.Text, input.Attachments)
 			state.Messages = append(state.Messages, state.ActiveModelUser.Clone())
 			state.HostData = cloneHostData(input.HostData)
 			nextState, err = json.Marshal(state)
@@ -124,6 +128,24 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 		default:
 			return JournalCheckpoint{}, fmt.Errorf("unsupported canonical checkpoint stage %q", update.Stage)
 		}
+		projected, err := decodeEngineTranscript(nextState)
+		if err != nil {
+			return JournalCheckpoint{}, err
+		}
+		// The output transaction precedes the product's final transcript
+		// projection. A crash here must reconstruct from the canonical source.
+		projected.HistoryHead.Revision = receipt.Revision
+		if update.Stage == CommitOutput {
+			projected.HistoryHead.Revision = ""
+		}
+		capabilities := cloneRawStateMap(session.capabilities)
+		for key, value := range update.CapabilityStates {
+			capabilities[key] = value
+		}
+		nextState, err = encodeCanonicalWindow(projected, capabilities)
+		if err != nil {
+			return JournalCheckpoint{}, err
+		}
 		cycle, err := sessionRecord(turnCheckpointRecord, cycleFact(nextSnapshot))
 		if err != nil {
 			return JournalCheckpoint{}, err
@@ -138,6 +160,11 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 			return JournalCheckpoint{}, err
 		}
 		records = append(records, messageRecord)
+		capabilityRecords, err := contextCapabilityRecords(update.CapabilityStates)
+		if err != nil {
+			return JournalCheckpoint{}, err
+		}
+		records = append(records, capabilityRecords...)
 		if update.Tool != nil {
 			fact, err := sessionRecord(turnToolRecord, *update.Tool)
 			if err != nil {
@@ -182,6 +209,14 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 	}
 	session.revision += agentsession.Revision(len(records))
 	session.engineState, session.messageCheckpoint = nextState, checkpoint
+	// The Engine request can predate compaction or a tool's capability update.
+	// Every product commit must keep the live Run on the current Session state.
+	nextSnapshot.Capabilities = cloneRawStateMap(session.capabilities)
+	for capability, value := range update.CapabilityStates {
+		session.capabilities[capability] = append(json.RawMessage(nil), value...)
+		session.durableCapabilities[capability] = append(json.RawMessage(nil), value...)
+		nextSnapshot.Capabilities[capability] = append(json.RawMessage(nil), value...)
+	}
 	if update.Tool != nil {
 		run.tools[update.Tool.CallID] = *update.Tool
 	}
