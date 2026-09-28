@@ -143,7 +143,7 @@ Denova is evolving quickly. Bug reports, workflow ideas, usage notes, and creati
 [Discord community](https://discord.gg/BM6dRmyvvZ)
 
 <p align="center">
-  <img src="./img/wechat.png" alt="WeChat community" width="240">
+  <img src="./img/wechat.jpeg" alt="WeChat community" width="240">
 </p>
 
 ## Support Denova
