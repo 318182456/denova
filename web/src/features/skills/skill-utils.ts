@@ -7,7 +7,11 @@ export type SkillsMode = 'library' | 'editor' | 'create' | 'config' | 'install'
 export type SkillInstallSource = 'remote' | 'zip'
 export type SkillContentViewMode = 'preview' | 'raw'
 
-export const skillNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+const skillNamePattern = /^[\p{L}\p{N}][\p{L}\p{N}\p{M}\u200c\u200d_-]{0,63}$/u
+
+export function isValidSkillName(name: string) {
+  return skillNamePattern.test(name) && new TextEncoder().encode(name).length <= 240
+}
 export const skillEntryFile = 'SKILL.md'
 export const skillScopes: SkillScope[] = ['user', 'workspace', 'builtin', 'shared']
 export const skillAgentOptions = AGENTS.filter((agent) => agent.capabilityMode === 'tools')
