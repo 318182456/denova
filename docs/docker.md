@@ -14,11 +14,23 @@ docker compose up -d
 
 首次启动会使用环境变量建立登录配置，只存储密码哈希。后续启动保留用户配置；更改 `.env` 不会重置已有密码，请在应用设置中修改。导入已有配置时请先启用局域网访问并设置登录凭据，否则容器外无法访问。
 
+## Claude 运行时登录
+
+镜像内置 Claude Code CLI。使用 Claude 订阅账号时，在容器内用认证码登录：
+
+```sh
+docker compose exec -it denova claude auth login
+```
+
+按提示在任意浏览器中打开输出的链接并授权，将页面显示的认证码粘贴回终端。凭据保存在持久卷的 `/data/.claude`，重启和更新镜像后保留。登录后在应用设置的「运行时」中选择 Claude Code，点击「检查连接」。用 `docker compose exec denova claude auth status` 查看登录状态，`claude auth logout` 退出登录。
+
+若在设置中为 Claude 指定了模型服务配置（API 路由），则不需要登录。
+
 ## 数据
 
 持久化卷 `denova_data` 挂载到 `/data`，用户配置、受管项目和会话位于 `/data/.denova`。备份时停止容器并备份整个卷。不要使用 `docker compose down -v`，该命令会删除数据。若改用主机目录挂载，目录需允许 UID/GID 1000 写入；外部项目路径必须另行挂载到容器。
 
-镜像包含主程序、updater、前端、内嵌资源、Skills、ripgrep、Python、Git 和 Chromium。容器使用非 root 用户。浏览器工具使用容器中的 Chromium，镜像内的 Chromium 包装器关闭浏览器沙箱，容器本身保留 Docker 默认隔离。
+镜像包含主程序、updater、前端、内嵌资源、Skills、ripgrep、Python、Git、Chromium 和 Claude Code CLI（自动发布时固定为构建当时的最新版，关闭自动更新，随镜像更新）。容器使用非 root 用户。浏览器工具使用容器中的 Chromium，镜像内的 Chromium 包装器关闭浏览器沙箱，容器本身保留 Docker 默认隔离。
 
 ## 更新
 

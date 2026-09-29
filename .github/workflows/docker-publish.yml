@@ -125,6 +125,7 @@ jobs:
             echo "go=$go_version"
             echo "pnpm=$pnpm_version"
             echo "node=$node_version"
+            echo "claude=$(npm view @anthropic-ai/claude-code version)"
             echo "revision=$(git -C src rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
@@ -145,6 +146,7 @@ jobs:
             NODE_VERSION=${{ steps.versions.outputs.node }}
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
             DENOVA_VERSION=${{ env.VERSION }}
+            CLAUDE_CODE_VERSION=${{ steps.versions.outputs.claude }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.versions.outputs.revision }}
@@ -170,6 +172,8 @@ jobs:
           test "$(docker compose exec -T denova denova --version | tr -d '\r')" = "$VERSION"
           docker compose exec -T denova rg --version
           docker compose exec -T denova chromium --version
+          docker compose exec -T denova claude --version
+          docker compose exec -T denova sh -c 'claude auth status || true' | jq -e '.loggedIn == false'
           docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -f /opt/denova/web/index.html'
           docker compose exec -T denova sh -c 'printf persisted > /data/.denova/container-smoke'
           docker compose exec -T denova sha256sum /data/.denova/config.toml > /tmp/config-before

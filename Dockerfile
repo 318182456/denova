@@ -27,12 +27,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 denova && useradd --uid 1000 --gid 1000 --home-dir /data --shell /bin/bash denova \
     && mkdir -p /data/.denova && chown -R denova:denova /data
+# Claude Code CLI for the Claude runtime. The publish workflow pins the exact
+# version so layer caching never serves a stale CLI. Credentials created by
+# `claude auth login` live in the persisted /data/.claude.
+ARG CLAUDE_CODE_VERSION=latest
+RUN curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
+    && HOME=/tmp/claude-home bash /tmp/claude-install.sh "${CLAUDE_CODE_VERSION}" \
+    && install -m 755 "$(readlink -f /tmp/claude-home/.local/bin/claude)" /usr/local/bin/claude \
+    && rm -rf /tmp/claude-install.sh /tmp/claude-home \
+    && claude --version
 COPY --from=build /src/output/ /opt/denova/
 COPY LICENSE /opt/denova/LICENSE
 COPY docker/entrypoint.sh /usr/local/bin/denova-entrypoint
 COPY docker/chromium.sh /usr/local/bin/chromium
 RUN chmod 755 /usr/local/bin/denova-entrypoint /usr/local/bin/chromium
-ENV DENOVA_DIR=/data/.denova HOME=/data PATH=/opt/denova:/opt/denova/tools:/usr/local/bin:/usr/bin:/bin
+ENV DENOVA_DIR=/data/.denova HOME=/data DISABLE_AUTOUPDATER=1 PATH=/opt/denova:/opt/denova/tools:/usr/local/bin:/usr/bin:/bin
 WORKDIR /data
 USER denova
 EXPOSE 8080
