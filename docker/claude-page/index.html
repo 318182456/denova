@@ -1,0 +1,267 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code</title>
+<style>
+:root {
+  --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #18181b; --muted: #71717a;
+  --accent: #18181b; --accent-text: #ffffff; --ok: #16a34a; --warn: #ca8a04; --bad: #dc2626;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #09090b; --panel: #18181b; --border: #27272a; --text: #fafafa; --muted: #a1a1aa;
+    --accent: #fafafa; --accent-text: #09090b; --ok: #22c55e; --warn: #eab308; --bad: #ef4444;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC", sans-serif; }
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 12px; }
+section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+p { margin: 0 0 12px; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select, input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; min-height: 34px; }
+input { flex: 1 1 240px; min-width: 0; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+a { color: inherit; overflow-wrap: anywhere; }
+.link { display: block; padding: 8px; margin: 0 0 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; max-height: 96px; overflow: auto; }
+.badge { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.ok .dot { background: var(--ok); } .warn .dot { background: var(--warn); } .bad .dot { background: var(--bad); }
+pre { margin: 12px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.msg { margin-top: 12px; } .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="row" style="justify-content: space-between;"><h1 data-i18n="title"></h1><a href="/" data-i18n="back"></a></div>
+
+  <section>
+    <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+      <h2 style="margin: 0" data-i18n="status"></h2>
+      <button id="refresh" data-i18n="refresh"></button>
+    </div>
+    <dl>
+      <dt data-i18n="version"></dt><dd id="version">-</dd>
+      <dt data-i18n="path"></dt><dd id="path">-</dd>
+      <dt data-i18n="account"></dt><dd id="account">-</dd>
+    </dl>
+  </section>
+
+  <section id="login-section">
+    <h2 data-i18n="login"></h2>
+    <div id="login-idle">
+      <p data-i18n="loginHint"></p>
+      <div class="row">
+        <select id="method" aria-label="method">
+          <option value="claudeai" data-i18n="methodClaudeai"></option>
+          <option value="console" data-i18n="methodConsole"></option>
+        </select>
+        <button class="primary" id="login-start" data-i18n="loginStart"></button>
+        <button id="logout" data-i18n="logout" hidden></button>
+      </div>
+    </div>
+    <div id="login-pending" hidden>
+      <p data-i18n="loginStep1"></p>
+      <a class="link" id="login-url" target="_blank" rel="noopener noreferrer"></a>
+      <div class="row" style="margin-bottom: 12px;">
+        <button id="open-url" data-i18n="openLink"></button>
+        <button id="copy-url" data-i18n="copyLink"></button>
+      </div>
+      <p data-i18n="loginStep2"></p>
+      <form class="row" id="code-form">
+        <input id="code" autocomplete="off" spellcheck="false">
+        <button class="primary" type="submit" id="code-submit" data-i18n="submit"></button>
+        <button type="button" id="login-cancel" data-i18n="cancel"></button>
+      </form>
+    </div>
+    <div class="msg" id="login-msg" hidden></div>
+    <pre id="login-output" hidden></pre>
+  </section>
+
+  <section>
+    <h2 data-i18n="update"></h2>
+    <p data-i18n="updateHint"></p>
+    <button class="primary" id="update" data-i18n="updateRun"></button>
+    <div class="msg" id="update-msg" hidden></div>
+    <pre id="update-output" hidden></pre>
+  </section>
+
+  <p data-i18n="afterHint"></p>
+</main>
+<script>
+const messages = {
+  zh: {
+    title: 'Claude Code 管理', back: '返回 Denova', status: '状态', refresh: '刷新', version: '版本', path: '路径', account: '账号',
+    notInstalled: '未安装', signedOut: '未登录', signedIn: '已登录', loading: '加载中…',
+    login: '登录', loginHint: '通过浏览器授权后，将页面显示的认证码粘贴到这里完成登录。',
+    methodClaudeai: 'Claude 订阅（Pro / Max / Team）', methodConsole: 'Anthropic Console（API 计费）',
+    loginStart: '开始登录', logout: '退出登录', loginStep1: '1. 在浏览器中打开以下链接并授权：', openLink: '打开链接', copyLink: '复制链接', copied: '已复制',
+    loginStep2: '2. 将授权完成后显示的认证码粘贴到下方：', codePlaceholder: '粘贴认证码', submit: '提交', cancel: '取消',
+    loginOk: '登录成功。', loginFailed: '登录失败，请重新开始登录。', logoutOk: '已退出登录。', logoutFailed: '退出登录失败。',
+    update: '更新', updateHint: '检查并安装 Claude Code 最新版本。新版本保存在数据卷中，镜像自带更高版本时自动改用镜像版本。',
+    updateRun: '检查并更新', updating: '正在更新，可能需要几分钟…', updateOk: '更新完成，当前版本 {v}。', updateFailed: '更新失败。',
+    afterHint: '登录或更新后，请在 Denova 设置 →「运行时」中点击「检查连接」。',
+    err_unauthorized: '登录已失效，请先登录 Denova。', err_busy: '有其他操作正在进行，请稍后重试。', err_not_installed: '未找到 Claude Code。',
+    err_login_expired: '登录已过期，请重新开始登录。', err_login_failed: '无法开始登录，请稍后重试。',
+    err_invalid_request: '请求无效。', err_network: '无法连接服务。', err_unknown: '操作失败。',
+  },
+  en: {
+    title: 'Claude Code', back: 'Back to Denova', status: 'Status', refresh: 'Refresh', version: 'Version', path: 'Path', account: 'Account',
+    notInstalled: 'Not installed', signedOut: 'Signed out', signedIn: 'Signed in', loading: 'Loading…',
+    login: 'Sign in', loginHint: 'Authorize in a browser, then paste the code it shows here to finish signing in.',
+    methodClaudeai: 'Claude subscription (Pro / Max / Team)', methodConsole: 'Anthropic Console (API billing)',
+    loginStart: 'Start sign-in', logout: 'Sign out', loginStep1: '1. Open this link in a browser and authorize:', openLink: 'Open link', copyLink: 'Copy link', copied: 'Copied',
+    loginStep2: '2. Paste the code shown after authorization:', codePlaceholder: 'Paste code', submit: 'Submit', cancel: 'Cancel',
+    loginOk: 'Signed in.', loginFailed: 'Sign-in failed. Start again.', logoutOk: 'Signed out.', logoutFailed: 'Sign-out failed.',
+    update: 'Update', updateHint: 'Check for and install the latest Claude Code. Updates are kept in the data volume; a newer build shipped with the image takes over automatically.',
+    updateRun: 'Check and update', updating: 'Updating, this can take a few minutes…', updateOk: 'Updated. Current version {v}.', updateFailed: 'Update failed.',
+    afterHint: 'After signing in or updating, click "Check connection" in Denova Settings → Runtime.',
+    err_unauthorized: 'Session expired. Sign in to Denova first.', err_busy: 'Another operation is running. Try again shortly.', err_not_installed: 'Claude Code was not found.',
+    err_login_expired: 'Sign-in expired. Start again.', err_login_failed: 'Could not start sign-in. Try again shortly.',
+    err_invalid_request: 'Invalid request.', err_network: 'Cannot reach the service.', err_unknown: 'Operation failed.',
+  },
+}
+const lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'
+const t = (key, vars = {}) => (messages[lang][key] || key).replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '')
+document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'
+document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n) })
+const $ = (id) => document.getElementById(id)
+$('code').placeholder = t('codePlaceholder')
+
+async function api(path, body) {
+  let res
+  try {
+    res = await fetch(path, body === undefined ? { cache: 'no-store' } : {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Denova-Claude': '1' }, body: JSON.stringify(body),
+    })
+  } catch { throw new Error(t('err_network')) }
+  if (res.status === 401) { location.href = '/'; throw new Error(t('err_unauthorized')) }
+  if (res.status === 204) return {}
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(messages[lang]['err_' + data.error] || t('err_unknown'))
+  return data
+}
+
+function show(id, text, tone) {
+  const el = $(id)
+  el.hidden = !text
+  el.textContent = text || ''
+  if (tone !== undefined) el.className = 'msg ' + tone
+}
+
+function setBusy(busy) {
+  document.querySelectorAll('button, select, input').forEach((el) => { el.disabled = busy })
+}
+
+async function run(action) {
+  setBusy(true)
+  try { await action() } finally { setBusy(false) }
+}
+
+function badge(text, tone) {
+  const span = document.createElement('span')
+  span.className = 'badge ' + tone
+  const dot = document.createElement('span')
+  dot.className = 'dot'
+  span.append(dot, document.createTextNode(text))
+  return span
+}
+
+async function refresh() {
+  $('account').textContent = t('loading')
+  let status
+  try { status = await api('api/status') } catch (error) { $('account').textContent = error.message; return }
+  $('version').textContent = status.version || '-'
+  $('path').textContent = status.path || '-'
+  const account = $('account')
+  account.replaceChildren()
+  if (!status.installed) account.append(badge(t('notInstalled'), 'bad'))
+  else if (status.auth?.loggedIn) {
+    const detail = [status.auth.email, status.auth.orgName, status.auth.subscriptionType || status.auth.authMethod].filter(Boolean).join(' · ')
+    account.append(badge(t('signedIn') + (detail ? ' · ' + detail : ''), 'ok'))
+  } else account.append(badge(t('signedOut'), 'warn'))
+  $('logout').hidden = !status.auth?.loggedIn
+  setPending(status.login_pending ? status.login_url : '')
+}
+
+function setPending(url) {
+  $('login-idle').hidden = !!url
+  $('login-pending').hidden = !url
+  $('login-url').href = url || '#'
+  $('login-url').textContent = url || ''
+  if (url) $('code').value = ''
+}
+
+$('refresh').onclick = () => run(refresh)
+
+$('login-start').onclick = () => run(async () => {
+  show('login-msg', ''); show('login-output', '')
+  try {
+    const { url } = await api('api/login/start', { method: $('method').value })
+    setPending(url)
+    $('code').focus()
+  } catch (error) { show('login-msg', error.message, 'bad') }
+})
+
+$('open-url').onclick = () => window.open($('login-url').href, '_blank', 'noopener')
+$('copy-url').onclick = async () => {
+  try { await navigator.clipboard.writeText($('login-url').href); $('copy-url').textContent = t('copied') } catch {
+    const range = document.createRange(); range.selectNodeContents($('login-url'))
+    getSelection().removeAllRanges(); getSelection().addRange(range)
+  }
+  setTimeout(() => { $('copy-url').textContent = t('copyLink') }, 1500)
+}
+
+$('code-form').onsubmit = (event) => {
+  event.preventDefault()
+  const code = $('code').value.trim()
+  if (!code) return
+  run(async () => {
+    try {
+      const result = await api('api/login/code', { code })
+      show('login-msg', t(result.ok ? 'loginOk' : 'loginFailed'), result.ok ? 'ok' : 'bad')
+      if (!result.ok) show('login-output', result.output)
+    } catch (error) { show('login-msg', error.message, 'bad') }
+    await refresh()
+  })
+}
+
+$('login-cancel').onclick = () => run(async () => {
+  try { await api('api/login/cancel', {}) } catch (error) { show('login-msg', error.message, 'bad') }
+  await refresh()
+})
+
+$('logout').onclick = () => run(async () => {
+  show('login-output', '')
+  try {
+    const result = await api('api/logout', {})
+    show('login-msg', t(result.ok ? 'logoutOk' : 'logoutFailed'), result.ok ? 'ok' : 'bad')
+    if (!result.ok) show('login-output', result.output)
+  } catch (error) { show('login-msg', error.message, 'bad') }
+  await refresh()
+})
+
+$('update').onclick = () => run(async () => {
+  show('update-msg', t('updating'), ''); show('update-output', '')
+  try {
+    const result = await api('api/update', {})
+    show('update-msg', result.ok ? t('updateOk', { v: result.version || '-' }) : t('updateFailed'), result.ok ? 'ok' : 'bad')
+    show('update-output', result.output)
+  } catch (error) { show('update-msg', error.message, 'bad') }
+  await refresh()
+})
+
+run(refresh)
+</script>
+</body>
+</html>

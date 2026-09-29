@@ -14,23 +14,23 @@ docker compose up -d
 
 首次启动会使用环境变量建立登录配置，只存储密码哈希。后续启动保留用户配置；更改 `.env` 不会重置已有密码，请在应用设置中修改。导入已有配置时请先启用局域网访问并设置登录凭据，否则容器外无法访问。
 
-## Claude 运行时登录
+## Claude Code 管理页
 
-镜像内置 Claude Code CLI。使用 Claude 订阅账号时，在容器内用认证码登录：
+镜像内置 Claude Code CLI，并在同一端口提供管理页 `http://服务器IP:8082/claude/`，用于查看状态、用认证码登录、退出登录和更新 Claude Code。管理页沿用 Denova 的登录状态，未登录时会跳转到 Denova 登录页，登录后重新打开该地址即可。该页面只由容器提供，不修改应用代码。
 
-```sh
-docker compose exec -it denova claude auth login
-```
+登录：选择「Claude 订阅」或「Anthropic Console」，点击「开始登录」，在浏览器中打开给出的链接并授权，将授权后显示的认证码粘贴回页面提交。凭据保存在持久卷的 `/data/.claude`，重启和更新镜像后保留。
 
-按提示在任意浏览器中打开输出的链接并授权，将页面显示的认证码粘贴回终端。凭据保存在持久卷的 `/data/.claude`，重启和更新镜像后保留。登录后在应用设置的「运行时」中选择 Claude Code，点击「检查连接」。用 `docker compose exec denova claude auth status` 查看登录状态，`claude auth logout` 退出登录。
+更新：点击「检查并更新」安装最新版，新版本保存在持久卷的 `/data/.local`，并优先于镜像自带版本使用。镜像更新后若自带版本更高，启动时会自动删除卷中的旧版本并改用镜像版本。
 
-若在设置中为 Claude 指定了模型服务配置（API 路由），则不需要登录。
+登录或更新后，在应用设置的「运行时」中选择 Claude Code，点击「检查连接」。若为 Claude 指定了 Denova 模型档案（API 路由），则不需要登录。也可以在命令行完成登录：`docker compose exec -it denova claude auth login`。
+
+实现方式：容器入口进程在 8080 端口提供 `/claude/`，其余请求反向代理到容器内部 18080 端口上的 Denova，并负责 Denova 的启停。代理会用真实来源地址覆盖客户端传来的 `X-Forwarded-*` 头，因此外部请求无法伪装成本机访问。从旧镜像升级后需要重新登录一次 Denova。
 
 ## 数据
 
 持久化卷 `denova_data` 挂载到 `/data`，用户配置、受管项目和会话位于 `/data/.denova`。备份时停止容器并备份整个卷。不要使用 `docker compose down -v`，该命令会删除数据。若改用主机目录挂载，目录需允许 UID/GID 1000 写入；外部项目路径必须另行挂载到容器。
 
-镜像包含主程序、updater、前端、内嵌资源、Skills、ripgrep、Python、Git、Chromium 和 Claude Code CLI（自动发布时固定为构建当时的最新版，关闭自动更新，随镜像更新）。容器使用非 root 用户。浏览器工具使用容器中的 Chromium，镜像内的 Chromium 包装器关闭浏览器沙箱，容器本身保留 Docker 默认隔离。
+镜像包含主程序、updater、前端、内嵌资源、Skills、ripgrep、Python、Git、Chromium 和 Claude Code CLI（自动发布时固定为构建当时的最新版，关闭后台自动更新，可在管理页手动更新）。容器使用非 root 用户。浏览器工具使用容器中的 Chromium，镜像内的 Chromium 包装器关闭浏览器沙箱，容器本身保留 Docker 默认隔离。
 
 ## 更新
 
