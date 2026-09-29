@@ -1,11 +1,9 @@
 package agentruntime
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -34,23 +32,6 @@ type ExternalCycle interface {
 	Wait(context.Context) agentrun.Outcome
 }
 type ExternalCycleFactory func(context.Context, ExternalCycleInput, func(agentrun.Event), func(context.Context, *external.RuntimeSession) error) (ExternalCycle, error)
-
-type controlReceipt struct {
-	Fingerprint string                  `json:"fingerprint"`
-	Receipt     agentrun.CommandReceipt `json:"receipt"`
-	Outcome     agentrun.OutcomeStatus  `json:"outcome,omitempty"`
-}
-type externalControlState struct {
-	Version     int                        `json:"version"`
-	Revision    uint64                     `json:"revision"`
-	OperationID agentrun.OperationID       `json:"operation_id"`
-	CommandID   agentrun.CommandID         `json:"command_id"`
-	Phase       agentrun.RunPhase          `json:"phase"`
-	Current     *ExternalCycleInput        `json:"current,omitempty"`
-	Queue       []ExternalCycleInput       `json:"queue,omitempty"`
-	Receipts    map[string]controlReceipt  `json:"receipts,omitempty"`
-	Last        *agentrun.OperationSummary `json:"last,omitempty"`
-}
 
 // ExternalController orders commands for one peer runtime at the Denova layer.
 // The product journal is authoritative; live handles only cancel and emit.
@@ -91,47 +72,6 @@ func (engines *Engines) ExternalControl(options agentrun.Options, state ProductS
 	return control, nil
 }
 
-func decodeControl(raw json.RawMessage, present bool) (externalControlState, error) {
-	state := externalControlState{Version: 1, Phase: agentrun.RunPhaseIdle, Receipts: map[string]controlReceipt{}}
-	if present {
-		if err := json.Unmarshal(raw, &state); err != nil {
-			return state, err
-		}
-		if state.Version != 1 {
-			return state, errors.New("unsupported external control state version")
-		}
-	}
-	if state.Receipts == nil {
-		state.Receipts = map[string]controlReceipt{}
-	}
-	return state, nil
-}
-func (control *ExternalController) read(ctx context.Context) (externalControlState, error) {
-	raw, present, err := control.store.Read(ctx, externalControlCapability)
-	if err != nil {
-		return externalControlState{}, err
-	}
-	return decodeControl(raw, present)
-}
-func (control *ExternalController) update(ctx context.Context, mutate func(*externalControlState) error) error {
-	return control.store.Update(ctx, externalControlCapability, func(raw json.RawMessage, present bool) (json.RawMessage, error) {
-		state, err := decodeControl(raw, present)
-		if err != nil {
-			return nil, err
-		}
-		before, _ := json.Marshal(state)
-		if err := mutate(&state); err != nil {
-			return nil, err
-		}
-		after, _ := json.Marshal(state)
-		if bytes.Equal(before, after) {
-			return nil, nil
-		}
-		state.Revision++
-		return json.Marshal(state)
-	})
-}
-
 func (control *ExternalController) Status(ctx context.Context) (agentrun.RuntimeStatus, error) {
 	control.mu.Lock()
 	defer control.mu.Unlock()
@@ -170,12 +110,19 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 	}
 	control.mu.Lock()
 	defer control.mu.Unlock()
-	encoded, _ := json.Marshal(command)
-	fingerprint := string(encoded)
+	encoded, err := json.Marshal(command)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
+	}
+	fingerprint := controlFingerprint(encoded)
 	var receipt agentrun.CommandReceipt
 	var interrupt error
-	err := control.update(ctx, func(state *externalControlState) error {
-		if saved, ok := state.Receipts[command.CommandID]; ok {
+	err = control.update(ctx, func(state *externalControlState) error {
+		saved, found, err := state.receipt(command.CommandID)
+		if err != nil {
+			return err
+		}
+		if found {
 			if saved.Fingerprint != fingerprint {
 				return agentrun.ErrInvalidCommand
 			}
@@ -194,9 +141,9 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			interrupt = external.ErrSuspended
 		case agentexecution.CommandAbort:
 			state.Phase, state.Current, state.Queue = agentrun.RunPhaseIdle, nil, nil
-			saved := state.Receipts[string(state.CommandID)]
-			saved.Outcome = agentrun.OutcomeAborted
-			state.Receipts[string(state.CommandID)] = saved
+			if err := state.setOutcome(string(state.CommandID), agentrun.OutcomeAborted); err != nil {
+				return err
+			}
 			interrupt = context.Canceled
 		case agentexecution.CommandFollowUp, agentexecution.CommandNextTurn, agentexecution.CommandSteer:
 			request := command.Input
@@ -235,7 +182,7 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			return fmt.Errorf("%w: external command %q", agentrun.ErrInvalidCommand, command.Kind)
 		}
 		receipt = agentrun.CommandReceipt{CommandID: agentrun.CommandID(command.CommandID), OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision + 1)}
-		state.Receipts[command.CommandID] = controlReceipt{Fingerprint: fingerprint, Receipt: receipt}
+		state.receipts[command.CommandID] = controlReceipt{Fingerprint: fingerprint, Receipt: receipt}
 		return nil
 	})
 	if err == nil && control.active != nil && interrupt != nil && control.active.cancel != nil {
@@ -260,7 +207,11 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 	if err != nil {
 		return nil, err
 	}
-	if saved, found := state.Receipts[request.CommandID]; found {
+	saved, found, err := state.receipt(request.CommandID)
+	if err != nil {
+		return nil, err
+	}
+	if found {
 		if saved.Fingerprint != externalInputFingerprint(input) {
 			return nil, agentrun.ErrInvalidCommand
 		}
@@ -280,7 +231,9 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 		if state.Phase != agentrun.RunPhaseIdle {
 			return ErrOperationActive
 		}
-		if _, found := state.Receipts[request.CommandID]; found {
+		if _, found, err := state.receipt(request.CommandID); err != nil {
+			return err
+		} else if found {
 			return agentrun.ErrInvalidCommand
 		}
 		state.OperationID, state.CommandID = agentrun.OperationID("external-run-"+rand.Text()), agentrun.CommandID(request.CommandID)
@@ -288,7 +241,7 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 		state.Current = &input
 		state.Phase = agentrun.RunPhaseRunning
 		run.receipt = agentrun.CommandReceipt{CommandID: state.CommandID, OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision + 1)}
-		state.Receipts[request.CommandID] = controlReceipt{Fingerprint: externalInputFingerprint(input), Receipt: run.receipt}
+		state.receipts[request.CommandID] = controlReceipt{Fingerprint: externalInputFingerprint(input), Receipt: run.receipt}
 		return nil
 	})
 	if err != nil {
@@ -306,7 +259,11 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 		return nil, err
 	}
 	key := "recovery:" + RecoveryActionKey(action)
-	if saved, ok := state.Receipts[key]; ok {
+	saved, found, err := state.receipt(key)
+	if err != nil {
+		return nil, err
+	}
+	if found {
 		if control.active != nil && control.active.recoveryKey == key {
 			return control.active, nil
 		}
@@ -326,12 +283,12 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	}
 	run := &ExternalRun{control: control, factory: factory, emit: emit, recoveryKey: key, receipt: agentrun.CommandReceipt{CommandID: state.CommandID, OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision)}}
 	err = control.update(ctx, func(current *externalControlState) error {
-		current.Receipts[key] = controlReceipt{Receipt: run.receipt}
+		current.receipts[key] = controlReceipt{Receipt: run.receipt}
 		if action.Kind == agentexecution.RuntimeRecoveryAbort {
 			current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
-			saved := current.Receipts[string(current.CommandID)]
-			saved.Outcome = agentrun.OutcomeAborted
-			current.Receipts[string(current.CommandID)] = saved
+			if err := current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted); err != nil {
+				return err
+			}
 			return nil
 		}
 		current.Phase = agentrun.RunPhaseRunning
@@ -356,8 +313,8 @@ func (control *ExternalController) Receipt(ctx context.Context, commandID string
 	if err != nil {
 		return agentrun.CommandReceipt{}, false, err
 	}
-	saved, found := state.Receipts[commandID]
-	return saved.Receipt, found, nil
+	saved, found, err := state.receipt(commandID)
+	return saved.Receipt, found, err
 }
 
 // RecoveryInput supplies product routing and display metadata for an explicit

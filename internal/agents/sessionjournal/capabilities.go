@@ -4,9 +4,46 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
+
+// CapabilityReader reads one state from the transaction's canonical snapshot.
+// It is valid only inside the mutation callback and must not be retained.
+type CapabilityReader func(string) (json.RawMessage, bool, error)
+
+// CapabilityChanges prepares related state replacements in one transaction.
+// Callbacks are pure and may be retried after CAS. Only changed keys are written;
+// nil values leave a key unchanged. The caller must append every returned record
+// atomically before applying any of them to the projection.
+func (projection *Projection) CapabilityChanges(key agentsession.Key, update func(CapabilityReader) (map[string]json.RawMessage, error)) ([]*Envelope, error) {
+	changes, err := update(func(capability string) (json.RawMessage, bool, error) {
+		return projection.Capability(key, capability)
+	})
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(changes))
+	for capability := range changes {
+		keys = append(keys, capability)
+	}
+	sort.Strings(keys)
+	var records []*Envelope
+	for _, capability := range keys {
+		record, err := projection.CapabilityUpdate(key, capability, func(json.RawMessage, bool) (json.RawMessage, error) {
+			return changes[capability], nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		if record != nil {
+			record.Revision += agentsession.Revision(len(records))
+			records = append(records, record)
+		}
+	}
+	return records, nil
+}
 
 // Capability reads the latest versioned state from the owning product journal.
 // Applications may reuse state schemas across peer runtimes; only the selected
