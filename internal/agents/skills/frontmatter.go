@@ -5,10 +5,12 @@ import (
 	"regexp"
 	"strings"
 
+	"denova/internal/portablepath"
+
 	"gopkg.in/yaml.v3"
 )
 
-var skillNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+var skillNamePattern = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}\p{M}\x{200C}\x{200D}_-]{0,63}$`)
 
 type frontMatterFile struct {
 	Name         string   `yaml:"name"`
@@ -19,8 +21,9 @@ type frontMatterFile struct {
 }
 
 func ValidateName(name string) error {
-	if !skillNamePattern.MatchString(strings.TrimSpace(name)) {
-		return fmt.Errorf("skill name must match %s", skillNamePattern.String())
+	name = strings.TrimSpace(name)
+	if !skillNamePattern.MatchString(name) || len(name) > portablepath.MaxComponentBytes {
+		return fmt.Errorf("skill name must contain 1-64 Unicode letters, numbers, combining marks, joiners, underscores or hyphens, start with a letter or number, and fit within %d UTF-8 bytes", portablepath.MaxComponentBytes)
 	}
 	return nil
 }

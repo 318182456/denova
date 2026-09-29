@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.5.0</strong>（2026-09-22） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.5.1</strong>（2026-09-28） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -143,7 +143,7 @@ Denova 仍在快速迭代中，欢迎反馈问题、分享用法或讨论创作�
 [Discord 社区](https://discord.gg/BM6dRmyvvZ)
 
 <p align="center">
-  <img src="./img/wechat.png" alt="微信交流" width="240">
+  <img src="./img/wechat.jpeg" alt="微信交流" width="240">
 </p>
 
 ## 赞助项目

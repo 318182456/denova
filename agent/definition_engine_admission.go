@@ -188,6 +188,8 @@ func (engine *definitionEngine) commitCanonicalOutput(
 	ctx context.Context,
 	request runstate.EngineRequest,
 	message *Message,
+	messages []*Message,
+	activeUserIndex int,
 	adapter CanonicalAdapter,
 ) (committedOutput, error) {
 	if adapter == nil {
@@ -204,7 +206,7 @@ func (engine *definitionEngine) commitCanonicalOutput(
 	var receipt OutputCommitReceipt
 	err = withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitOutput, Snapshot: request.Snapshot, Hash: hash}, func(checkpoint CanonicalCheckpoint) error {
 		var err error
-		receipt, err = adapter.CommitOutput(ctx, OutputCommitRequest{Identity: identity, Hash: hash, Message: *CloneMessage(message), Checkpoint: checkpoint})
+		receipt, err = adapter.CommitOutput(ctx, OutputCommitRequest{Identity: identity, Hash: hash, Message: *CloneMessage(message), ContextMessages: cloneMessages(messages), ActiveUserIndex: activeUserIndex, Checkpoint: checkpoint})
 		return err
 	})
 	if err != nil {
@@ -220,8 +222,11 @@ func (engine *definitionEngine) commitCanonicalOutput(
 		effective.ReasoningContent = receipt.Transcript.Thinking
 	}
 	var canonicalMessages []*Message
-	if receipt.Transcript != nil && receipt.Transcript.CanonicalMessages != nil {
-		canonicalMessages = canonicalContextStateOrder(receipt.Transcript.CanonicalMessages)
+	if receipt.Transcript != nil && receipt.Transcript.ContextMessages != nil {
+		canonicalMessages = receipt.Transcript.ContextMessages
+		if len(canonicalMessages) != len(messages) {
+			return committedOutput{}, errors.New("canonical output projection changed active history coordinates")
+		}
 		if err := validateImportedTranscript(canonicalMessages); err != nil {
 			return committedOutput{}, fmt.Errorf("invalid canonical output transcript: %w", err)
 		}
@@ -238,7 +243,7 @@ func (engine *definitionEngine) commitCanonicalContext(
 	adapter CanonicalAdapter,
 	sequence int,
 	messages []*Message,
-	state json.RawMessage,
+	checkpointState runstate.EngineTranscriptUpdated,
 ) error {
 	contextAdapter, ok := adapter.(CanonicalContextAdapter)
 	if !ok || len(messages) == 0 {
@@ -255,7 +260,7 @@ func (engine *definitionEngine) commitCanonicalContext(
 		values[index] = *message.Clone()
 	}
 	var receipt CommitReceipt
-	err := withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitContext, Snapshot: request.Snapshot, State: state}, func(checkpoint CanonicalCheckpoint) error {
+	err := withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitContext, Snapshot: request.Snapshot, State: checkpointState.State, CapabilityStates: checkpointState.CapabilityStates}, func(checkpoint CanonicalCheckpoint) error {
 		var err error
 		receipt, err = contextAdapter.CommitContext(ctx, ContextCommitRequest{
 			Identity: canonicalCommitIdentity(engine.key, request.Snapshot, CommitContext), Sequence: sequence, Messages: values, Checkpoint: checkpoint,
@@ -332,8 +337,9 @@ func (engine *definitionEngine) ResolveInteraction(
 		return nil, fmt.Errorf("%w: interaction behavior identity changed", ErrDefinitionMismatch)
 	}
 	var interactionHeader struct {
-		ID   string          `json:"id"`
-		Kind InteractionKind `json:"kind"`
+		ID         string                  `json:"id"`
+		Kind       InteractionKind         `json:"kind"`
+		Permission *PermissionPresentation `json:"permission,omitempty"`
 	}
 	if err := json.Unmarshal(request.Interaction.Request, &interactionHeader); err != nil {
 		return nil, fmt.Errorf("decode Interaction request header: %w", err)
@@ -364,22 +370,35 @@ func (engine *definitionEngine) ResolveInteraction(
 		HostData:   cloneHostData(input.HostData),
 		Compaction: compaction,
 	}
-	if err := materializeDefinitionCapabilities(ctx, prepareRequest, &prepared); err != nil {
+	// New approvals carry the exact tool contract in the owning journal. The
+	// behavior fence above still checks policy and implementation identities;
+	// mutable context is not part of the user's authorization. Old approvals
+	// and custom Ask policies retain their full fence, restoring accepted context
+	// when the checkpoint contains it and rematerializing legacy checkpoints.
+	toolBound := interactionHeader.Kind == InteractionPermission && interactionHeader.Permission != nil &&
+		interactionHeader.Permission.ToolDefinitionHash != ""
+	if toolBound {
+		if err := materializeDefinitionTools(ctx, prepareRequest, &prepared); err != nil {
+			return nil, err
+		}
+		if err := engine.applyGoalPreparation(ctx, runstate.EngineRequest{Snapshot: request.Snapshot}, &prepared); err != nil {
+			return nil, err
+		}
+	} else if err := engine.materializeCycleCapabilities(ctx, prepareRequest, request.Snapshot, transcript.PreparedContext, &prepared); err != nil {
 		return nil, err
 	}
-	if err := engine.applyGoalPreparation(ctx, runstate.EngineRequest{Snapshot: request.Snapshot}, &prepared); err != nil {
-		return nil, err
-	}
-	materialized, err := materializedDefinitionFingerprint(prepared)
-	if err != nil {
-		return nil, err
-	}
-	if transcript.PreparationStage == enginePreparationMaterialized &&
-		transcript.MaterializedFingerprint != materialized {
-		return nil, fmt.Errorf(
-			"%w: interaction materialized Definition changed (previous=%s current=%s)",
-			ErrDefinitionMismatch, transcript.MaterializedFingerprint, materialized,
-		)
+	if !toolBound {
+		materialized, err := materializedDefinitionFingerprint(prepared)
+		if err != nil {
+			return nil, err
+		}
+		if transcript.PreparationStage == enginePreparationMaterialized &&
+			transcript.MaterializedFingerprint != materialized {
+			return nil, fmt.Errorf(
+				"%w: interaction materialized Definition changed (previous=%s current=%s)",
+				ErrDefinitionMismatch, transcript.MaterializedFingerprint, materialized,
+			)
+		}
 	}
 	var interactionRequest InteractionRequest
 	if err := json.Unmarshal(request.Interaction.Request, &interactionRequest); err != nil {
@@ -388,15 +407,38 @@ func (engine *definitionEngine) ResolveInteraction(
 	if interactionRequest.ID != request.Interaction.ID {
 		return nil, ErrInteractionStale
 	}
+	var descriptor ToolDescriptor
+	if interactionRequest.Kind == InteractionPermission {
+		presentation := interactionRequest.Permission
+		if presentation == nil {
+			return nil, errors.New("Permission Interaction has no presentation")
+		}
+		found := false
+		for _, tool := range prepared.toolSnapshots {
+			if tool.Info.Name == presentation.Tool {
+				if toolBound {
+					hash, err := hashCanonical(tool)
+					if err != nil {
+						return nil, err
+					}
+					if hash != presentation.ToolDefinitionHash {
+						return nil, fmt.Errorf("%w: permission tool %q changed", ErrDefinitionMismatch, presentation.Tool)
+					}
+				}
+				descriptor, found = tool.Descriptor, true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("%w: permission tool %q is unavailable", ErrDefinitionMismatch, presentation.Tool)
+		}
+	}
 	resolution, err := policy.Resolve(ctx, interactionRequest, response)
 	if err != nil {
 		return nil, err
 	}
 	if interactionRequest.Kind == InteractionPermission {
 		presentation := interactionRequest.Permission
-		if presentation == nil {
-			return nil, errors.New("Permission Interaction has no presentation")
-		}
 		if resolution.Cancelled {
 			// Cancellation is never authorization and has no policy-owned work to
 			// persist. In particular, do not call a custom policy with an empty
@@ -411,21 +453,6 @@ func (engine *definitionEngine) ResolveInteraction(
 		}
 		if resolution.Permission == PermissionRemember && !presentation.CanRemember {
 			return nil, errors.New("Permission Interaction cannot remember this request")
-		}
-		var descriptor ToolDescriptor
-		found := false
-		for _, tool := range prepared.tools {
-			info, infoErr := tool.Tool.Info(ctx)
-			if infoErr != nil {
-				return nil, infoErr
-			}
-			if info != nil && info.Name == presentation.Tool {
-				descriptor, found = tool.Descriptor, true
-				break
-			}
-		}
-		if !found {
-			return nil, fmt.Errorf("%w: permission tool %q is unavailable", ErrDefinitionMismatch, presentation.Tool)
 		}
 		resolved, resolveErr := effectivePermissionPolicy(prepared.definition.Permission).Resolve(ctx, PermissionResolveRequest{
 			Request: PermissionRequest{

@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.5.0</strong> (2026-09-22) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.5.1</strong> (2026-09-28) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -143,7 +143,7 @@ Denova is evolving quickly. Bug reports, workflow ideas, usage notes, and creati
 [Discord community](https://discord.gg/BM6dRmyvvZ)
 
 <p align="center">
-  <img src="./img/wechat.png" alt="WeChat community" width="240">
+  <img src="./img/wechat.jpeg" alt="WeChat community" width="240">
 </p>
 
 ## Support Denova

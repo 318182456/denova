@@ -42,6 +42,9 @@ type ToolRequest struct {
 }
 
 // ContextSource returns accountable model-visible fragments for one cycle.
+// Accepted fragments are journaled and reused on same-cycle resume. Materialize
+// runs for new cycles and explicit context refreshes such as compaction; it must
+// not be required to restore executable tool or canonical commit state.
 type ContextSource interface {
 	Identity() CapabilityIdentity
 	Materialize(context.Context, ContextRequest) ([]ContextFragment, error)
@@ -419,6 +422,8 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 }
 
 type preparedDefinition struct {
+	historyHead             CanonicalHistoryHead
+	archive                 *historyArchive
 	activeModelUser         *Message
 	activeUserIndex         int
 	lastResponseOrdinal     int
@@ -525,24 +530,12 @@ func materializeDefinitionCapabilities(
 	if prepared == nil {
 		return errors.New("materialize agent Definition capabilities: prepared Definition is nil")
 	}
-	definition := prepared.definition
-	var tools []ToolDefinition
-	var err error
-	if definition.Tools != nil {
-		tools, err = definition.Tools.PrepareTools(ctx, ToolRequest{
-			Session: request.Session, Run: request.Run, Input: request.Input,
-		})
-		if err != nil {
-			return fmt.Errorf("prepare agent Toolset: %w", err)
-		}
+	if err := materializeDefinitionTools(ctx, request, prepared); err != nil {
+		return err
 	}
-	registry, err := NewRegistry(ctx, tools...)
-	if err != nil {
-		return fmt.Errorf("prepare agent Toolset: %w", err)
-	}
-	prepared.tools = registry.Definitions()
-	prepared.toolSnapshots = registry.Snapshots()
 
+	definition := prepared.definition
+	var err error
 	var fragments []ContextFragment
 	if definition.Context != nil {
 		fragments, err = definition.Context.Materialize(ctx, ContextRequest{
@@ -588,7 +581,13 @@ func rematerializeDefinitionContext(
 		return err
 	}
 	prepared.fragments = fragments
-	return updatePreparedPrefixFingerprint(prepared)
+	if err := updatePreparedPrefixFingerprint(prepared); err != nil {
+		return err
+	}
+	if prepared.preparationStage == enginePreparationMaterialized {
+		prepared.materializedFingerprint, err = materializedDefinitionFingerprint(*prepared)
+	}
+	return err
 }
 
 func updatePreparedPrefixFingerprint(prepared *preparedDefinition) error {
