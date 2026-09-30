@@ -12,6 +12,15 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Fixed / 修复
+
+- 修复子 Agent 刚启动时，相同命令重试可能被误判为输入冲突的问题。
+- Fix identical command retries being rejected as input conflicts while a child Agent is starting.
+- 修复外部运行时压缩上下文期间，状态查询可能连带阻塞其他会话控制操作的问题。
+- Fix status queries during external runtime context compaction blocking controls in other conversations.
+- 外部运行时逐条保存控制回执，避免长会话在追加指令、暂停和结束任务时反复保存全部历史回执；升级时备份并转换已有记录，保留未完成任务和命令重试结果。
+- External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
+
 ## [v0.5.1] - 2026-09-28
 
 ### Brief / 简要说明

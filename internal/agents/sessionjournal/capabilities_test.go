@@ -63,3 +63,42 @@ func TestCapabilityRecoveryAndUpdate(t *testing.T) {
 		}
 	}
 }
+
+func TestCapabilityChangesArePreparedAtomically(t *testing.T) {
+	var projection Projection
+	key := agentsession.Named("atomic-capabilities")
+	_, err := projection.CapabilityChanges(key, func(read CapabilityReader) (map[string]json.RawMessage, error) {
+		return map[string]json.RawMessage{"control": json.RawMessage(`{"phase":"running"}`), "receipt": json.RawMessage(`invalid`)}, nil
+	})
+	if err == nil {
+		t.Fatal("invalid second state accepted")
+	}
+	if revision, _ := projection.Revision(key); revision != 0 {
+		t.Fatal("failed preparation changed the projection")
+	}
+	records, err := projection.CapabilityChanges(key, func(read CapabilityReader) (map[string]json.RawMessage, error) {
+		if _, found, err := read("control"); err != nil || found {
+			t.Fatalf("partial control state: %v", err)
+		}
+		return map[string]json.RawMessage{"control": json.RawMessage(`{"phase":"running"}`), "receipt": json.RawMessage(`{"command_id":"start"}`)}, nil
+	})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("prepare changes: %+v %v", records, err)
+	}
+	for i, record := range records {
+		if record.Revision != agentsession.Revision(i+1) {
+			t.Fatalf("revision gap: %+v", record)
+		}
+		payload, _ := json.Marshal(record)
+		if _, err := projection.Apply(conversationjournal.Record{Location: conversationjournal.Location{Cursor: 1, RecordIndex: i}, Payload: payload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err = projection.CapabilityChanges(key, func(read CapabilityReader) (map[string]json.RawMessage, error) {
+		raw, _, err := read("control")
+		return map[string]json.RawMessage{"control": raw, "receipt": nil}, err
+	})
+	if err != nil || len(records) != 0 {
+		t.Fatalf("unchanged states produced writes: %+v %v", records, err)
+	}
+}
