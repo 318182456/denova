@@ -392,7 +392,19 @@ export function isPlanProtocolToolName(name: string) {
   return name === 'proposed_plan'
 }
 
+// Views are immutable (see messageViewsCache). Rows remount while virtualized
+// history settles, so tool payloads are converted once per view, not per render.
+const renderMessagesCache = new WeakMap<AgentMessageView, ChatMessage | null>()
+
 export function agentViewToRenderMessage(view: AgentMessageView, options: { forceDone?: boolean } = {}): ChatMessage | null {
+  if (options.forceDone) return buildRenderMessage(view, options)
+  if (renderMessagesCache.has(view)) return renderMessagesCache.get(view) ?? null
+  const message = buildRenderMessage(view, options)
+  renderMessagesCache.set(view, message)
+  return message
+}
+
+function buildRenderMessage(view: AgentMessageView, options: { forceDone?: boolean }): ChatMessage | null {
   const data = view.data
   const meta = metadataToChatFields(view)
   const streaming = options.forceDone ? false : view.streaming
