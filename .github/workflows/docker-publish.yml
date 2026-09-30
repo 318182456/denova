@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: false
+      fork:
+        description: 'Build this repository''s selected branch source instead of an upstream release; publishes the fork tag and never moves latest'
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [master]
     paths:
@@ -49,6 +54,8 @@ jobs:
       latest: ${{ steps.resolve.outputs.latest }}
       publish: ${{ steps.resolve.outputs.publish }}
       version: ${{ steps.resolve.outputs.version }}
+      source_repository: ${{ steps.resolve.outputs.source_repository }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
     steps:
       - uses: docker/login-action@v3
         with:
@@ -61,16 +68,30 @@ jobs:
           INPUT_TAG: ${{ inputs.tag }}
           # Container file changes republish the current release with the fix.
           FORCE: ${{ github.event_name == 'push' || inputs.force == true }}
+          FORK_BUILD: ${{ inputs.fork == true }}
         run: |
           set -euo pipefail
           latest=$(gh api "repos/$UPSTREAM_REPOSITORY/releases/latest" --jq .tag_name)
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/denova"
+          if [[ "$FORK_BUILD" == true ]]; then
+            # Fork builds carry unreleased fixes; they get their own tag only.
+            {
+              echo "tag=fork"
+              echo "version=${latest#v}-fork.${GITHUB_SHA::7}"
+              echo "image=$image"
+              echo "latest=false"
+              echo "publish=true"
+              echo "source_repository=$GITHUB_REPOSITORY"
+              echo "source_ref=$GITHUB_SHA"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           tag=${INPUT_TAG:-$latest}
           if [[ ! "$tag" =~ ^v[0-9A-Za-z._-]+$ ]]; then
             echo "Invalid release tag: $tag" >&2
             exit 1
           fi
           gh api "repos/$UPSTREAM_REPOSITORY/releases/tags/$tag" --jq .tag_name >/dev/null
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/denova"
           publish=true
           if [[ "$FORCE" != true ]] && docker manifest inspect "$image:$tag" >/dev/null 2>&1; then
             publish=false
@@ -82,6 +103,8 @@ jobs:
             echo "image=$image"
             echo "latest=$([[ "$tag" == "$latest" ]] && echo true || echo false)"
             echo "publish=$publish"
+            echo "source_repository=$UPSTREAM_REPOSITORY"
+            echo "source_ref=$tag"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -109,8 +132,8 @@ jobs:
           path: overlay
       - uses: actions/checkout@v7
         with:
-          repository: ${{ env.UPSTREAM_REPOSITORY }}
-          ref: ${{ needs.resolve.outputs.tag }}
+          repository: ${{ needs.resolve.outputs.source_repository }}
+          ref: ${{ needs.resolve.outputs.source_ref }}
           path: src
       - name: Apply container files and read toolchain versions
         id: versions
