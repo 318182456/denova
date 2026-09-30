@@ -6,6 +6,7 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	"denova/internal/agents/sessionjournal"
 	"denova/internal/interactive"
 	agent "github.com/alfredxw/denova/agent"
 	publicgoal "github.com/alfredxw/denova/agent/goal"
@@ -15,8 +16,11 @@ import (
 // capability schemas as Native, without constructing a Native Agent Session.
 // Mutation callbacks are pure and run under the product's canonical CAS fence.
 type ProductState struct {
-	Read   func(context.Context, string) (json.RawMessage, bool, error)
-	Update func(context.Context, string, func(json.RawMessage, bool) (json.RawMessage, error)) error
+	Read func(context.Context, string) (json.RawMessage, bool, error)
+	// Transact atomically replaces only the returned states, preserving a backup
+	// named by the format upgrade before the first append. Its borrowed reader
+	// observes one canonical snapshot; callbacks must tolerate CAS retries.
+	Transact func(context.Context, string, func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error
 }
 
 func SessionState(options agentrun.Options, sess *session.Session) (ProductState, error) {
@@ -28,8 +32,8 @@ func SessionState(options agentrun.Options, sess *session.Session) (ProductState
 		Read: func(ctx context.Context, capability string) (json.RawMessage, bool, error) {
 			return sess.LoadCapability(ctx, key, capability)
 		},
-		Update: func(ctx context.Context, capability string, update func(json.RawMessage, bool) (json.RawMessage, error)) error {
-			return sess.UpdateCapability(ctx, key, capability, update)
+		Transact: func(ctx context.Context, upgrade string, update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+			return sess.UpdateCapabilities(ctx, key, upgrade, update)
 		},
 	}, nil
 }
@@ -43,10 +47,25 @@ func GameState(options agentrun.Options, store *interactive.Store) (ProductState
 		Read: func(ctx context.Context, capability string) (json.RawMessage, bool, error) {
 			return store.LoadCapability(ctx, options.StoryID, key, capability)
 		},
-		Update: func(ctx context.Context, capability string, update func(json.RawMessage, bool) (json.RawMessage, error)) error {
-			return store.UpdateCapability(ctx, options.StoryID, key, capability, update)
+		Transact: func(ctx context.Context, upgrade string, update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+			return store.UpdateCapabilities(ctx, options.StoryID, key, upgrade, update)
 		},
 	}, nil
+}
+
+// Update replaces one state using the same atomic seam as multi-state changes.
+func (store ProductState) Update(ctx context.Context, capability string, update func(json.RawMessage, bool) (json.RawMessage, error)) error {
+	return store.Transact(ctx, "runtime-controls-v1", func(read sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
+		raw, present, err := read(capability)
+		if err != nil {
+			return nil, err
+		}
+		next, err := update(raw, present)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]json.RawMessage{capability: next}, nil
+	})
 }
 
 // Goal uses the published Goal state schema, shared at the product boundary.

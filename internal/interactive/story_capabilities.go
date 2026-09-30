@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -22,9 +23,9 @@ func (s *Store) LoadCapability(ctx context.Context, storyID string, key agentses
 	return handle.projection.AgentSessions.Capability(key, capability)
 }
 
-// UpdateCapability serializes peer-runtime control state with Story mutations.
+// UpdateCapabilities atomically serializes related peer-runtime state with Story mutations.
 // The selected executor owns the capability; this creates no Native Agent.
-func (s *Store) UpdateCapability(ctx context.Context, storyID string, key agentsession.Key, capability string, update func(json.RawMessage, bool) (json.RawMessage, error)) error {
+func (s *Store) UpdateCapabilities(ctx context.Context, storyID string, key agentsession.Key, upgrade string, update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	release, err := s.acquireStoryMutationLeaseLocked(storyID)
@@ -36,15 +37,18 @@ func (s *Store) UpdateCapability(ctx context.Context, storyID string, key agents
 	if err != nil {
 		return err
 	}
-	record, err := handle.projection.AgentSessions.CapabilityUpdate(key, capability, update)
-	if err != nil || record == nil {
+	records, err := handle.projection.AgentSessions.CapabilityChanges(key, update)
+	if err != nil || len(records) == 0 {
 		return err
 	}
-	body, err := json.Marshal(record)
-	if err != nil {
-		return err
+	payloads := make([]json.RawMessage, len(records))
+	for i, record := range records {
+		payloads[i], err = json.Marshal(record)
+		if err != nil {
+			return err
+		}
 	}
 	head := handle.journal.Head()
-	_, err = handle.journal.AppendWithBackup(ctx, conversationjournal.Guard{Cursor: head.Cursor, RecordSHA256: head.RecordSHA256}, "runtime-controls-v1", body)
+	_, err = handle.journal.AppendWithBackup(ctx, conversationjournal.Guard{Cursor: head.Cursor, RecordSHA256: head.RecordSHA256}, upgrade, payloads...)
 	return err
 }

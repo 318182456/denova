@@ -48,10 +48,7 @@ func (run *ExternalRun) Wait(ctx context.Context) agentrun.Outcome {
 			run.control.mu.Lock()
 			if run.recoveryKey != "" {
 				if err := run.control.update(context.WithoutCancel(ctx), func(state *externalControlState) error {
-					saved := state.Receipts[run.recoveryKey]
-					saved.Outcome = run.outcome.Status
-					state.Receipts[run.recoveryKey] = saved
-					return nil
+					return state.setOutcome(run.recoveryKey, run.outcome.Status)
 				}); err != nil {
 					slog.ErrorContext(ctx, "Could not save external recovery outcome", "error", err)
 				}
@@ -118,9 +115,9 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 				if len(current.Queue) == 0 {
 					current.Phase = agentrun.RunPhaseIdle
 					current.Last = &agentrun.OperationSummary{OperationID: current.OperationID, CommandID: current.CommandID, Status: agentrun.OperationSucceeded, ReceiptCursor: run.receipt.Cursor}
-					saved := current.Receipts[string(current.CommandID)]
-					saved.Outcome = agentrun.OutcomeCompleted
-					current.Receipts[string(current.CommandID)] = saved
+					if err := current.setOutcome(string(current.CommandID), agentrun.OutcomeCompleted); err != nil {
+						return err
+					}
 				} else {
 					input := current.Queue[0]
 					current.Current = &input

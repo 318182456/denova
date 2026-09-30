@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"denova/internal/agents/sessionjournal"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -20,15 +21,20 @@ func (s *Session) LoadCapability(ctx context.Context, key agentsession.Key, capa
 	return s.projection.AgentSessions.Capability(key, capability)
 }
 
-// UpdateCapability belongs to the selected application runtime. It must not
+// UpdateCapabilities belongs to the selected application runtime. It must not
 // race a Native Session owning the same capability; switching drains execution.
-func (s *Session) UpdateCapability(ctx context.Context, key agentsession.Key, capability string, update func(json.RawMessage, bool) (json.RawMessage, error)) error {
-	return s.withCanonicalMutation(ctx, "update runtime capability", func() error {
-		record, err := s.projection.AgentSessions.CapabilityUpdate(key, capability, update)
-		if err != nil || record == nil {
+// All changes share one journal transaction and the supplied format backup.
+func (s *Session) UpdateCapabilities(ctx context.Context, key agentsession.Key, upgrade string, update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+	return s.withCanonicalMutation(ctx, "update runtime capabilities", func() error {
+		records, err := s.projection.AgentSessions.CapabilityChanges(key, update)
+		if err != nil || len(records) == 0 {
 			return err
 		}
-		_, err = s.appendJournalRecordsWithUpgradeLocked("runtime-controls-v1", record)
+		payloads := make([]any, len(records))
+		for i, record := range records {
+			payloads[i] = record
+		}
+		_, err = s.appendJournalRecordsWithUpgradeLocked(upgrade, payloads...)
 		return err
 	})
 }

@@ -376,7 +376,9 @@ func (session *Session) RunInput(ctx context.Context, runID string) (Input, bool
 		return Input{}, false, err
 	}
 	run.mu.RLock()
-	if run.cycle > 0 && !run.settled {
+	// The cycle counter advances before admission/checkpointing completes.
+	// Until a snapshot exists, the accepted Run input remains authoritative.
+	if run.snapshot.Cycle > 0 && !run.settled {
 		saved := run.snapshot.Input
 		commandID := string(run.snapshot.CommandID)
 		run.mu.RUnlock()

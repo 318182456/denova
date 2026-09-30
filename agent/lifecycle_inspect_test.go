@@ -5,11 +5,59 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
+
+type inputAdmissionGate struct {
+	runstate.Engine
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (gate *inputAdmissionGate) PrepareAdmission(ctx context.Context, _ runstate.TurnAdmissionRequest) ([]runstate.EngineCapabilityState, error) {
+	close(gate.entered)
+	select {
+	case <-gate.release:
+		return nil, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestRunInputBeforeCycleCheckpointPreservesAcceptedInput(t *testing.T) {
+	ctx := t.Context()
+	owner, err := New(ctx, Definition{Model: &lifecycleModel{responses: []*Message{AssistantMessage("done", nil)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close(context.Background())
+	sess, err := owner.Session(ctx, NamedSession("input-admission"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &inputAdmissionGate{Engine: sess.engine, entered: make(chan struct{}), release: make(chan struct{})}
+	sess.engine = gate
+	defer close(gate.release)
+	input := Input{Text: "accepted work", IdempotencyKey: "start"}
+	run, err := sess.Run(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-gate.entered:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not reach input admission")
+	}
+	got, found, err := sess.RunInput(ctx, run.ID())
+	if err != nil || !found || !reflect.DeepEqual(got, input) {
+		t.Fatalf("accepted input during admission: %+v, found=%v, err=%v", got, found, err)
+	}
+}
 
 func TestInspectSessionDoesNotMaterializeRecoveryInteractions(t *testing.T) {
 	ctx := t.Context()
