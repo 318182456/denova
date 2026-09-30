@@ -24,6 +24,16 @@ docker compose up -d
 
 登录或更新后，在应用设置的「运行时」中选择 Claude Code，点击「检查连接」。若为 Claude 指定了 Denova 模型档案（API 路由），则不需要登录。也可以在命令行完成登录：`docker compose exec -it denova claude auth login`。
 
+### 长期令牌（推荐）
+
+普通登录的访问令牌几小时后过期，需要在线刷新；网络或代理异常、容器重启或多个会话同时刷新时，可能出现 `Failed to refresh OAuth token`。长期部署建议改用长期令牌（需要 Claude 订阅，有效期约一年，无需刷新）：
+
+1. 生成令牌：`docker compose exec -it denova claude setup-token`，或在任意装有 Claude Code 的电脑上执行 `claude setup-token`。按提示在浏览器授权并粘贴认证码，终端会输出以 `sk-ant-oat01-` 开头的令牌。
+2. 写入 `.env`：`CLAUDE_CODE_OAUTH_TOKEN=令牌`。
+3. 执行 `docker compose up -d` 重建容器。管理页的账号状态显示为 `oauth_token` 即生效，之后在「运行时」中点击「检查连接」。
+
+设置了长期令牌后，它优先于管理页中登录的账号；清空该值并重建容器即恢复原登录方式。令牌等同于账号凭据，不要提交到版本库或分享。
+
 实现方式：容器入口进程在 8080 端口提供 `/claude/`，其余请求反向代理到容器内部 18080 端口上的 Denova，并负责 Denova 的启停。代理会用真实来源地址覆盖客户端传来的 `X-Forwarded-*` 头，因此外部请求无法伪装成本机访问。从旧镜像升级后需要重新登录一次 Denova。
 
 ## 数据
