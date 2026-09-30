@@ -53,7 +53,6 @@ func (engines *Engines) ExternalControl(options agentrun.Options, state ProductS
 	}
 	encoded, _ := json.Marshal(key)
 	engines.controlsMu.Lock()
-	defer engines.controlsMu.Unlock()
 	if engines.controls == nil {
 		engines.controls = map[string]*ExternalController{}
 	}
@@ -61,14 +60,19 @@ func (engines *Engines) ExternalControl(options agentrun.Options, state ProductS
 	if control == nil {
 		control = &ExternalController{store: state, binding: binding}
 		engines.controls[string(encoded)] = control
-	} else {
-		control.mu.Lock()
-		if control.active == nil {
-			control.store = state
-			control.binding = binding
-		}
-		control.mu.Unlock()
+		engines.controlsMu.Unlock()
+		return control, nil
 	}
+	engines.controlsMu.Unlock()
+
+	// Session maintenance may wait for a provider. Never hold the registry lock
+	// while waiting for a session, or unrelated conversations lose their controls.
+	control.mu.Lock()
+	if control.active == nil {
+		control.store = state
+		control.binding = binding
+	}
+	control.mu.Unlock()
 	return control, nil
 }
 
