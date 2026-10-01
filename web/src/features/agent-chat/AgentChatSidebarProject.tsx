@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
-import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus } from 'lucide-react'
+import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -42,6 +42,7 @@ interface AgentChatSidebarProjectProps {
   onOpenHistory: () => void
   onOpenSession: (session: AgentChatSession) => void
   onRenameSession: (session: AgentChatSession) => void
+  onDeleteSession: (session: AgentChatSession) => void
   onOpenActivity: (activity: AgentChatSidebarActivity) => void
 }
 
@@ -62,6 +63,7 @@ export function AgentChatSidebarProject({
   onOpenHistory,
   onOpenSession,
   onRenameSession,
+  onDeleteSession,
   onOpenActivity,
 }: AgentChatSidebarProjectProps) {
   const { t } = useTranslation()
@@ -283,6 +285,9 @@ export function AgentChatSidebarProject({
                       activity={activityBySessionID.get(session.id)}
                       onOpen={() => onOpenSession(session)}
                       onRename={() => onRenameSession(session)}
+                      onDelete={() => onDeleteSession(session)}
+                      // The store keeps at least one conversation per Project.
+                      deletable={project.sessions.length > 1}
                     />
                   ))}
                   {supplementalActivities.map((activity) => (
@@ -315,16 +320,22 @@ function ConversationRow({
   activity,
   onOpen,
   onRename,
+  onDelete,
+  deletable,
 }: {
   session: AgentChatSession
   activity?: AgentChatSidebarActivity
   onOpen: () => void
   onRename: () => void
+  onDelete: () => void
+  deletable: boolean
 }) {
   const { t } = useTranslation()
   const title = session.title || t('chat.untitledSession')
   const focused = activity?.focused ?? false
   const statusLabel = activity ? t(`agentChat.sidebar.status.${activity.status}`) : ''
+  // A running conversation is rejected by the backend; say so before asking.
+  const running = activity?.status === 'running'
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -351,6 +362,10 @@ function ConversationRow({
         <ContextMenuItem onSelect={onRename}>
           <Pencil />
           {t('chat.renameSession')}
+        </ContextMenuItem>
+        <ContextMenuItem variant="destructive" disabled={!deletable || running} onSelect={onDelete}>
+          <Trash2 />
+          {running ? t('agentChat.sidebar.deleteRunning') : t('chat.deleteSession')}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

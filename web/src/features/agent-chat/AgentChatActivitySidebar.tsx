@@ -25,6 +25,7 @@ export interface AgentChatActivitySidebarProps {
   onOpenActivity: (project: AgentChatProject, activity: AgentChatSidebarActivity) => void
   onOpenSession: (project: AgentChatProject, session: AgentChatSession) => void
   onRenameSession: (project: AgentChatProject, session: AgentChatSession) => void
+  onDeleteSession: (project: AgentChatProject, session: AgentChatSession) => void
   onCreateSession: (project: AgentChatProject, customAgentId?: string) => void
   onOpenHistory: (project?: AgentChatProject) => void
   onAddProject: () => void
@@ -46,6 +47,7 @@ export function AgentChatActivitySidebar({
   onOpenActivity,
   onOpenSession,
   onRenameSession,
+  onDeleteSession,
   onCreateSession,
   onOpenHistory,
   onAddProject,
@@ -188,6 +190,7 @@ export function AgentChatActivitySidebar({
                       closeMobilePanes()
                     }}
                     onRenameSession={(session) => onRenameSession(project, session)}
+                    onDeleteSession={(session) => onDeleteSession(project, session)}
                     onOpenActivity={(activity) => {
                       preferences.recordProjectOpened(project.id)
                       onOpenActivity(project, activity)
