@@ -20,6 +20,8 @@ Denova records only major user-visible features, important compatibility or data
 - Fix status queries during external runtime context compaction blocking controls in other conversations.
 - 外部运行时逐条保存控制回执，避免长会话在追加指令、暂停和结束任务时反复保存全部历史回执；升级时备份并转换已有记录，保留未完成任务和命令重试结果。
 - External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
+- 修复打开或切换到包含大量整章写入的长会话时，页面长时间占满 CPU、无法操作的问题。
+- Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
 
 ## [v0.5.1] - 2026-09-28
 
