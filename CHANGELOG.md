@@ -24,6 +24,8 @@ Denova records only major user-visible features, important compatibility or data
 - Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
 - 修复 Claude Code 2.1.286 及以上版本输出界面刷新事件时，Claude 运行时任务以 `decode Claude stream` 错误中断的问题。
 - Fix Claude runtime tasks failing with `decode Claude stream` when Claude Code 2.1.286 or later reports UI refresh events.
+- 修复打开包含大量整章写入的长会话时，后端长时间占满 CPU、页面无法打开的问题。
+- Fix the backend pinning the CPU for minutes, leaving the page unable to load, when opening a long session with many whole-chapter writes.
 
 ## [v0.5.1] - 2026-09-28
 
