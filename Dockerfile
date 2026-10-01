@@ -31,7 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Claude Code CLI for the Claude runtime. The publish workflow pins the exact
 # version so layer caching never serves a stale CLI. Credentials created by
 # the Claude page live in the persisted /data/.claude; its updates install into
-# /data/.local/bin, which precedes this copy on PATH.
+# /data/.local/bin, which precedes this copy on PATH. /opt/denova/launcher/claude
+# fronts both to apply the token selected on that page.
 ARG CLAUDE_CODE_VERSION=latest
 RUN curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
     && HOME=/tmp/claude-home bash /tmp/claude-install.sh "${CLAUDE_CODE_VERSION}" \
@@ -42,8 +43,9 @@ COPY --from=build /src/output/ /opt/denova/
 COPY LICENSE /opt/denova/LICENSE
 COPY docker/entrypoint.sh /usr/local/bin/denova-entrypoint
 COPY docker/chromium.sh /usr/local/bin/chromium
-RUN chmod 755 /usr/local/bin/denova-entrypoint /usr/local/bin/chromium
-ENV DENOVA_DIR=/data/.denova HOME=/data DISABLE_AUTOUPDATER=1 DENOVA_PROXY_PORT=8080 DENOVA_BACKEND_PORT=18080 PATH=/data/.local/bin:/opt/denova:/opt/denova/tools:/usr/local/bin:/usr/bin:/bin
+COPY docker/claude-launcher.sh /opt/denova/launcher/claude
+RUN chmod 755 /usr/local/bin/denova-entrypoint /usr/local/bin/chromium /opt/denova/launcher/claude
+ENV DENOVA_DIR=/data/.denova HOME=/data DISABLE_AUTOUPDATER=1 DENOVA_PROXY_PORT=8080 DENOVA_BACKEND_PORT=18080 PATH=/opt/denova/launcher:/data/.local/bin:/opt/denova:/opt/denova/tools:/usr/local/bin:/usr/bin:/bin
 WORKDIR /data
 USER denova
 EXPOSE 8080

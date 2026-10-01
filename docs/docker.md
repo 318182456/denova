@@ -28,11 +28,13 @@ docker compose up -d
 
 普通登录的访问令牌几小时后过期，需要在线刷新；网络或代理异常、容器重启或多个会话同时刷新时，可能出现 `Failed to refresh OAuth token`。长期部署建议改用长期令牌（需要 Claude 订阅，有效期约一年，无需刷新）：
 
-1. 生成令牌：`docker compose exec -it denova claude setup-token`，或在任意装有 Claude Code 的电脑上执行 `claude setup-token`。按提示在浏览器授权并粘贴认证码，终端会输出以 `sk-ant-oat01-` 开头的令牌。
-2. 写入 `.env`：`CLAUDE_CODE_OAUTH_TOKEN=令牌`。
-3. 执行 `docker compose up -d` 重建容器。管理页的账号状态显示为 `oauth_token` 即生效，之后在「运行时」中点击「检查连接」。
+1. 生成令牌：`docker compose exec -it denova claude setup-token`，或在任意装有 Claude Code 的电脑上执行 `claude setup-token`。按提示在浏览器授权并粘贴认证码，终端会输出以 `sk-ant-oat01-` 开头的令牌。该命令需要交互式终端，无法在管理页中执行。
+2. 在管理页「长期令牌与额度」中填写名称和令牌并添加。第一个添加的令牌自动启用；可添加多个，点击「切换到此令牌」切换，或「删除」移除。
+3. 在「运行时」中点击「检查连接」。
 
-设置了长期令牌后，它优先于管理页中登录的账号；清空该值并重建容器即恢复原登录方式。令牌等同于账号凭据，不要提交到版本库或分享。
+管理页列出每个令牌的 5 小时额度、每周额度和按模型计算的每周额度，以及各自的重置时间，结果缓存约 1 分钟，可点击「刷新额度」更新。额度来自 Claude 账号用量接口；令牌无权读取时，改为发送一次 1 个输出 token 的最小请求，从响应头读取额度。
+
+切换只影响之后启动的 Claude 进程，正在运行的任务继续使用原令牌，无需重启容器。使用 Denova 模型档案（API 路由）的运行、`claude auth login/logout` 和 `claude setup-token` 不使用所选令牌。令牌保存在持久卷的 `/data/.config/denova-claude/`（权限 0600），未选择令牌时依次使用 `.env` 的 `CLAUDE_CODE_OAUTH_TOKEN` 和登录的账号。令牌等同于账号凭据，不要分享。
 
 实现方式：容器入口进程在 8080 端口提供 `/claude/`，其余请求反向代理到容器内部 18080 端口上的 Denova，并负责 Denova 的启停。代理会用真实来源地址覆盖客户端传来的 `X-Forwarded-*` 头，因此外部请求无法伪装成本机访问。从旧镜像升级后需要重新登录一次 Denova。
 

@@ -38,6 +38,19 @@ a { color: inherit; overflow-wrap: anywhere; }
 .ok .dot { background: var(--ok); } .warn .dot { background: var(--warn); } .bad .dot { background: var(--bad); }
 pre { margin: 12px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 .msg { margin-top: 12px; } .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
+.tokens { display: grid; gap: 10px; margin-bottom: 12px; }
+.token { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--bg); display: grid; gap: 8px; min-width: 0; }
+.token.active { border-color: var(--ok); }
+.token-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.token-name { font-weight: 600; overflow-wrap: anywhere; }
+.token-meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.meter { display: grid; grid-template-columns: minmax(84px, max-content) minmax(0, 1fr) max-content; gap: 4px 10px; align-items: center; font-size: 12px; }
+.meter-label { color: var(--muted); }
+.bar { height: 8px; border-radius: 4px; background: var(--panel); border: 1px solid var(--border); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--ok); }
+.bar.warn > span { background: var(--warn); } .bar.bad > span { background: var(--bad); }
+.meter-reset { grid-column: 2 / -1; color: var(--muted); font-size: 11px; margin-top: -2px; }
+.empty { color: var(--muted); padding: 8px 0; }
 [hidden] { display: none !important; }
 </style>
 </head>
@@ -55,6 +68,24 @@ pre { margin: 12px 0 0; padding: 10px; background: var(--bg); border: 1px solid 
       <dt data-i18n="path"></dt><dd id="path">-</dd>
       <dt data-i18n="account"></dt><dd id="account">-</dd>
     </dl>
+  </section>
+
+  <section>
+    <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+      <h2 style="margin: 0" data-i18n="tokens"></h2>
+      <button id="tokens-refresh" data-i18n="refreshUsage"></button>
+    </div>
+    <p data-i18n="tokensHint"></p>
+    <div class="tokens" id="tokens"></div>
+    <p id="tokens-fallback" hidden></p>
+    <button id="tokens-deactivate" data-i18n="useAccount" hidden></button>
+    <form class="row" id="token-form" style="margin-top: 12px;">
+      <input id="token-name" autocomplete="off" maxlength="80" style="flex: 1 1 140px;">
+      <input id="token-value" type="password" autocomplete="off" spellcheck="false">
+      <button class="primary" type="submit" data-i18n="tokenAdd"></button>
+    </form>
+    <p class="token-meta" style="margin: 8px 0 0;" data-i18n="tokenHowTo"></p>
+    <div class="msg" id="tokens-msg" hidden></div>
   </section>
 
   <section id="login-section">
@@ -114,6 +145,15 @@ const messages = {
     err_unauthorized: '登录已失效，请先登录 Denova。', err_busy: '有其他操作正在进行，请稍后重试。', err_not_installed: '未找到 Claude Code。',
     err_login_expired: '登录已过期，请重新开始登录。', err_login_failed: '无法开始登录，请稍后重试。',
     err_invalid_request: '请求无效。', err_network: '无法连接服务。', err_unknown: '操作失败。',
+    tokens: '长期令牌与额度', refreshUsage: '刷新额度', tokensHint: '可保存多个长期令牌并随时切换。切换只影响之后启动的 Claude 任务，正在运行的任务不受影响；使用 Denova 模型档案（API）的运行不使用令牌。',
+    tokensEmpty: '还没有保存令牌。', tokenActive: '使用中', tokenUse: '切换到此令牌', tokenDelete: '删除', tokenDeleteConfirm: '删除令牌「{name}」？',
+    tokenAdd: '添加令牌', tokenNamePlaceholder: '名称（可选）', tokenValuePlaceholder: '粘贴 sk-ant-oat01-… 令牌',
+    tokenHowTo: '生成令牌：在服务器执行 docker compose exec -it denova claude setup-token，或在任意装有 Claude Code 的电脑上执行 claude setup-token。',
+    useAccount: '不使用令牌', fallbackEnv: '当前未选择令牌，使用 .env 中的 CLAUDE_CODE_OAUTH_TOKEN。', fallbackAccount: '当前未选择令牌，使用上方登录的账号。',
+    tokenAdded: '已添加令牌。', tokenSwitched: '已切换，之后启动的任务生效。',
+    window_five_hour: '5 小时', window_seven_day: '每周', window_seven_day_model: '每周 · {label}',
+    used: '已用 {p}%', resetsAt: '{time} 重置', checkedAt: '更新于 {time}', usageProbe: '（通过请求头读取）', usageFailed: '额度读取失败：{error}', usageRejected: '令牌无效或已过期，请重新生成。',
+    err_invalid_token: '令牌格式无效。', err_token_exists: '该令牌已保存。', err_token_limit: '令牌数量已达上限。', err_token_not_found: '令牌不存在，请刷新页面。', err_token_store_failed: '令牌保存失败。',
   },
   en: {
     title: 'Claude Code', back: 'Back to Denova', status: 'Status', refresh: 'Refresh', version: 'Version', path: 'Path', account: 'Account',
@@ -129,6 +169,15 @@ const messages = {
     err_unauthorized: 'Session expired. Sign in to Denova first.', err_busy: 'Another operation is running. Try again shortly.', err_not_installed: 'Claude Code was not found.',
     err_login_expired: 'Sign-in expired. Start again.', err_login_failed: 'Could not start sign-in. Try again shortly.',
     err_invalid_request: 'Invalid request.', err_network: 'Cannot reach the service.', err_unknown: 'Operation failed.',
+    tokens: 'Long-lived tokens and usage', refreshUsage: 'Refresh usage', tokensHint: 'Save several long-lived tokens and switch at any time. A switch applies to Claude tasks started afterwards; running tasks keep their token. Runs that use a Denova model profile (API) never use a token.',
+    tokensEmpty: 'No tokens saved yet.', tokenActive: 'In use', tokenUse: 'Use this token', tokenDelete: 'Delete', tokenDeleteConfirm: 'Delete token "{name}"?',
+    tokenAdd: 'Add token', tokenNamePlaceholder: 'Name (optional)', tokenValuePlaceholder: 'Paste an sk-ant-oat01-… token',
+    tokenHowTo: 'To create a token, run docker compose exec -it denova claude setup-token on the server, or claude setup-token on any computer with Claude Code.',
+    useAccount: 'Stop using tokens', fallbackEnv: 'No token selected; CLAUDE_CODE_OAUTH_TOKEN from .env is used.', fallbackAccount: 'No token selected; the account signed in above is used.',
+    tokenAdded: 'Token added.', tokenSwitched: 'Switched. Tasks started from now on use it.',
+    window_five_hour: '5 hours', window_seven_day: 'Weekly', window_seven_day_model: 'Weekly · {label}',
+    used: '{p}% used', resetsAt: 'Resets {time}', checkedAt: 'Updated {time}', usageProbe: ' (read from response headers)', usageFailed: 'Could not read usage: {error}', usageRejected: 'The token is invalid or expired. Create a new one.',
+    err_invalid_token: 'The token format is invalid.', err_token_exists: 'This token is already saved.', err_token_limit: 'Too many tokens saved.', err_token_not_found: 'Token not found. Refresh the page.', err_token_store_failed: 'Could not save tokens.',
   },
 }
 const lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'
@@ -138,11 +187,11 @@ document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el
 const $ = (id) => document.getElementById(id)
 $('code').placeholder = t('codePlaceholder')
 
-async function api(path, body) {
+async function api(path, body, method = 'POST') {
   let res
   try {
     res = await fetch(path, body === undefined ? { cache: 'no-store' } : {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Denova-Claude': '1' }, body: JSON.stringify(body),
+      method, headers: { 'Content-Type': 'application/json', 'X-Denova-Claude': '1' }, body: JSON.stringify(body),
     })
   } catch { throw new Error(t('err_network')) }
   if (res.status === 401) { location.href = '/'; throw new Error(t('err_unauthorized')) }
@@ -204,6 +253,98 @@ function setPending(url) {
 
 $('refresh').onclick = () => run(refresh)
 
+$('token-name').placeholder = t('tokenNamePlaceholder')
+$('token-value').placeholder = t('tokenValuePlaceholder')
+const timeFormat = new Intl.DateTimeFormat(document.documentElement.lang, { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })
+const formatTime = (value) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : timeFormat.format(date) }
+
+function element(tag, className, text) {
+  const el = document.createElement(tag)
+  if (className) el.className = className
+  if (text !== undefined) el.textContent = text
+  return el
+}
+
+function usageMeters(usage) {
+  const box = element('div', 'meter')
+  if (!usage || usage.error) {
+    box.append(element('span', 'meter-label', usage?.error_key === 'rejected' ? t('usageRejected') : t('usageFailed', { error: usage?.error || '-' })))
+    return box
+  }
+  for (const window of usage.windows || []) {
+    const percent = Math.max(0, Math.min(100, Math.round(window.utilization)))
+    const bar = element('div', 'bar' + (percent >= 90 ? ' bad' : percent >= 70 ? ' warn' : ''))
+    const fill = element('span')
+    fill.style.width = percent + '%'
+    bar.append(fill)
+    bar.setAttribute('role', 'meter'); bar.setAttribute('aria-valuenow', String(percent)); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100')
+    box.append(element('span', 'meter-label', t('window_' + window.kind, { label: window.label || '' })), bar, element('span', '', t('used', { p: percent })))
+    const reset = formatTime(window.resets_at)
+    if (reset) box.append(element('span', 'meter-reset', t('resetsAt', { time: reset })))
+  }
+  return box
+}
+
+async function loadTokens(force = false) {
+  let data
+  try { data = await api('api/tokens' + (force ? '?refresh=1' : '')) } catch (error) { show('tokens-msg', error.message, 'bad'); return }
+  const list = $('tokens')
+  list.replaceChildren()
+  if (!data.tokens.length) list.append(element('div', 'empty', t('tokensEmpty')))
+  for (const token of data.tokens) {
+    const card = element('div', 'token' + (token.active ? ' active' : ''))
+    const head = element('div', 'token-head')
+    const title = element('div')
+    title.append(element('div', 'token-name', token.name), element('div', 'token-meta', token.masked))
+    const actions = element('div', 'row')
+    if (token.active) actions.append(badge(t('tokenActive'), 'ok'))
+    else {
+      const use = element('button', 'primary', t('tokenUse'))
+      use.onclick = () => run(async () => {
+        try { await api('api/tokens/active', { id: token.id }); show('tokens-msg', t('tokenSwitched'), 'ok') } catch (error) { show('tokens-msg', error.message, 'bad') }
+        await Promise.all([loadTokens(), refresh()])
+      })
+      actions.append(use)
+    }
+    const remove = element('button', '', t('tokenDelete'))
+    remove.onclick = () => {
+      if (!confirm(t('tokenDeleteConfirm', { name: token.name }))) return
+      run(async () => {
+        try { await api('api/tokens/' + encodeURIComponent(token.id), {}, 'DELETE') } catch (error) { show('tokens-msg', error.message, 'bad') }
+        await Promise.all([loadTokens(), refresh()])
+      })
+    }
+    actions.append(remove)
+    head.append(title, actions)
+    const checked = token.usage?.checked_at ? t('checkedAt', { time: formatTime(token.usage.checked_at) }) + (token.usage.source === 'probe' ? t('usageProbe') : '') : ''
+    card.append(head, usageMeters(token.usage), element('div', 'token-meta', checked))
+    list.append(card)
+  }
+  const fallback = $('tokens-fallback')
+  fallback.hidden = !!data.active
+  fallback.textContent = data.env_token ? t('fallbackEnv') : t('fallbackAccount')
+  $('tokens-deactivate').hidden = !data.active
+}
+
+$('tokens-refresh').onclick = () => run(() => loadTokens(true))
+$('tokens-deactivate').onclick = () => run(async () => {
+  try { await api('api/tokens/active', { id: '' }); show('tokens-msg', t('tokenSwitched'), 'ok') } catch (error) { show('tokens-msg', error.message, 'bad') }
+  await Promise.all([loadTokens(), refresh()])
+})
+$('token-form').onsubmit = (event) => {
+  event.preventDefault()
+  const token = $('token-value').value.trim()
+  if (!token) return
+  run(async () => {
+    try {
+      await api('api/tokens', { name: $('token-name').value.trim(), token })
+      $('token-name').value = ''; $('token-value').value = ''
+      show('tokens-msg', t('tokenAdded'), 'ok')
+    } catch (error) { show('tokens-msg', error.message, 'bad') }
+    await Promise.all([loadTokens(), refresh()])
+  })
+}
+
 $('login-start').onclick = () => run(async () => {
   show('login-msg', ''); show('login-output', '')
   try {
@@ -261,7 +402,7 @@ $('update').onclick = () => run(async () => {
   await refresh()
 })
 
-run(refresh)
+run(() => Promise.all([refresh(), loadTokens()]))
 </script>
 </body>
 </html>

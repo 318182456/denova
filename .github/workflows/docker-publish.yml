@@ -205,6 +205,14 @@ jobs:
           curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/status | jq -e '.installed == true and .auth.loggedIn == false and (.version | length > 0)'
           curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -d '{"method":"claudeai"}' http://localhost:8082/claude/api/login/start | jq -e '.url | startswith("https://")'
           curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -X POST http://localhost:8082/claude/api/login/cancel
+          test "$(docker compose exec -T denova sh -c 'command -v claude')" = /opt/denova/launcher/claude
+          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -e '.tokens == [] and .active == ""'
+          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -d '{"name":"smoke","token":"sk-ant-oat01-smoke-invalid-token"}' http://localhost:8082/claude/api/tokens | jq -e '.id | length > 0'
+          docker compose exec -T denova sh -c 'test "$(stat -c %a /data/.config/denova-claude/active-token)" = 600 && grep -q smoke-invalid /data/.config/denova-claude/active-token'
+          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -e '.tokens[0].active == true and .tokens[0].usage.error_key == "rejected"'
+          id=$(curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -r '.tokens[0].id')
+          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -X DELETE "http://localhost:8082/claude/api/tokens/$id"
+          docker compose exec -T denova sh -c 'test ! -s /data/.config/denova-claude/active-token'
           docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -f /opt/denova/web/index.html'
           docker compose exec -T denova sh -c 'printf persisted > /data/.denova/container-smoke'
           docker compose exec -T denova sha256sum /data/.denova/config.toml > /tmp/config-before
