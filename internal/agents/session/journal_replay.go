@@ -91,21 +91,22 @@ func loadSession(filePath string) (*Session, error) {
 	// canonical transcript is bounded by logical messages. Read older retained
 	// message transactions directly so a tool-heavy turn cannot evict its user
 	// input merely because it produced many display updates.
-	for _, locator := range priorMessageTransactions {
-		messageRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
-			After: locator.Cursor - 1, Through: locator.Cursor,
-		})
-		if readErr != nil {
-			return nil, fmt.Errorf("read session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, readErr)
+	// One forward scan reads them all; a read per transaction rescanned the
+	// journal from its sparse anchor every time.
+	if len(priorMessageTransactions) > 0 {
+		cursors := make([]conversationjournal.Cursor, 0, len(priorMessageTransactions))
+		for _, locator := range priorMessageTransactions {
+			cursors = append(cursors, locator.Cursor)
 		}
-		if len(messageRecords) == 0 || messageRecords[0].Location.Cursor != locator.Cursor {
-			return nil, fmt.Errorf("session canonical message transaction missing %s cursor %d", filePath, locator.Cursor)
+		messageRecords, readErr := journal.ReadTransactions(context.Background(), cursors)
+		if readErr != nil {
+			return nil, fmt.Errorf("read session canonical message transactions %s: %w", filePath, readErr)
 		}
 		// Canonical input/context and its Agent receipt share one transaction.
 		// Restore every payload, just as the normal recent-window path does.
 		for _, record := range messageRecords {
 			if err := appendConversationRecord(sess, record); err != nil {
-				return nil, fmt.Errorf("restore session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, err)
+				return nil, fmt.Errorf("restore session canonical message transaction %s cursor %d: %w", filePath, record.Location.Cursor, err)
 			}
 		}
 	}

@@ -22,6 +22,8 @@ Denova records only major user-visible features, important compatibility or data
 - External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
 - 修复打开或切换到包含大量整章写入的长会话时，页面长时间占满 CPU、无法操作的问题。
 - Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
+- 修复打开包含大量整章写入的长会话时，后端长时间占满 CPU、页面无法打开的问题。
+- Fix the backend pinning the CPU for minutes, leaving the page unable to load, when opening a long session with many whole-chapter writes.
 
 ## [v0.5.1] - 2026-09-28
 
