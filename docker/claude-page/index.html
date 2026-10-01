@@ -194,9 +194,9 @@ const messages = {
     window_five_hour: '5 hours', window_seven_day: 'Weekly', window_seven_day_model: 'Weekly · {label}',
     used: '{p}% used', resetsAt: 'Resets {time}', checkedAt: 'Updated {time}', usageProbe: ' (read from response headers)', usageFailed: 'Could not read usage: {error}', usageRejected: 'The token is invalid or expired. Create a new one.',
     err_invalid_token: 'The token format is invalid.', err_token_exists: 'This token is already saved.', err_token_limit: 'Too many tokens saved.', err_token_not_found: 'Token not found. Refresh the page.', err_token_store_failed: 'Could not save tokens.',
-    proxy: 'Network proxy', proxyHint: 'Set this when Anthropic is only reachable through a proxy. The Claude CLI and usage checks share it; it is saved in Claude's settings.json and applies to tasks started afterwards.', save: 'Save', clear: 'Clear',
+    proxy: 'Network proxy', proxyHint: 'Set this when Anthropic is only reachable through a proxy. The Claude CLI and usage checks share it; it is saved in the Claude settings.json and applies to tasks started afterwards.', save: 'Save', clear: 'Clear',
     proxyPlaceholder: 'For example http://192.168.1.10:7890', proxyEnv: 'Container proxy variable: {value} (used when none is set here)', proxyNone: 'The container sets no proxy variable.', proxySaved: 'Proxy saved.', proxyCleared: 'Cleared; the container proxy variable is used.',
-    err_invalid_proxy: 'Invalid proxy address. Use an http://, https:// or socks5:// URL.', err_settings_unreadable: 'Claude's settings.json cannot be parsed and was left unchanged.', err_settings_write_failed: 'Could not save.',
+    err_invalid_proxy: 'Invalid proxy address. Use an http://, https:// or socks5:// URL.', err_settings_unreadable: 'The Claude settings.json cannot be parsed and was left unchanged.', err_settings_write_failed: 'Could not save.',
   },
 }
 const lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'
