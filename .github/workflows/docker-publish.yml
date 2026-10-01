@@ -5,6 +5,10 @@ name: Docker
 # builds only tags that have no image yet. The image is built from the upstream
 # release sources plus this repository's container files, so fork-only changes
 # never leak into a release image.
+#
+# A push to master also publishes the `fork` tag from this repository's source,
+# and republishes the current release only when container files changed. Both
+# targets build in parallel with separate layer caches.
 on:
   schedule:
     - cron: '17 * * * *'
@@ -26,12 +30,9 @@ on:
         default: false
   push:
     branches: [master]
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - compose.yaml
-      - 'docker/**'
-      - .github/workflows/docker-publish.yml
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
 
 permissions:
   contents: read
@@ -46,16 +47,10 @@ env:
 
 jobs:
   resolve:
-    name: Resolve upstream release
+    name: Resolve build targets
     runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.resolve.outputs.tag }}
-      image: ${{ steps.resolve.outputs.image }}
-      latest: ${{ steps.resolve.outputs.latest }}
-      publish: ${{ steps.resolve.outputs.publish }}
-      version: ${{ steps.resolve.outputs.version }}
-      source_repository: ${{ steps.resolve.outputs.source_repository }}
-      source_ref: ${{ steps.resolve.outputs.source_ref }}
+      targets: ${{ steps.resolve.outputs.targets }}
     steps:
       - uses: docker/login-action@v3
         with:
@@ -66,75 +61,82 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
-          # Container file changes republish the current release with the fix.
-          FORCE: ${{ github.event_name == 'push' || inputs.force == true }}
+          FORCE: ${{ inputs.force == true }}
           FORK_BUILD: ${{ inputs.fork == true }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           latest=$(gh api "repos/$UPSTREAM_REPOSITORY/releases/latest" --jq .tag_name)
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/denova"
-          if [[ "$FORK_BUILD" == true ]]; then
-            # Fork builds carry unreleased fixes; they get their own tag only.
-            {
-              echo "tag=fork"
-              echo "version=${latest#v}-fork.${GITHUB_SHA::7}"
-              echo "image=$image"
-              echo "latest=false"
-              echo "publish=true"
-              echo "source_repository=$GITHUB_REPOSITORY"
-              echo "source_ref=$GITHUB_SHA"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
+          targets='[]'
+          add() { # tag version latest source_repository source_ref cache
+            targets=$(jq -c --arg tag "$1" --arg version "$2" --argjson latest "$3" --arg repo "$4" --arg ref "$5" --arg cache "$6" --arg image "$image" \
+              '. + [{tag: $tag, version: $version, latest: $latest, source_repository: $repo, source_ref: $ref, cache: $cache, image: $image}]' <<<"$targets")
+          }
+          # Fork builds carry unreleased fixes; they get their own tag only.
+          # The build job appends the last application commit to the version.
+          add_fork() { add fork "${latest#v}-fork" false "$GITHUB_REPOSITORY" "$GITHUB_SHA" fork; }
+          add_release() { # tag force
+            local tag=$1
+            if [[ ! "$tag" =~ ^v[0-9A-Za-z._-]+$ ]]; then
+              echo "Invalid release tag: $tag" >&2
+              exit 1
+            fi
+            gh api "repos/$UPSTREAM_REPOSITORY/releases/tags/$tag" --jq .tag_name >/dev/null
+            if [[ "$2" != true ]] && docker manifest inspect "$image:$tag" >/dev/null 2>&1; then
+              echo "Image $image:$tag already exists; nothing to publish." >> "$GITHUB_STEP_SUMMARY"
+              return
+            fi
+            add "$tag" "${tag#v}" "$([[ "$tag" == "$latest" ]] && echo true || echo false)" "$UPSTREAM_REPOSITORY" "$tag" release
+          }
+          if [[ "$EVENT" == push ]]; then
+            add_fork
+            # Release images take only container files from this repository.
+            changed=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$GITHUB_SHA" --jq '.files[].filename' 2>/dev/null || echo Dockerfile)
+            if grep -qE '^(Dockerfile|\.dockerignore|compose\.yaml|docker/|\.github/workflows/docker-publish\.yml)' <<<"$changed"; then
+              add_release "$latest" true
+            fi
+          elif [[ "$FORK_BUILD" == true ]]; then
+            add_fork
+          else
+            add_release "${INPUT_TAG:-$latest}" "$FORCE"
           fi
-          tag=${INPUT_TAG:-$latest}
-          if [[ ! "$tag" =~ ^v[0-9A-Za-z._-]+$ ]]; then
-            echo "Invalid release tag: $tag" >&2
-            exit 1
-          fi
-          gh api "repos/$UPSTREAM_REPOSITORY/releases/tags/$tag" --jq .tag_name >/dev/null
-          publish=true
-          if [[ "$FORCE" != true ]] && docker manifest inspect "$image:$tag" >/dev/null 2>&1; then
-            publish=false
-            echo "Image $image:$tag already exists; nothing to publish." >> "$GITHUB_STEP_SUMMARY"
-          fi
-          {
-            echo "tag=$tag"
-            echo "version=${tag#v}"
-            echo "image=$image"
-            echo "latest=$([[ "$tag" == "$latest" ]] && echo true || echo false)"
-            echo "publish=$publish"
-            echo "source_repository=$UPSTREAM_REPOSITORY"
-            echo "source_ref=$tag"
-          } >> "$GITHUB_OUTPUT"
+          echo "Targets: $targets" >> "$GITHUB_STEP_SUMMARY"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build ${{ matrix.arch }}
+    name: Build ${{ matrix.target.tag }}
     needs: resolve
-    if: needs.resolve.outputs.publish == 'true'
-    runs-on: ${{ matrix.runner }}
+    if: needs.resolve.outputs.targets != '[]'
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-24.04
+        target: ${{ fromJSON(needs.resolve.outputs.targets) }}
     env:
-      TAG: ${{ needs.resolve.outputs.tag }}
-      IMAGE: ${{ needs.resolve.outputs.image }}
-      DENOVA_IMAGE: ${{ needs.resolve.outputs.image }}
-      IMAGE_TAG: ${{ needs.resolve.outputs.tag }}-${{ matrix.arch }}
-      # Release binaries report the tag without its leading v.
-      VERSION: ${{ needs.resolve.outputs.version }}
+      ARCH: amd64
+      TAG: ${{ matrix.target.tag }}
+      LATEST: ${{ matrix.target.latest }}
+      IMAGE: ${{ matrix.target.image }}
+      DENOVA_IMAGE: ${{ matrix.target.image }}
+      IMAGE_TAG: ${{ matrix.target.tag }}-amd64
+      # Release binaries report the tag without its leading v. The build step
+      # exports the final VERSION.
+      BASE_VERSION: ${{ matrix.target.version }}
     steps:
       - uses: actions/checkout@v7
         with:
           path: overlay
       - uses: actions/checkout@v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repository }}
-          ref: ${{ needs.resolve.outputs.source_ref }}
+          repository: ${{ matrix.target.source_repository }}
+          ref: ${{ matrix.target.source_ref }}
           path: src
+          # Fork versions name the last application commit, which needs history.
+          # A string '0': the number 0 is falsy and would always yield 1.
+          fetch-depth: ${{ matrix.target.cache == 'fork' && '0' || '1' }}
       - name: Check Claude page script syntax
         run: |
           set -euo pipefail
@@ -145,6 +147,14 @@ jobs:
         run: |
           set -euo pipefail
           cp -r overlay/Dockerfile overlay/.dockerignore overlay/compose.yaml overlay/docker src/
+          version=$BASE_VERSION
+          if [[ "${{ matrix.target.cache }}" == fork ]]; then
+            # Container file and docs commits keep the version, and with it the
+            # cached application build, unchanged.
+            app=$(git -C src log -1 --format=%h --abbrev=7 -- . ':!docker' ':!Dockerfile' ':!compose.yaml' ':!.dockerignore' ':!.github' ':!docs' ':!*.md')
+            version="$BASE_VERSION.$app"
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
           go_version=$(awk '/^toolchain go/ {sub(/^go/, "", $2); print $2; exit}' src/go.mod)
           go_version=${go_version:-$(awk '/^go / {print $2; exit}' src/go.mod)}
           pnpm_version=$(jq -r '.packageManager // "pnpm@11.15.1"' src/web/package.json | sed 's/^pnpm@//; s/+.*//')
@@ -166,7 +176,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: src
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/amd64
           load: true
           tags: ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
           build-args: |
@@ -180,8 +190,9 @@ jobs:
             org.opencontainers.image.revision=${{ steps.versions.outputs.revision }}
             org.opencontainers.image.version=${{ env.TAG }}
             org.opencontainers.image.licenses=Apache-2.0
-          cache-from: type=gha,scope=denova-${{ matrix.arch }}
-          cache-to: type=gha,scope=denova-${{ matrix.arch }},mode=max
+          # Release and fork sources differ; a shared scope would evict each other.
+          cache-from: type=gha,scope=denova-${{ matrix.target.cache }}-amd64
+          cache-to: type=gha,scope=denova-${{ matrix.target.cache }}-amd64,mode=max
       - name: Verify startup, authentication and persistence
         working-directory: src
         run: |
@@ -234,8 +245,18 @@ jobs:
           cmp /tmp/config-before /tmp/config-after
           curl -fsS -b /tmp/cookies http://localhost:8082/api/auth/status | jq -e '.authenticated == true'
           curl -fsS -b /tmp/cookies http://localhost:8082/api/agent-chat/projects > /dev/null
-      - name: Publish tested architecture
-        run: docker push "$IMAGE:$IMAGE_TAG"
+      - name: Publish tested image and tags
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE:$IMAGE_TAG"
+          tags=(-t "$IMAGE:$TAG")
+          # Only the newest upstream release moves latest; manual rebuilds of
+          # older tags must not roll existing deployments back.
+          if [[ "$LATEST" == true ]]; then tags+=(-t "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:$IMAGE_TAG"
+          docker buildx imagetools inspect "$IMAGE:$TAG" --raw | tee /tmp/manifest.json
+          jq -e '([.manifests[].platform | select(.os == "linux") | .architecture] | sort) == ["amd64"]' /tmp/manifest.json
+          echo "Published $IMAGE:$TAG (latest=$LATEST)" >> "$GITHUB_STEP_SUMMARY"
       - name: Diagnostic logs
         if: failure()
         working-directory: src
@@ -244,30 +265,3 @@ jobs:
         if: always()
         working-directory: src
         run: if [ -f .env ]; then docker compose down -v; fi
-
-  manifest:
-    name: Publish release tags
-    needs: [resolve, build]
-    runs-on: ubuntu-24.04
-    env:
-      TAG: ${{ needs.resolve.outputs.tag }}
-      IMAGE: ${{ needs.resolve.outputs.image }}
-      LATEST: ${{ needs.resolve.outputs.latest }}
-    steps:
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish and verify platforms
-        run: |
-          set -euo pipefail
-          tags=(-t "$IMAGE:$TAG")
-          # Only the newest upstream release moves latest; manual rebuilds of
-          # older tags must not roll existing deployments back.
-          if [[ "$LATEST" == true ]]; then tags+=(-t "$IMAGE:latest"); fi
-          docker buildx imagetools create "${tags[@]}" "$IMAGE:$TAG-amd64"
-          docker buildx imagetools inspect "$IMAGE:$TAG" --raw | tee /tmp/manifest.json
-          jq -e '([.manifests[].platform | select(.os == "linux") | .architecture] | sort) == ["amd64"]' /tmp/manifest.json
-          echo "Published $IMAGE:$TAG (latest=$LATEST)" >> "$GITHUB_STEP_SUMMARY"

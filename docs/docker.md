@@ -59,8 +59,8 @@ docker compose up -d
 构建在 GitHub 的 amd64 运行器上完成，并验证页面、登录保护、登录、版本号、内置工具、重启后的配置和数据保留，通过后才发布版本标签。
 
 - 手动发布：在 Actions 中运行 `Docker` 工作流，可指定 tag，勾选 `force` 可重建已存在的版本。
-- 本仓库源码构建：运行时勾选 `fork`，使用所选分支（默认 `master`）的完整源码构建并发布 `fork` 标签，用于尚未进入上游 Release 的修复。在 `.env` 中设 `IMAGE_TAG=fork` 后 `docker compose pull && docker compose up -d` 即可使用；改回 `latest` 即恢复上游 Release。`fork` 标签不会移动 `latest`。
-- 修改上述容器文件并推送到 `master` 后，会自动重建当前最新版本。
+- 本仓库源码构建：推送到 `master`（仅改 `docs/` 或 Markdown 除外）会自动用本仓库完整源码构建并发布 `fork` 标签，用于尚未进入上游 Release 的修复；也可手动运行时勾选 `fork`。在 `.env` 中设 `IMAGE_TAG=fork` 后 `docker compose pull && docker compose up -d` 即可使用；改回 `latest` 即恢复上游 Release。`fork` 标签不会移动 `latest`，其版本号为 `<上游版本>-fork.<最后一次应用代码提交>`。
+- 推送中包含上述容器文件的修改时，同一次运行会并行重建当前最新版本。两个构建使用各自的层缓存；只改容器文件时复用已缓存的应用编译。
 - 只有上游最新 Release 会移动 `latest`；手动重建旧版本不会让已有部署回退。
 
 首次使用需要：

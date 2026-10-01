@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1-labs
 # Toolchain versions default to the current sources; the publish workflow reads
 # them from go.mod and web/package.json so upstream upgrades need no edit here.
 ARG GO_VERSION=1.26.6
@@ -6,7 +6,6 @@ ARG NODE_VERSION=22
 FROM node:${NODE_VERSION}-bookworm AS node
 FROM golang:${GO_VERSION}-bookworm AS build
 ARG PNPM_VERSION=11.15.1
-ARG DENOVA_VERSION=
 COPY --from=node /usr/local/ /usr/local/
 RUN npm install -g pnpm@${PNPM_VERSION}
 WORKDIR /src
@@ -17,10 +16,15 @@ RUN go mod download && cd agent && go mod download
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./web/
 COPY web/patches ./web/patches
 RUN pnpm --dir web install --frozen-lockfile
-COPY . .
-RUN DENOVA_VERSION="${DENOVA_VERSION}" bash scripts/build.sh \
-    && go build -trimpath -o output/denova-container-init ./docker/init-config.go \
-    && go build -trimpath -o output/denova-claude-page ./docker/claude-page
+# Container files are excluded so editing them reuses the cached application
+# build. The version is declared late: every RUN after an ARG depends on it.
+COPY --exclude=docker --exclude=Dockerfile --exclude=compose.yaml . .
+ARG DENOVA_VERSION=
+RUN DENOVA_VERSION="${DENOVA_VERSION}" bash scripts/build.sh
+# Same flags as build.sh, so the Go build cache from the previous layer applies.
+COPY docker/ ./docker/
+RUN go build -o output/denova-container-init ./docker/init-config.go \
+    && go build -o output/denova-claude-page ./docker/claude-page
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
