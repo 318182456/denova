@@ -78,7 +78,9 @@ func main() {
 
 func newHandler(backend *url.URL) http.Handler {
 	page := &cli{}
-	tokens := newTokenStore()
+	network := newProxySettings()
+	tokens := newTokenStore(network)
+	network.changed = tokens.clearUsage
 	auth := &sessionCheck{backend: backend, client: &http.Client{Timeout: 10 * time.Second}}
 	proxy := &httputil.ReverseProxy{
 		// Rewrite drops inbound Forwarded and X-Forwarded-* headers, and
@@ -119,6 +121,8 @@ func newHandler(backend *url.URL) http.Handler {
 	api.HandleFunc("POST /claude/api/tokens", tokens.add)
 	api.HandleFunc("POST /claude/api/tokens/active", tokens.activate)
 	api.HandleFunc("DELETE /claude/api/tokens/{id}", tokens.remove)
+	api.HandleFunc("GET /claude/api/proxy", network.get)
+	api.HandleFunc("PUT /claude/api/proxy", network.set)
 	mux.Handle("/claude/api/", auth.guard(api))
 	return mux
 }

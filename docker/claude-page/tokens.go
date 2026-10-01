@@ -82,10 +82,11 @@ type tokenView struct {
 	Usage     *tokenUsage `json:"usage,omitempty"`
 }
 
-func newTokenStore() *tokenStore {
-	dir := filepath.Join(envOr("HOME", "/data"), ".config", "denova-claude")
-	// http.DefaultTransport honors HTTPS_PROXY, which some regions require.
-	return &tokenStore{dir: dir, client: &http.Client{Timeout: usageTimeout}, usage: map[string]usageEntry{}}
+func newTokenStore(proxy *proxySettings) *tokenStore {
+	// Usage requests reach Anthropic through the same proxy as the CLI.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxy.transportProxy
+	return &tokenStore{dir: filepath.Join(envOr("HOME", "/data"), ".config", "denova-claude"), client: &http.Client{Timeout: usageTimeout, Transport: transport}, usage: map[string]usageEntry{}}
 }
 
 func (s *tokenStore) list(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +221,15 @@ func (s *tokenStore) remove(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// clearUsage forgets results from the previous network route. Idle pooled
+// connections were dialed under the old proxy choice, so they are closed too.
+func (s *tokenStore) clearUsage() {
+	s.client.CloseIdleConnections()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.usage = map[string]usageEntry{}
+}
+
 func (s *tokenStore) usageFor(ctx context.Context, token storedToken, refresh bool) tokenUsage {
 	s.mu.Lock()
 	cached, ok := s.usage[token.ID]
@@ -229,15 +239,23 @@ func (s *tokenStore) usageFor(ctx context.Context, token storedToken, refresh bo
 		return cached.usage
 	}
 	usage, err := s.fetchUsage(ctx, token.Token)
+	var probeErr error
 	if err != nil {
 		// Tokens limited to inference cannot read the usage endpoint; the
 		// rate-limit headers of a one-token request carry the same windows.
-		usage, err = s.probeUsage(ctx, token.Token)
+		usage, probeErr = s.probeUsage(ctx, token.Token)
+		if probeErr != nil {
+			err = fmt.Errorf("usage: %w; check: %w", err, probeErr)
+		} else {
+			err = nil
+		}
 	}
 	if err != nil {
 		slog.Warn("Read Claude token usage failed", "id", token.ID, "error", err)
 		key := "failed"
-		if errors.Is(err, errTokenRejected) {
+		// The usage endpoint may refuse narrow scopes; only a refused
+		// inference request proves the token itself is invalid.
+		if errors.Is(probeErr, errTokenRejected) {
 			key = "rejected"
 		}
 		usage = tokenUsage{Error: err.Error(), ErrorKey: key}
@@ -262,7 +280,7 @@ func (s *tokenStore) fetchUsage(ctx context.Context, token string) (tokenUsage, 
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return tokenUsage{}, fmt.Errorf("usage endpoint returned %d", res.StatusCode)
+		return tokenUsage{}, responseError(res)
 	}
 	type window struct {
 		Utilization *float64 `json:"utilization"`
@@ -320,7 +338,6 @@ func (s *tokenStore) probeUsage(ctx context.Context, token string) (tokenUsage, 
 		return tokenUsage{}, err
 	}
 	defer res.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 	usage := tokenUsage{Source: "probe"}
 	for _, window := range []struct{ kind, prefix string }{{"five_hour", "5h"}, {"seven_day", "7d"}} {
 		value := res.Header.Get("anthropic-ratelimit-unified-" + window.prefix + "-utilization")
@@ -338,12 +355,30 @@ func (s *tokenStore) probeUsage(ctx context.Context, token string) (tokenUsage, 
 		usage.Windows = append(usage.Windows, item)
 	}
 	if len(usage.Windows) == 0 {
-		if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-			return tokenUsage{}, fmt.Errorf("%w: status %d", errTokenRejected, res.StatusCode)
-		}
-		return tokenUsage{}, fmt.Errorf("token check returned %d without usage limits", res.StatusCode)
+		return tokenUsage{}, responseError(res)
 	}
 	return usage, nil
+}
+
+// responseError reports Anthropic's status and error message. Only 401 means
+// the token itself is invalid; 403 also covers blocked regions and scopes.
+func responseError(res *http.Response) error {
+	var body struct {
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&body)
+	message := strings.TrimSpace(body.Error.Type + ": " + body.Error.Message)
+	if len(message) > 200 {
+		message = message[:200]
+	}
+	err := fmt.Errorf("HTTP %d %s", res.StatusCode, strings.Trim(message, ": "))
+	if res.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("%w: %w", errTokenRejected, err)
+	}
+	return err
 }
 
 func (s *tokenStore) read() (tokenFile, error) {

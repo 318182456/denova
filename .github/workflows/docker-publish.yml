@@ -213,6 +213,12 @@ jobs:
           id=$(curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -r '.tokens[0].id')
           curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -X DELETE "http://localhost:8082/claude/api/tokens/$id"
           docker compose exec -T denova sh -c 'test ! -s /data/.config/denova-claude/active-token'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":"127.0.0.1:7890"}' http://localhost:8082/claude/api/proxy)" = 400
+          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":"http://proxy.invalid:3128"}' http://localhost:8082/claude/api/proxy
+          docker compose exec -T denova sh -c 'grep -q "\"HTTPS_PROXY\": \"http://proxy.invalid:3128\"" /data/.claude/settings.json'
+          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/proxy | jq -e '.proxy == "http://proxy.invalid:3128"'
+          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":""}' http://localhost:8082/claude/api/proxy
+          docker compose exec -T denova sh -c '! grep -q PROXY /data/.claude/settings.json'
           docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -f /opt/denova/web/index.html'
           docker compose exec -T denova sh -c 'printf persisted > /data/.denova/container-smoke'
           docker compose exec -T denova sha256sum /data/.denova/config.toml > /tmp/config-before
