@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -93,6 +94,11 @@ func newHandler(backend *url.URL) http.Handler {
 		// Agent runs stream server-sent events; forward every write immediately.
 		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			// Browsers cancel requests on navigation; that is not a backend failure.
+			if errors.Is(err, context.Canceled) {
+				slog.Debug("Denova proxy request canceled by client", "path", r.URL.Path)
+				return
+			}
 			slog.Warn("Denova proxy request failed", "path", r.URL.Path, "error", err)
 			w.WriteHeader(http.StatusBadGateway)
 		},
