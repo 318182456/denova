@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,7 +65,8 @@ type tokenUsage struct {
 	Source    string        `json:"source"`
 	CheckedAt time.Time     `json:"checked_at"`
 	Error     string        `json:"error,omitempty"`
-	// ErrorKey is "rejected" for an invalid or expired token, else "failed".
+	// ErrorKey is "rejected" for an invalid or expired token, "unreachable" when
+	// Anthropic could not be reached, else "failed".
 	ErrorKey string `json:"error_key,omitempty"`
 }
 
@@ -97,6 +99,9 @@ func (s *tokenStore) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "1"
+	// A closed page must not cancel checks midway: finished results stay
+	// cached for the next view. The client timeout bounds each check.
+	ctx := context.WithoutCancel(r.Context())
 	views := make([]tokenView, len(file.Tokens))
 	var wg sync.WaitGroup
 	for i, token := range file.Tokens {
@@ -105,7 +110,7 @@ func (s *tokenStore) list(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			defer wg.Done()
 			defer recoverAndLog("token usage")
-			usage := s.usageFor(r.Context(), token, refresh)
+			usage := s.usageFor(ctx, token, refresh)
 			views[i].Usage = &usage
 		}()
 	}
@@ -230,6 +235,16 @@ func (s *tokenStore) clearUsage() {
 	s.usage = map[string]usageEntry{}
 }
 
+// unreachable reports cancellations, timeouts and connection failures, which
+// usually mean Anthropic is not reachable without (or through) the proxy.
+func unreachable(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
 func (s *tokenStore) usageFor(ctx context.Context, token storedToken, refresh bool) tokenUsage {
 	s.mu.Lock()
 	cached, ok := s.usage[token.ID]
@@ -255,10 +270,18 @@ func (s *tokenStore) usageFor(ctx context.Context, token storedToken, refresh bo
 		key := "failed"
 		// The usage endpoint may refuse narrow scopes; only a refused
 		// inference request proves the token itself is invalid.
-		if errors.Is(probeErr, errTokenRejected) {
+		transient := unreachable(err)
+		switch {
+		case errors.Is(probeErr, errTokenRejected):
 			key = "rejected"
+		case transient:
+			key = "unreachable"
 		}
-		usage = tokenUsage{Error: err.Error(), ErrorKey: key}
+		usage = tokenUsage{Error: err.Error(), ErrorKey: key, CheckedAt: time.Now().UTC()}
+		// Network failures say nothing about the token; the next view retries.
+		if transient {
+			return usage
+		}
 	}
 	usage.CheckedAt = time.Now().UTC()
 	s.mu.Lock()

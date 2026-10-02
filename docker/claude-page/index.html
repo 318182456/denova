@@ -165,7 +165,7 @@ const messages = {
     useAccount: '不使用令牌', fallbackEnv: '当前未选择令牌，使用 .env 中的 CLAUDE_CODE_OAUTH_TOKEN。', fallbackAccount: '当前未选择令牌，使用上方登录的账号。',
     tokenAdded: '已添加令牌。', tokenSwitched: '已切换，之后启动的任务生效。',
     window_five_hour: '5 小时', window_seven_day: '每周', window_seven_day_model: '每周 · {label}',
-    used: '已用 {p}%', resetsAt: '{time} 重置', checkedAt: '更新于 {time}', usageProbe: '（通过请求头读取）', usageFailed: '额度读取失败：{error}', usageRejected: '令牌无效或已过期，请重新生成。',
+    used: '已用 {p}%', resetsAt: '{time} 重置', checkedAt: '更新于 {time}', usageProbe: '（通过请求头读取）', usageFailed: '额度读取失败：{error}', usageRejected: '令牌无效或已过期，请重新生成。', usageUnreachable: '无法连接 Anthropic，请检查上方的网络代理后点击「刷新额度」。',
     err_invalid_token: '令牌格式无效。', err_token_exists: '该令牌已保存。', err_token_limit: '令牌数量已达上限。', err_token_not_found: '令牌不存在，请刷新页面。', err_token_store_failed: '令牌保存失败。',
     proxy: '网络代理', proxyHint: '访问 Anthropic 需要代理时在此填写，Claude CLI 和额度查询共用，保存在 Claude 的 settings.json。切换只影响之后启动的任务。', save: '保存', clear: '清除',
     proxyPlaceholder: '例如 http://192.168.1.10:7890', proxyEnv: '容器环境变量代理：{value}（未在此填写时使用）', proxyNone: '容器未设置代理环境变量。', proxySaved: '代理已保存。', proxyCleared: '已清除，改用容器环境变量代理。',
@@ -192,7 +192,7 @@ const messages = {
     useAccount: 'Stop using tokens', fallbackEnv: 'No token selected; CLAUDE_CODE_OAUTH_TOKEN from .env is used.', fallbackAccount: 'No token selected; the account signed in above is used.',
     tokenAdded: 'Token added.', tokenSwitched: 'Switched. Tasks started from now on use it.',
     window_five_hour: '5 hours', window_seven_day: 'Weekly', window_seven_day_model: 'Weekly · {label}',
-    used: '{p}% used', resetsAt: 'Resets {time}', checkedAt: 'Updated {time}', usageProbe: ' (read from response headers)', usageFailed: 'Could not read usage: {error}', usageRejected: 'The token is invalid or expired. Create a new one.',
+    used: '{p}% used', resetsAt: 'Resets {time}', checkedAt: 'Updated {time}', usageProbe: ' (read from response headers)', usageFailed: 'Could not read usage: {error}', usageRejected: 'The token is invalid or expired. Create a new one.', usageUnreachable: 'Cannot reach Anthropic. Check the network proxy above, then click "Refresh usage".',
     err_invalid_token: 'The token format is invalid.', err_token_exists: 'This token is already saved.', err_token_limit: 'Too many tokens saved.', err_token_not_found: 'Token not found. Refresh the page.', err_token_store_failed: 'Could not save tokens.',
     proxy: 'Network proxy', proxyHint: 'Set this when Anthropic is only reachable through a proxy. The Claude CLI and usage checks share it; it is saved in the Claude settings.json and applies to tasks started afterwards.', save: 'Save', clear: 'Clear',
     proxyPlaceholder: 'For example http://192.168.1.10:7890', proxyEnv: 'Container proxy variable: {value} (used when none is set here)', proxyNone: 'The container sets no proxy variable.', proxySaved: 'Proxy saved.', proxyCleared: 'Cleared; the container proxy variable is used.',
@@ -287,7 +287,9 @@ function element(tag, className, text) {
 function usageMeters(usage) {
   const box = element('div', 'meter')
   if (!usage || usage.error) {
-    box.append(element('span', 'meter-label meter-error', usage?.error_key === 'rejected' ? `${t('usageRejected')} (${usage.error})` : t('usageFailed', { error: usage?.error || '-' })))
+    box.append(element('span', 'meter-label meter-error', usage?.error_key === 'rejected' ? `${t('usageRejected')} (${usage.error})`
+      : usage?.error_key === 'unreachable' ? `${t('usageUnreachable')} (${usage.error})`
+      : t('usageFailed', { error: usage?.error || '-' })))
     return box
   }
   for (const window of usage.windows || []) {
