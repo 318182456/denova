@@ -22,6 +22,8 @@ Denova records only major user-visible features, important compatibility or data
 - External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
 - 修复打开或切换到包含大量整章写入的长会话时，页面长时间占满 CPU、无法操作的问题。
 - Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
+- 修复 Claude Code 2.1.286 及以上版本输出界面刷新事件时，Claude 运行时任务以 `decode Claude stream` 错误中断的问题。
+- Fix Claude runtime tasks failing with `decode Claude stream` when Claude Code 2.1.286 or later reports UI refresh events.
 
 ## [v0.5.1] - 2026-09-28
 
