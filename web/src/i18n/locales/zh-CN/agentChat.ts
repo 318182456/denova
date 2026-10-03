@@ -27,6 +27,7 @@ const agentChat = {
   'agentChat.sidebar.longPressToReorder': '长按拖拽排序',
   'agentChat.sidebar.deleteTitle': '删除对话',
   'agentChat.sidebar.deleteDescription': '将删除“{{title}}”及其历史记录，且无法恢复。',
+  'agentChat.sidebar.deleteRunning': '运行中，停止后可删除',
   'agentChat.sidebar.status.idle': '就绪',
   'agentChat.sidebar.status.running': '运行中',
   'agentChat.sidebar.status.connecting': '连接中',

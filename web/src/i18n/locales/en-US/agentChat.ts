@@ -27,6 +27,7 @@ const agentChat = {
   'agentChat.sidebar.longPressToReorder': 'Press and hold to reorder',
   'agentChat.sidebar.deleteTitle': 'Delete conversation',
   'agentChat.sidebar.deleteDescription': '"{{title}}" and its history will be removed. This cannot be undone.',
+  'agentChat.sidebar.deleteRunning': 'Stop the run to delete',
   'agentChat.sidebar.status.idle': 'Ready',
   'agentChat.sidebar.status.running': 'Running',
   'agentChat.sidebar.status.connecting': 'Connecting',

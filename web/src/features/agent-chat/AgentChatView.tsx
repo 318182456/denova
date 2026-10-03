@@ -134,6 +134,10 @@ export function AgentChatView({
     project: AgentChatProject
     session: AgentChatSession
   } | null>(null)
+  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<{
+    project: AgentChatProject
+    session: AgentChatSession
+  } | null>(null)
   const [projectDirectoryBusy, setProjectDirectoryBusy] = useState(false)
   const projectDirectoryBusyRef = useRef(false)
   const [archiveTarget, setArchiveTarget] = useState<AgentChatProject | null>(null)
@@ -724,6 +728,7 @@ export function AgentChatView({
     onOpenActivity: openSidebarActivity,
     onOpenSession: openOrActivateSession,
     onRenameSession: (project: AgentChatProject, session: AgentChatSession) => setSessionRenameTarget({ project, session }),
+    onDeleteSession: (project: AgentChatProject, session: AgentChatSession) => setSessionDeleteTarget({ project, session }),
     onCreateSession: (project: AgentChatProject, customAgentId?: string) => {
       if (customAgentId === undefined) openDraftSessionInProject(project)
       else void openConfiguredSessionInProject(project, customAgentId)
@@ -1017,6 +1022,23 @@ export function AgentChatView({
         onRename={(title) => {
           if (!sessionRenameTarget) return
           return renameSession(sessionRenameTarget.project.id, sessionRenameTarget.session, title)
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(sessionDeleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setSessionDeleteTarget(null)
+        }}
+        title={t('agentChat.sidebar.deleteTitle')}
+        description={t('agentChat.sidebar.deleteDescription', {
+          title: sessionDeleteTarget?.session.title || t('chat.untitledSession'),
+        })}
+        tone="danger"
+        confirmLabel={t('common.delete')}
+        onConfirm={async () => {
+          if (!sessionDeleteTarget) return
+          await deleteSession(sessionDeleteTarget.project.id, sessionDeleteTarget.session)
+          setSessionDeleteTarget(null)
         }}
       />
       <ConfirmDialog

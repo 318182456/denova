@@ -44,6 +44,14 @@ func (blocks *contentBlocks) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*plain)(blocks))
 }
 
+type streamEvent struct {
+	Type    string        `json:"type"`
+	Index   int           `json:"index"`
+	Message streamMessage `json:"message"`
+	Delta   contentBlock  `json:"delta"`
+	Block   contentBlock  `json:"content_block"`
+}
+
 type streamFrame struct {
 	SessionID     string          `json:"session_id"`
 	UUID          string          `json:"uuid"`
@@ -54,14 +62,10 @@ type streamFrame struct {
 	IsMeta        bool            `json:"is_meta"`
 	ToolUseResult json.RawMessage `json:"tool_use_result"`
 	Message       streamMessage   `json:"message"`
-	Event         struct {
-		Type    string        `json:"type"`
-		Index   int           `json:"index"`
-		Message streamMessage `json:"message"`
-		Delta   contentBlock  `json:"delta"`
-		Block   contentBlock  `json:"content_block"`
-	} `json:"event"`
-	Result  string `json:"result"`
+	// Event is an API stream event only in stream_event frames; other frames
+	// reuse the name for a string, such as ui_invalidate's "ui.render".
+	Event   json.RawMessage `json:"event"`
+	Result  string          `json:"result"`
 	IsError bool   `json:"is_error"`
 	Usage   *struct {
 		Input      int `json:"input_tokens"`
@@ -114,7 +118,10 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 	}
 	switch f.Type {
 	case "stream_event":
-		e := f.Event
+		var e streamEvent
+		if err := json.Unmarshal(f.Event, &e); err != nil {
+			return fmt.Errorf("decode Claude stream event: %w", err)
+		}
 		switch e.Type {
 		case "message_start":
 			s.current = e.Message.ID

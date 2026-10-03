@@ -47,3 +47,21 @@ func TestStreamMergesSplitAssistantBlocks(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamIgnoresStringEventOutsideStreamEvents(t *testing.T) {
+	var output streamOutput
+	host := &testHost{}
+	// Claude Code 2.1.286 reports UI invalidation with a string event name.
+	for _, frame := range []string{
+		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"reply"}}}`,
+		`{"type":"system","subtype":"ui_invalidate","event":"ui.render","instances":[{"surface":"panel","component":"status","instance_id":"r1"}]}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}}`,
+	} {
+		if err := output.feed([]byte(frame), host); err != nil {
+			t.Fatalf("feed %s: %v", frame, err)
+		}
+	}
+	if got := output.result().Text; got != "ok" || host.text != got {
+		t.Fatalf("canonical=%q displayed=%q", got, host.text)
+	}
+}
