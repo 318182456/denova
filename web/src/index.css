@@ -3264,6 +3264,12 @@ html[data-nova-motion="off"] .nova-change-review-layer {
     0 4px 14px rgba(0, 0, 0, 0.1);
 }
 
+/* Keep sticky navigation translucent while blurring fields that scroll beneath it. */
+.nova-story-stage-content[data-artwork="true"] .story-state-ledger__navigation {
+  background: transparent;
+  backdrop-filter: blur(12px);
+}
+
 /* Tool details already sit inside a panel, so they must not stack another surface. */
 .nova-story-stage-content[data-artwork="true"] .nova-tool-surface .nova-tool-surface {
   background: transparent;
