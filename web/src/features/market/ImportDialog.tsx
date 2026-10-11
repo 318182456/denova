@@ -54,6 +54,8 @@ import {
 
 export interface ImportDialogProps {
   source?: Source
+  // An explicit picker choice skips automatic downloading of the supplied source.
+  initialInput?: ResourceInput
   preview?: Preview
   installation?: Installation
   projectID?: string
@@ -64,6 +66,7 @@ export interface ImportDialogProps {
 }
 export function ImportDialog({
   source,
+  initialInput,
   preview: initialPreview,
   installation,
   projectID: defaultProject,
@@ -99,7 +102,7 @@ export function ImportDialog({
   const [plan, setPlan] = useState<Plan>()
   const [planRequest, setPlanRequest] = useState<PlanRequest>()
   const [resolutions, setResolutions] = useState<Record<string, Record<string, string>>>({})
-  const [input, setInput] = useState<ResourceInput>(installation?.source.kind === 'file' ? { kind: 'file' } : { kind: 'github', url: '' })
+  const [input, setInput] = useState<ResourceInput>(initialInput ?? (source && source.kind !== 'file' ? { ...source, url: source.url || '' } : installation ? { kind: 'file' } : { kind: 'github', url: '' }))
   const [projectID, setProjectID] = useState(
     installation?.project_id || defaultProject || '',
   )
@@ -113,7 +116,7 @@ export function ImportDialog({
   const [sharedResources, setSharedResources] = useState<'reuse' | 'copy'>('reuse')
   const [replace, setReplace] = useState(false)
   const [defaultsSelection, setDefaultsSelection] = useState<GameDefaultField[] | null>(null)
-  const [busy, setBusy] = useState(!!source && !initialPreview)
+  const [busy, setBusy] = useState(!!source && !initialInput && !initialPreview)
   const alive = useRef(false)
   const pending = useRef<Promise<void> | undefined>(undefined)
   const downloadedPreview = useRef<Preview | undefined>(undefined)
@@ -152,7 +155,7 @@ export function ImportDialog({
     const permissions = resource.extension?.manifest.permissions
     return (release?.grants ?? extension?.grants ?? []).filter(permission => permissions?.required.includes(permission) || permissions?.optional?.includes(permission))
   }
-  const sourceReady = source || (input.kind === 'file' ? input.file : input.kind === 'directory' ? input.directory.trim() : input.url.trim())
+  const sourceReady = input.kind === 'file' ? input.file : input.kind === 'directory' ? input.directory.trim() : input.url.trim()
   const missingConsent = resources.some((r) =>
     r.extension?.manifest.permissions.required.some(
       (p) => !permissionGrants(r).includes(p),
@@ -190,11 +193,11 @@ export function ImportDialog({
   const loadPreview = () => {
     if (pending.current) return pending.current
     pending.current = (async () => {
-      const result = await previewSource(source || (input.kind === 'file' ? input.file! : input))
+      const result = await previewSource(input.kind === 'file' ? input.file! : input)
       if (!alive.current) { discardPreview(result); return }
       downloadedPreview.current = result
       setPreview(result)
-      const candidate = result.candidates.find(item => item.package.id === installation?.package.id) ?? result.candidates[0]
+      const candidate = result.candidates.find(item => installation ? item.package.id === installation.package.id : item.candidate_id === (source?.path || '.')) ?? result.candidates[0]
       setCandidateID(candidate.candidate_id)
       setSelected(candidate.resources.filter(resource => resource.kind !== 'project.creator' &&
         (!installation || installation.bindings.some(binding => binding.resource_id === resource.id))).map(resource => resource.id))
@@ -205,7 +208,7 @@ export function ImportDialog({
     alive.current = true
     // A supplied source means the user already chose Get. Keep its download
     // in the import flow and reuse the request during StrictMode effect replay.
-    if (source && !initialPreview) void run(loadPreview)
+    if (source && !initialInput && !initialPreview) void run(loadPreview)
     return () => {
       alive.current = false
       if (downloadedPreview.current) {
@@ -240,14 +243,13 @@ export function ImportDialog({
             {t(plan ? 'market.import.confirmTitle' : installation ? 'market.update.review' : 'market.import.title')}
           </DialogTitle>
           <DialogDescription>
-            {t(plan ? 'market.import.confirmHelp' : installation ? 'market.update.sourceHelp' : source ? 'market.contents.selectHelp' : 'market.import.help')}
+            {t(plan ? 'market.import.confirmHelp' : installation ? 'market.update.sourceHelp' : source && input.kind !== 'file' ? 'market.contents.selectHelp' : 'market.import.help')}
           </DialogDescription>
         </DialogHeader>
         {preview?.character && (
           <CompatibilityReport preview={preview.character} />
         )}
-        {!preview && source && <p role="status" className="text-sm text-muted-foreground">{t(busy ? 'market.import.downloading' : 'market.contents.failed')}</p>}
-        {!preview && !source && <ImportSourceFields value={input} onChange={setInput} busy={busy} run={run} onImportedSource={onClose} />}
+        {!preview && <ImportSourceFields value={input} onChange={value => { setInput(value); setError('') }} source={source || installation?.source} busy={busy} run={run} onImportedSource={onClose} />}
         {preview && !plan && (
           <FieldGroup>
             {preview.candidates.length > 1 && <Field>
@@ -591,12 +593,12 @@ export function ImportDialog({
           >
             {t(
               busy
-                ? !preview ? 'market.import.downloading' : 'market.working'
+                ? !preview && (input.kind === 'github' || input.kind === 'https_zip') ? 'market.import.downloading' : 'market.working'
                 : plan
                   ? needsPlanReview ? 'market.import.refreshPlan' : installation ? 'market.update.apply' : resources.every(resource => resource.kind.startsWith('extension.')) ? 'market.import.installExtensions' : 'market.import.install'
                   : preview
                     ? creatingBook ? 'market.import.createAndReview' : 'market.import.review'
-                    : source ? 'market.contents.retry' : 'market.import.preview',
+                    : input.kind === 'file' || input.kind === 'directory' ? 'market.import.previewLocal' : 'market.import.preview',
             )}
           </Button>
         </DialogFooter>

@@ -18,7 +18,10 @@ func exchangeError(ctx context.Context, c *app.RequestContext, err error) {
 	slog.WarnContext(ctx, "resource_exchange_failed", "error", err)
 	key, status := "market.errors.operationFailed", 400
 	var conflict *revisionfile.ConflictError
+	var platformError *platform.Error
 	switch {
+	case errors.As(err, &platformError) && platformError.Code == "GITHUB_UNAVAILABLE":
+		key, status = "market.errors.downloadFailed", 502
 	case errors.Is(err, lore.ErrNameRequiredForID):
 		key = "api.lore.nameRequiredForID"
 	case errors.As(err, &conflict):

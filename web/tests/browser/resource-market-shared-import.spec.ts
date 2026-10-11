@@ -30,10 +30,9 @@ for (const theme of ['dark', 'light']) {
     await page.goto('/')
     await page.getByTestId('resource-market').getByRole('button', { name: 'Add resources', exact: true }).click()
     const dialog = page.getByRole('dialog')
-    await dialog.getByRole('combobox').click()
-    await page.getByRole('option', { name: 'Local file', exact: true }).click()
+    await dialog.getByRole('radio', { name: 'Local file', exact: true }).click()
     await dialog.getByLabel('Local file', { exact: true }).setInputFiles({ name: 'shared.zip', mimeType: 'application/zip', buffer: archive })
-    await dialog.getByRole('button', { name: 'Download and preview' }).click()
+    await dialog.getByRole('button', { name: 'Preview resources' }).click()
     await expect(dialog.getByRole('combobox', { name: 'Global and user resources' })).toContainText('Reuse existing resources (default)')
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 })

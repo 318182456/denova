@@ -87,7 +87,12 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 		if old.Package.ID != candidate.Package.ID || old.Tracking != "tracked" {
 			return Plan{}, fmt.Errorf("update package identity differs")
 		}
-		if old.Source.Kind != preview.Source.Kind || old.Source.URL != preview.Source.URL || old.Source.Ref != preview.Source.Ref || old.Source.Path != preview.Source.Path {
+		if preview.Source.Kind == "file" && old.Source.Kind != "file" {
+			// Manual uploads replace the reviewed bytes, not the subscription.
+			// Their commit is unknown; future checks compare resource digests.
+			installation.Source = old.Source
+			installation.Source.Commit = ""
+		} else if old.Source.Kind != preview.Source.Kind || old.Source.URL != preview.Source.URL || old.Source.Ref != preview.Source.Ref || old.Source.Path != preview.Source.Path {
 			return Plan{}, ErrSourceChanged
 		}
 		installation.ID, installation.CreatedAt, installation.ProjectID = old.ID, old.CreatedAt, old.ProjectID

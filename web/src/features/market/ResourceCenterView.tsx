@@ -134,12 +134,12 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
             onRefresh={() => { void client.fetchQuery({ queryKey: catalogKey, queryFn: () => getCatalog(true), staleTime: 0 }).catch(error => console.error('[resources] catalog refresh failed', error)) }} />
         </div>
         {section === 'discover' && detail && <MarketEntryDetail detail={detail} acquired={matchingInstallations.length}
-          onBack={() => setDetail(undefined)} onImport={source => openImport({ source })}
+          onBack={() => setDetail(undefined)} onImport={(source, initialInput) => openImport({ source, initialInput })}
           onManage={() => openResourceDestination({ section: 'acquired', installationID: matchingInstallations[0]?.installation_id })}
           updates={<MarketInstallationUpdates installations={matchingInstallations} projectID={projectID} onImport={openImport} onChanged={refreshResources} blockedReason={blockedReason} />} />}
         {(section === 'acquired' || section === 'updates') && <div className="h-full overflow-auto">
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
-            <div className="flex flex-wrap items-center gap-2 border-b pb-3">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-base font-semibold">{t(`market.${section}`)}</h1>
               <Badge variant="secondary">{t('market.results', { count: section === 'updates' ? updates.length : installations.length })}</Badge>
               <Button variant="outline" size="sm" className="ml-auto" disabled={checking || installed.isPending || !!blockedReason} onClick={() => void checkAllUpdates()}>

@@ -1,6 +1,12 @@
 const market = {
   'market.update.fromFile': '从本地文件更新',
-  'market.update.sourceHelp': '检查已有资源包的变化。本地来源请选择新版资源包文件或扩展目录，保持资源包身份一致，并确认新增权限。',
+  'market.update.sourceHelp': '预览同一资源包的新版文件，确认变化与新增权限。从本地文件更新会保留原来源和更新策略；本地修改由你决定保留或备份后替换。',
+  'market.import.fromFile': '从本地文件添加',
+  'market.import.previewLocal': '预览资源',
+  'market.import.downloadZip': '通过浏览器下载 ZIP',
+  'market.import.fileHelp': '上传 ZIP（最大 256 MiB），无需解压。资源包应包含 denova-pack.json 和它引用的完整文件；可使用 GitHub 的 Code → Download ZIP，预览时选择所需资源包。需要构建的扩展请使用作者发布的发行 ZIP。角色卡另支持 PNG / JSON。',
+  'market.import.archivePath': '此资源包位于仓库的 {{path}} 目录。上传整个仓库 ZIP 后，选择对应资源包。',
+  'market.errors.downloadFailed': 'GitHub 下载失败或超时。请检查网络或代理，也可通过浏览器下载 ZIP，再从本地文件添加或更新。',
   'market.checkUpdates': '检查更新',
   "market.checkFailedCount": "有 {{count}} 个来源检查失败，其余来源已检查。",
   "market.manageExtension": "管理扩展",

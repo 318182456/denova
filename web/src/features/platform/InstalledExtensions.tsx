@@ -47,9 +47,9 @@ export function InstalledExtensions({ visible, catalog, error, installations, di
   return <>
     {error ? <p role="alert" className="p-4 text-sm text-destructive">{platformError(error)}</p> : null}
     {!catalog ? !error && <div role="status" aria-label={t('common.loading')} className="flex flex-col gap-4 p-4"><Skeleton className="h-20" /><Skeleton className="h-40" /></div> : <>
-      {!current && <div className="mx-auto flex max-w-6xl flex-col gap-4 p-4 lg:p-5">
-        <h1 className="border-b pb-3 text-base font-semibold">{t('market.extensions')}</h1>
-        {entries.length ? <ExtensionDirectory entries={entries} onSelect={extensionKey => openResourceDestination({ section: 'extensions', extensionKey })} /> :
+      {!current && <div className="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
+        <h1 className="text-base font-semibold">{t('market.extensions')}</h1>
+        {entries.length ? <ExtensionDirectory entries={entries} onChanged={onRefresh} onSelect={extensionKey => openResourceDestination({ section: 'extensions', extensionKey })} /> :
           <Empty><EmptyHeader><EmptyMedia variant="icon"><Puzzle /></EmptyMedia><EmptyTitle>{t('platform.extensions.empty')}</EmptyTitle><EmptyDescription>{t('platform.extensions.emptyDescription')}</EmptyDescription></EmptyHeader><Button onClick={() => openResourceDestination({ section: 'discover' })}>{t('market.discover')}</Button></Empty>}
       </div>}
       {current && <Button variant="ghost" className="ml-4 mt-3" onClick={() => openResourceDestination({ section: 'extensions' })}><ArrowLeft data-icon="inline-start" />{t('market.back')}</Button>}

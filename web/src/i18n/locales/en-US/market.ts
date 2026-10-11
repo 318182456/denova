@@ -1,6 +1,12 @@
 const market = {
   'market.update.fromFile': 'Update from a local file',
-  'market.update.sourceHelp': 'Review changes to the existing package. For a local source, select its new package file or extension directory. Keep the same package identity and review any new permissions.',
+  'market.update.sourceHelp': 'Preview a new file for the same package and review changes and new permissions. Local file updates preserve the original source and update policy. Choose whether to keep local edits or back them up and replace them.',
+  'market.import.fromFile': 'Add from a local file',
+  'market.import.previewLocal': 'Preview resources',
+  'market.import.downloadZip': 'Download ZIP in browser',
+  'market.import.fileHelp': 'Upload a ZIP (up to 256 MiB) without extracting it. Resource packages must include denova-pack.json and all files it references. You can use GitHub’s Code → Download ZIP, then choose the package in the preview. For extensions that need a build, use the author’s release ZIP. Character cards also support PNG / JSON.',
+  'market.import.archivePath': 'This package is in {{path}} inside the repository. Upload the entire repository ZIP, then select the matching package.',
+  'market.errors.downloadFailed': 'The GitHub download failed or timed out. Check your connection or proxy, or download the ZIP in your browser and add or update from a local file.',
   'market.checkUpdates': 'Check for updates',
   "market.checkFailedCount": "Could not check {{count}} sources. Other sources have been checked.",
   "market.manageExtension": "Manage extension",

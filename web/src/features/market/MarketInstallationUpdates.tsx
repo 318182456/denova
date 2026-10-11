@@ -50,6 +50,7 @@ export function MarketInstallationUpdates({ installations, projectID, onImport, 
         setError(error instanceof Error ? error.message : t('market.errors.operationFailed'))
       }).finally(() => setBusy(false))
     }}>{t(busy ? 'market.working' : 'market.update.installed')}</Button>
+    <Button variant="outline" className="h-auto min-h-9 whitespace-normal" disabled={busy || !installation || !!blockedReason} onClick={() => onImport({ installation })}>{t('market.update.fromFile')}</Button>
     {error && <p role="alert" className="text-sm text-destructive break-words">{error}</p>}
   </div>
 }

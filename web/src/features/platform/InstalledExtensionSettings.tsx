@@ -17,7 +17,7 @@ export function InstalledExtensionSettings({ item, release, active, onDirtyChang
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [permissionsDirty, setPermissionsDirty] = useState(false)
   useEffect(() => onDirtyChange(settingsDirty || permissionsDirty), [onDirtyChange, permissionsDirty, settingsDirty])
-  return <div className="flex min-w-0 flex-col gap-5">
+  return <div className="flex min-w-0 flex-col gap-4">
     <ExtensionConfiguration kind={item.kind} packageId={item.id} releaseId={release.ref.releaseId} active={active} onDirtyChange={setSettingsDirty} onSaved={onSaved} />
     <Separator />
     <InstalledPermissions item={item} release={release} onDirtyChange={setPermissionsDirty} onSaved={onSaved} />
@@ -65,7 +65,7 @@ function InstalledPermissions({ item, release, onDirtyChange, onSaved }: { item:
       </div>}
     </div>
     <FieldGroup className="gap-0 divide-y">
-      {[...required, ...optional].map(permission => <Field key={permission} orientation="horizontal" className="min-h-12 gap-4 py-3">
+      {[...required, ...optional].map(permission => <Field key={permission} orientation="horizontal" className="min-h-10 gap-3 py-2">
         <FieldLabel htmlFor={id + permission} className="min-w-0 flex-1 flex-wrap [overflow-wrap:anywhere]">{t('platform.permission.' + permission)}{required.includes(permission) && <Badge variant="secondary"><LockKeyhole data-icon="inline-start" />{t('platform.required')}</Badge>}</FieldLabel>
         <Switch id={id + permission} aria-label={t('platform.permission.' + permission) + (required.includes(permission) ? ` (${t('platform.required')})` : '')} checked={grants.includes(permission)} disabled={busy || required.includes(permission)} onCheckedChange={checked => setGrants(current => checked ? [...current, permission] : current.filter(value => value !== permission))} />
       </Field>)}

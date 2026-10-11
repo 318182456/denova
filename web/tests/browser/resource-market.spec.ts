@@ -254,14 +254,13 @@ for (const theme of ['dark', 'light']) {
       name: 'Add resources',
       exact: true,
     })
-    await dialog.getByRole('combobox').click()
-    await page.getByRole('option', { name: 'Local file', exact: true }).click()
+    await dialog.getByRole('radio', { name: 'Local file', exact: true }).click()
     await dialog.getByLabel('Local file', { exact: true }).setInputFiles({
       name: 'fixture.zip',
       mimeType: 'application/zip',
       buffer: await archiveResponse.body(),
     })
-    await dialog.getByRole('button', { name: 'Download and preview' }).click()
+    await dialog.getByRole('button', { name: 'Preview resources' }).click()
     const previewTrigger = dialog.getByRole('button', { name: `Preview Market image ${theme}`, exact: true })
     await previewTrigger.click()
     const resourcePreview = page.getByRole('dialog', { name: `Market image ${theme}`, exact: true })

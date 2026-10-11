@@ -4,13 +4,14 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { localized, type MarketEntry, type Source } from './api'
+import type { ResourceInput } from './ImportSourceFields'
 
 export function MarketEntryDetail({ detail, acquired, onBack, onImport, onManage, updates }: {
   updates?: ReactNode
   detail: MarketEntry
   acquired: number
   onBack: () => void
-  onImport: (source: Source) => void
+  onImport: (source: Source, initialInput?: ResourceInput) => void
   onManage: () => void
 }) {
   const { t, i18n } = useTranslation()
@@ -43,6 +44,7 @@ export function MarketEntryDetail({ detail, acquired, onBack, onImport, onManage
           <Button variant={acquired > 0 ? 'outline' : 'default'} className="h-auto min-h-9 w-full whitespace-normal" onClick={() => onImport(detail.source)}>
             <Download data-icon="inline-start" />{t(acquired > 0 ? 'market.update.importElsewhere' : 'market.contents.get')}
           </Button>
+          <Button variant="outline" className="h-auto min-h-9 w-full whitespace-normal" onClick={() => onImport(detail.source, { kind: 'file' })}>{t('market.import.fromFile')}</Button>
           {acquired > 0 && <Button variant="outline" className="w-full" onClick={onManage}>{t('market.contents.acquired', { count: acquired })}</Button>}
           {detail.compatibility && <div className="space-y-2 @4xl:border-t @4xl:pt-4"><h3 className="hidden text-xs font-medium @4xl:block">{t('market.contents.compatibility')}</h3><p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{localized(detail.compatibility, i18n.language)}</p></div>}
         </aside>

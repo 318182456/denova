@@ -27,6 +27,11 @@ func TestExchangeErrorIncludesSafeDiagnostics(t *testing.T) {
 			status: 400, code: "market.errors.operationFailed", detail: "minHostVersion",
 		},
 		{
+			name:   "GitHub download timeout",
+			err:    &platform.Error{Code: "GITHUB_UNAVAILABLE", Diagnostic: "GitHub download failed: context deadline exceeded"},
+			status: 502, code: "market.errors.downloadFailed", detail: "context deadline exceeded",
+		},
+		{
 			name:   "local modification",
 			err:    fmt.Errorf("resource fixture: %w", resourceexchange.ErrLocalModified),
 			status: 409, code: "market.errors.localModified", detail: "fixture",

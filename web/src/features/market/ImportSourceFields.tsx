@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { importExtensionSource } from '@/features/platform/extension-navigation'
+import { PackageFileHelp } from './PackageFileHelp'
+import type { Source } from './api'
 
 export type ResourceInput =
   | { kind: 'github' | 'https_zip'; url: string; ref?: string; path?: string }
@@ -11,8 +13,9 @@ export type ResourceInput =
   | { kind: 'directory'; directory: string }
 
 /** Source selection is shared by resource bundles and standalone extensions. */
-export function ImportSourceFields({ value, onChange, busy, run, onImportedSource }: {
+export function ImportSourceFields({ value, onChange, source, busy, run, onImportedSource }: {
   value: ResourceInput
+  source?: Source
   onChange: (value: ResourceInput) => void
   busy: boolean
   run: (action: () => Promise<void>) => Promise<void>
@@ -20,27 +23,25 @@ export function ImportSourceFields({ value, onChange, busy, run, onImportedSourc
 }) {
   const { t } = useTranslation()
   return <FieldGroup>
-    <Field>
-      <FieldLabel htmlFor="resource-source-kind">{t('market.import.source')}</FieldLabel>
-      <Select value={value.kind} disabled={busy} onValueChange={kind => {
+    <FieldSet>
+      <FieldLegend id="resource-source-kind" variant="label">{t('market.import.source')}</FieldLegend>
+      <ToggleGroup type="single" variant="outline" className="w-full flex-wrap justify-start" aria-labelledby="resource-source-kind" value={value.kind} disabled={busy} onValueChange={kind => {
         switch (kind) {
-          case 'github': case 'https_zip': onChange({ kind, url: '' }); break
+          case 'github': case 'https_zip': onChange(source?.kind === kind ? { ...source, kind, url: source.url || '' } : { kind, url: '' }); break
           case 'file': onChange({ kind }); break
           case 'directory': onChange({ kind, directory: '' }); break
         }
       }}>
-        <SelectTrigger id="resource-source-kind" className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent><SelectGroup>
-          <SelectItem value="github">GitHub</SelectItem>
-          <SelectItem value="https_zip">{t('market.import.url')}</SelectItem>
-          <SelectItem value="file">{t('market.import.file')}</SelectItem>
-          <SelectItem value="directory">{t('market.import.directory')}</SelectItem>
-        </SelectGroup></SelectContent>
-      </Select>
-    </Field>
+        <ToggleGroupItem value="github">GitHub</ToggleGroupItem>
+        <ToggleGroupItem value="https_zip">{t('market.import.url')}</ToggleGroupItem>
+        <ToggleGroupItem value="file">{t('market.import.file')}</ToggleGroupItem>
+        <ToggleGroupItem value="directory">{t('market.import.directory')}</ToggleGroupItem>
+      </ToggleGroup>
+    </FieldSet>
     {value.kind === 'file' ? <Field key="file">
       <FieldLabel htmlFor="market-file">{t('market.import.file')}</FieldLabel>
       <Input id="market-file" type="file" accept=".zip,.png,.json" disabled={busy} onChange={event => onChange({ kind: 'file', file: event.target.files?.[0] })} />
+      <PackageFileHelp source={source} />
     </Field> : value.kind === 'directory' ? <Field key="directory">
       <FieldLabel htmlFor="package-directory">{t('platform.directory')}</FieldLabel>
       <Input id="package-directory" value={value.directory} disabled={busy} onChange={event => onChange({ ...value, directory: event.target.value })} />
