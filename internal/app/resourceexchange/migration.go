@@ -12,6 +12,7 @@ import (
 
 	"denova/internal/agents/skills"
 	"denova/internal/platform"
+	"denova/internal/portablepath"
 	"denova/internal/project"
 	"denova/internal/revisionfile"
 	"github.com/google/uuid"
@@ -20,6 +21,8 @@ import (
 // MigrateSources runs before update workers. Each old source file is backed up
 // and removed in the same durable transaction as its new installation record.
 func (s *Service) MigrateSources(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	targets := []FileTarget{{Path: "skills"}}
 	projects, err := s.registry.List(false)
 	if err != nil {
@@ -31,10 +34,22 @@ func (s *Service) MigrateSources(ctx context.Context) error {
 		}
 	}
 	for _, target := range targets {
-		directory, err := resolveTarget(s.root, s.registry, target)
-		if err != nil {
+		base := s.root
+		if target.ProjectID != "" {
+			record, err := s.registry.Get(target.ProjectID)
+			if err != nil {
+				return err
+			}
+			layout, err := s.registry.Layout(record)
+			if err != nil {
+				return err
+			}
+			base = layout.ContentRoot
+		}
+		if err := portablepath.CheckPath(base, target.Path); err != nil {
 			return err
 		}
+		directory := filepath.Join(base, target.Path)
 		entries, err := os.ReadDir(directory)
 		if os.IsNotExist(err) {
 			continue
@@ -47,6 +62,10 @@ func (s *Service) MigrateSources(ctx context.Context) error {
 				continue
 			}
 			skillDir := filepath.Join(directory, entry.Name())
+			metadata := FileTarget{ProjectID: target.ProjectID, Path: path.Join(target.Path, entry.Name(), ".denova-source.json")}
+			if err := portablepath.CheckPath(base, metadata.Path); err != nil {
+				return err
+			}
 			state, clean, err := skills.LegacySourceState(ctx, skillDir)
 			if err != nil {
 				return err
@@ -102,7 +121,6 @@ func (s *Service) MigrateSources(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			metadata := FileTarget{ProjectID: target.ProjectID, Path: path.Join(target.Path, entry.Name(), ".denova-source.json")}
 			snapshot, err := s.snapshot(ctx, metadata)
 			if err != nil {
 				return err

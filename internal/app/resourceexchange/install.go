@@ -21,7 +21,11 @@ func (s *Service) ReadPlan(ctx context.Context, id string) (Plan, error) {
 	if _, err := uuid.Parse(id); err != nil {
 		return Plan{}, err
 	}
-	snapshot, err := revisionfile.Read(ctx, filepath.Join(s.root, "resource-exchange", "plans", id+".json"))
+	file, err := resolveTarget(s.root, nil, FileTarget{Path: "resource-exchange/plans/" + id + ".json"})
+	if err != nil {
+		return Plan{}, err
+	}
+	snapshot, err := revisionfile.Read(ctx, file)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -45,7 +49,7 @@ func (s *Service) Apply(ctx context.Context, id string) (Installation, error) {
 		return Installation{}, err
 	}
 	// A lost HTTP response may be retried safely with the same plan.
-	txnSnapshot, err := revisionfile.Read(ctx, filepath.Join(s.root, "resource-exchange", "transactions", id+".json"))
+	txnSnapshot, err := readTransaction(ctx, s.root, id)
 	if err != nil {
 		return Installation{}, err
 	}

@@ -58,7 +58,11 @@ func (s *Service) SetUpdateMode(ctx context.Context, id, mode string) error {
 // is persisted before network work so a disconnected source is not hot-looped.
 // Application submission retains its normal Project gates and cancellation.
 func (s *Service) UpdateDue(ctx context.Context, now time.Time, apply func(context.Context, string) (Installation, error)) {
-	items, err := s.Installations(ctx)
+	// Update scheduling needs installation metadata, not a hash of every local
+	// resource. Selected updates validate their content when preparing the plan.
+	s.mu.Lock()
+	items, err := s.installations(ctx)
+	s.mu.Unlock()
 	if err != nil {
 		slog.ErrorContext(ctx, "resource_update_scan_failed", "error", err)
 		return

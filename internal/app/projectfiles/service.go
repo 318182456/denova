@@ -262,6 +262,9 @@ func resolveTreeTarget(
 func readDirectoryPage(ctx context.Context, root *os.Root, path string, includeIgnored bool, encodedCursor string, budget int) (DirectoryPage, error) {
 	directoryName := "."
 	if path != "" {
+		if err := portablepath.CheckPath(root.Name(), path); err != nil {
+			return DirectoryPage{}, classifyTreeReadError(path, err)
+		}
 		directoryName = filepath.FromSlash(path)
 	}
 	directory, err := root.Open(directoryName)
@@ -432,6 +435,9 @@ func (service *Service) ReadAsset(_ context.Context, projectID, path string) ([]
 	}
 	rel, err := normalizeRelativePath(path, false)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := portablepath.CheckPath(runtime.layout.ContentRoot, rel); err != nil {
 		return nil, "", err
 	}
 	root, err := os.OpenRoot(runtime.layout.ContentRoot)

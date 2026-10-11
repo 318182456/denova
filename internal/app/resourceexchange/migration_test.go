@@ -54,7 +54,7 @@ func TestLegacySkillMigrationRetainsConsentAndModifiedState(t *testing.T) {
 			if err != nil || string(content) != string(raw) {
 				t.Fatal("migration changed Skill content")
 			}
-			entries, err := os.ReadDir(filepath.Join(s.root, "resource-exchange", "transactions"))
+			entries, err := os.ReadDir(filepath.Join(s.root, "resource-exchange", "backups"))
 			if err != nil || len(entries) != 1 {
 				t.Fatalf("migration backup: %v %v", entries, err)
 			}

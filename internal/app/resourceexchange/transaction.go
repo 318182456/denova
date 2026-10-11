@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/localfs"
 	"denova/internal/portablepath"
 	"denova/internal/project"
 	"denova/internal/revisionfile"
@@ -55,23 +56,7 @@ func resolveTarget(root string, registry *project.Registry, target FileTarget) (
 		}
 		base = layout.ContentRoot
 	}
-	// Existing components must be ordinary directories/files. os.OpenRoot is
-	// used by source readers; targets also reject symlink/case aliases.
-	current := base
-	for _, part := range strings.Split(target.Path, "/") {
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if os.IsNotExist(err) {
-			break
-		}
-		if err != nil {
-			return "", err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("resource target contains a symbolic link")
-		}
-	}
-	if err := portablepath.CheckNoCollision(base, target.Path); err != nil {
+	if err := portablepath.CheckPath(base, target.Path); err != nil {
 		return "", err
 	}
 	return filepath.Join(base, filepath.FromSlash(target.Path)), nil
@@ -82,8 +67,58 @@ func saveTransaction(ctx context.Context, root string, txn transaction) error {
 	if err != nil {
 		return err
 	}
-	_, err = revisionfile.ReplaceIfRevision(ctx, filepath.Join(root, "resource-exchange", "transactions", txn.ID+".json"), "", raw, revisionfile.Options{})
+	file, err := resolveTarget(root, nil, FileTarget{Path: "resource-exchange/transactions/" + txn.ID + ".json"})
+	if err != nil {
+		return err
+	}
+	_, err = revisionfile.ReplaceIfRevision(ctx, file, "", raw, revisionfile.Options{})
 	return err
+}
+
+// archiveTransaction moves only a durably settled record. A crash before the
+// rename leaves its final state in the recovery directory; after the rename it
+// is a backup and must never be replayed as an interrupted transaction.
+func archiveTransaction(root, id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return err
+	}
+	file := id + ".json"
+	source, err := resolveTarget(root, nil, FileTarget{Path: "resource-exchange/transactions/" + file})
+	if err != nil {
+		return err
+	}
+	destination, err := resolveTarget(root, nil, FileTarget{Path: "resource-exchange/backups/" + file})
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(destination); err == nil {
+		return fmt.Errorf("transaction backup already exists: %s", id)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		return err
+	}
+	if err := os.Rename(source, destination); err != nil {
+		return err
+	}
+	return errors.Join(localfs.SyncDirectory(filepath.Dir(destination)), localfs.SyncDirectory(filepath.Dir(source)))
+}
+
+// readTransaction supports response retries during the interval between a
+// durable commit and its archival. Both locations contain the same record type.
+func readTransaction(ctx context.Context, root, id string) (revisionfile.Snapshot, error) {
+	for _, directory := range []string{"transactions", "backups"} {
+		file, err := resolveTarget(root, nil, FileTarget{Path: "resource-exchange/" + directory + "/" + id + ".json"})
+		if err != nil {
+			return revisionfile.Snapshot{}, err
+		}
+		snapshot, err := revisionfile.Read(ctx, file)
+		if err != nil || snapshot.Exists {
+			return snapshot, err
+		}
+	}
+	return revisionfile.Snapshot{}, nil
 }
 
 func commitFiles(ctx context.Context, root string, registry *project.Registry, id string, changes []fileChange) error {
@@ -123,7 +158,10 @@ func commitFiles(ctx context.Context, root string, registry *project.Registry, i
 				}
 			}
 			txn.State = "rolled_back"
-			return errors.Join(cause, saveTransaction(context.Background(), root, txn))
+			if err := saveTransaction(context.Background(), root, txn); err != nil {
+				return errors.Join(cause, err)
+			}
+			return errors.Join(cause, archiveTransaction(root, txn.ID))
 		}
 		for i, change := range changes {
 			if err := files.Replace(paths[i], change.After, !change.Delete); err != nil {
@@ -134,15 +172,23 @@ func commitFiles(ctx context.Context, root string, registry *project.Registry, i
 		if err := saveTransaction(context.Background(), root, txn); err != nil {
 			return rollback(err)
 		}
+		if err := archiveTransaction(root, txn.ID); err != nil {
+			// The commit is already durable. Recovery can finish archival without
+			// turning a housekeeping failure into an installation rollback.
+			slog.WarnContext(ctx, "resource_exchange_archive_deferred", "operation", txn.ID, "error", err)
+		}
 		slog.InfoContext(ctx, "resource_exchange_committed", "operation", id, "files", len(changes))
 		return nil
 	})
 }
 
-// Recover must run before resource readers or runtimes start. Completed records
-// retain before-images as backups; interrupted commits restore their old state.
+// Recover must run before resource readers or runtimes start. Only pending
+// records are enumerated; settled records retain before-images under backups.
 func Recover(root string, registry *project.Registry) error {
 	dir := filepath.Join(root, "resource-exchange", "transactions")
+	if err := portablepath.CheckPath(root, "resource-exchange/transactions"); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
@@ -153,6 +199,9 @@ func Recover(root string, registry *project.Registry) error {
 	for _, entry := range entries {
 		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
 			continue
+		}
+		if err := portablepath.CheckPath(dir, entry.Name()); err != nil {
+			return err
 		}
 		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
@@ -167,6 +216,9 @@ func Recover(root string, registry *project.Registry) error {
 		}
 		switch txn.State {
 		case "committed", "rolled_back":
+			if err := archiveTransaction(root, txn.ID); err != nil {
+				return err
+			}
 			continue
 		case "applying":
 		default:
@@ -206,6 +258,9 @@ func Recover(root string, registry *project.Registry) error {
 			return err
 		}
 		slog.Info("resource_exchange_recovered", "operation", txn.ID)
+		if err := archiveTransaction(root, txn.ID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

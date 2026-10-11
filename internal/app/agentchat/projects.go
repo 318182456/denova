@@ -66,6 +66,10 @@ func (service *Service) Projects() []Project {
 	if service == nil || service.registry == nil {
 		return nil
 	}
+	if err := service.registry.DiscoverBooks(); err != nil {
+		slog.Error("Discover Projects failed", "error", err)
+		return []Project{}
+	}
 	startedAt := time.Now()
 	currentWorkspace := ""
 	if service.host != nil {

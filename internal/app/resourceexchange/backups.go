@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"denova/internal/assetstore"
+	"denova/internal/portablepath"
 	"denova/internal/revisionfile"
 	"github.com/google/uuid"
 )
@@ -31,7 +32,11 @@ func (s *Service) readBackup(ctx context.Context, id string) (transaction, error
 	if _, err := s.ReadPlan(ctx, id); err != nil {
 		return transaction{}, err
 	}
-	snapshot, err := revisionfile.Read(ctx, filepath.Join(s.root, "resource-exchange", "transactions", id+".json"))
+	file, err := resolveTarget(s.root, nil, FileTarget{Path: "resource-exchange/backups/" + id + ".json"})
+	if err != nil {
+		return transaction{}, err
+	}
+	snapshot, err := revisionfile.Read(ctx, file)
 	if err != nil {
 		return transaction{}, err
 	}
@@ -44,7 +49,10 @@ func (s *Service) Backups(ctx context.Context, installationID string) ([]Backup,
 	if _, err := uuid.Parse(installationID); err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(filepath.Join(s.root, "resource-exchange", "transactions"))
+	if err := portablepath.CheckPath(s.root, "resource-exchange/backups"); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(s.root, "resource-exchange", "backups"))
 	if os.IsNotExist(err) {
 		return []Backup{}, nil
 	}

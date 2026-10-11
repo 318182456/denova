@@ -251,7 +251,7 @@ func TestEnsureStoreMigratesReleasedReceiptWithoutRecopyingData(t *testing.T) {
 	}
 }
 
-func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *testing.T) {
+func TestRegistryDefersReleasedReceiptsUntilStoreIsUsed(t *testing.T) {
 	denovaDir := t.TempDir()
 	registry := NewRegistry(denovaDir)
 	workspaces := []string{t.TempDir(), t.TempDir()}
@@ -299,6 +299,20 @@ func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *test
 	if statusByID[records[0].ID] != StatusAvailable || statusByID[records[1].ID] != StatusMissing {
 		t.Fatalf("migrated Project statuses = %#v", statusByID)
 	}
+	// Listing a missing or unused Project must not mutate its Store.
+	for _, record := range records {
+		receiptPath := filepath.Join(denovaDir, storeDirectoryName, record.StoreDirName, "migration.json")
+		raw, err := os.ReadFile(receiptPath)
+		if err != nil || !strings.Contains(string(raw), `"source"`) {
+			t.Fatalf("listing migrated an unused Store: %s %v", raw, err)
+		}
+	}
+	for _, record := range records {
+		if _, err := registry.EnsureStore(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	for _, record := range records {
 		receiptPath := filepath.Join(denovaDir, storeDirectoryName, record.StoreDirName, "migration.json")
 		raw, err := os.ReadFile(receiptPath)

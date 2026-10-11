@@ -32,6 +32,9 @@ func sharedContentDirectory(runtime *Runtime, caller *activation) (string, error
 	if err != nil {
 		return "", err
 	}
+	if err := portablepath.CheckPath(layout.StoreRoot, "extensions/"+caller.release.Manifest.ID+"/content"); err != nil {
+		return "", err
+	}
 	return filepath.Join(layout.StoreRoot, "extensions", caller.release.Manifest.ID, "content"), nil
 }
 
@@ -42,10 +45,6 @@ func (s *ResourceService) serveSharedContent(w http.ResponseWriter, request *htt
 	}
 	directory, err := sharedContentDirectory(runtime, caller)
 	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := portablepath.PreflightTree(directory); err != nil && !os.IsNotExist(err) {
 		writeError(w, err)
 		return
 	}
@@ -63,6 +62,10 @@ func (s *ResourceService) serveSharedContent(w http.ResponseWriter, request *htt
 		}
 		sum := sha256.Sum256(data)
 		name := hex.EncodeToString(sum[:]) + extension
+		if err := portablepath.CheckPath(directory, "assets/"+name); err != nil {
+			writeError(w, err)
+			return
+		}
 		file := filepath.Join(directory, "assets", name)
 		_, err = revisionfile.ReplaceIfRevision(request.Context(), file, revisionfile.MissingRevision, data, revisionfile.Options{FileMode: 0600, DirectoryMode: 0700})
 		if err != nil && !errors.Is(err, revisionfile.ErrRevisionConflict) {
@@ -81,7 +84,7 @@ func (s *ResourceService) serveSharedContent(w http.ResponseWriter, request *htt
 	case route == "/assets/content" && request.Method == http.MethodGet:
 		name := request.URL.Query().Get("path")
 		assetDir := filepath.Join(directory, "assets")
-		if err := portablepath.CheckNoCollision(assetDir, name); err != nil || strings.Contains(name, "/") {
+		if err := portablepath.CheckPath(directory, "assets/"+name); err != nil || strings.Contains(name, "/") || name == "" {
 			writeError(w, failure("INVALID_ARGUMENT", "Shared media requires a content-addressed filename"))
 			return
 		}
@@ -100,20 +103,36 @@ func (s *ResourceService) serveSharedContent(w http.ResponseWriter, request *htt
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
 	case route == "/assets/documents" && request.Method == http.MethodGet:
+		if err := portablepath.CheckPath(directory, "documents"); err != nil {
+			writeError(w, err)
+			return
+		}
 		entries, err := os.ReadDir(filepath.Join(directory, "documents"))
 		if err != nil && !os.IsNotExist(err) {
 			writeError(w, err)
 			return
 		}
 		names := []string{}
+		seen := map[string]bool{}
 		for _, entry := range entries {
-			if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".json") {
-				names = append(names, entry.Name())
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
 			}
+			key := portablepath.FoldKey(entry.Name())
+			if err := portablepath.ValidateComponent(entry.Name()); err != nil || !entry.Type().IsRegular() || seen[key] {
+				writeError(w, failure("INVALID_ARGUMENT", "Content documents must be regular portable files without case aliases"))
+				return
+			}
+			seen[key] = true
+			names = append(names, entry.Name())
 		}
 		slices.Sort(names)
 		writeResponse(w, http.StatusOK, map[string]any{"items": names})
 	case route == "/assets/document":
+		if err := portablepath.CheckPath(directory, "documents"); err != nil {
+			writeError(w, err)
+			return
+		}
 		s.serveContentDocument(w, request, filepath.Join(directory, "documents"))
 	default:
 		writeError(w, failure("NOT_FOUND", "Unknown shared content route"))
@@ -133,7 +152,7 @@ func (s *ResourceService) serveContentDocument(w http.ResponseWriter, request *h
 		writeError(w, failure("NOT_FOUND", "Unknown content document method"))
 		return
 	}
-	if err := portablepath.CheckNoCollision(directory, input.Path); err != nil || strings.Contains(input.Path, "/") || !strings.HasSuffix(input.Path, ".json") {
+	if err := portablepath.CheckPath(directory, input.Path); err != nil || strings.Contains(input.Path, "/") || !strings.HasSuffix(input.Path, ".json") {
 		writeError(w, failure("INVALID_ARGUMENT", "Content documents require a portable JSON filename"))
 		return
 	}

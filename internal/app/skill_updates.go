@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"denova/internal/observability"
 )
 
 // startResourceUpdates is owned by the App root scope, including cancellation
@@ -23,6 +25,12 @@ func (a *App) startResourceUpdates(ctx context.Context) {
 		}()
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
+		finishMigration := observability.StartStartupStage(workerCtx, "resource_source_migration")
+		migrationErr := a.ResourceExchange().MigrateSources(workerCtx)
+		finishMigration(migrationErr)
+		if migrationErr != nil {
+			return
+		}
 		a.ResourceExchange().UpdateDue(workerCtx, time.Now().UTC(), a.ApplyResourcePlan)
 		for {
 			select {

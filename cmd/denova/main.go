@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"denova/config"
 	"denova/internal/api"
@@ -35,7 +36,15 @@ func main() {
 		fmt.Println(buildinfo.Version)
 		return
 	}
+	startupStarted := time.Now()
+	ctx := context.Background()
+	logPath, logOutput, closeLog := setupLogging("./log")
+	defer closeLog()
+	observability.ConfigureStructuredLogging(logOutput)
+	slog.InfoContext(ctx, "startup_logging_initialized", "current_file", logPath, "duration_ms", float64(time.Since(startupStarted))/float64(time.Millisecond))
+	finishStage := observability.StartStartupStage(ctx, "update_recovery")
 	recovering, err := update.PrepareStartup()
+	finishStage(err)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Update recovery failed: %v\n", err)
 		os.Exit(1)
@@ -43,7 +52,9 @@ func main() {
 	if recovering {
 		return
 	}
+	finishStage = observability.StartStartupStage(ctx, "configuration")
 	cfg := config.Load()
+	finishStage(nil)
 	port := defaultPort(cfg)
 	frontendPort := defaultFrontendPort(cfg)
 	flag.StringVar(&workspace, "workspace", "", "workspace directory (defaults to the last opened workspace)")
@@ -59,13 +70,11 @@ func main() {
 	agentrun.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 	agentrun.SetTraceContentCaptureEnabled(cfg.Labs.DeveloperMode)
 
-	logPath, logOutput, closeLog := setupLogging("./log")
-	defer closeLog()
-	observability.ConfigureStructuredLogging(logOutput)
-	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] logging enabled dir=./log current_file=%s", logPath))
 	requestedPort := port
 	listenHost := config.HTTPListenHost(cfg.AllowLANAccess)
+	finishStage = observability.StartStartupStage(ctx, "backend_listener")
 	listener, port, err := reserveBackendListener(listenHost, requestedPort, !portWasExplicitlySet(os.Args[1:]))
+	finishStage(err)
 	if err != nil {
 		reportBackendPortConflict(os.Stderr, requestedPort, err)
 		waitForAnyKey(os.Stdin)
@@ -95,10 +104,10 @@ func main() {
 
 	cfg.SkillsDir = resolveSkillsDir(cfg.SkillsDir)
 
-	ctx := context.Background()
-
 	// 初始化应用运行时
+	finishStage = observability.StartStartupStage(ctx, "application")
 	application, err := app.New(ctx, cfg)
+	finishStage(err)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize application: %v\n", err)
 		os.Exit(1)
@@ -106,7 +115,9 @@ func main() {
 	defer application.Close()
 
 	// 启动 HTTP 服务
+	finishStage = observability.StartStartupStage(ctx, "http_setup")
 	srv := api.NewServerWithListener(application, port, listener)
+	finishStage(nil)
 
 	// 打印启动信息
 	url := fmt.Sprintf("http://localhost:%s", port)
@@ -150,6 +161,7 @@ func main() {
 			slog.ErrorContext(ctx, "update_readiness_failed", "error", err)
 		}
 	})
+	slog.InfoContext(ctx, "startup_prepared", "duration_ms", float64(time.Since(startupStarted))/float64(time.Millisecond))
 	srv.Run()
 }
 
@@ -179,6 +191,7 @@ func hasVersionArg(args []string) bool {
 
 // openBrowser 打开默认浏览器
 func openBrowser(url string) {
+	finishStage := observability.StartStartupStage(context.Background(), "browser_launch")
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
@@ -189,7 +202,9 @@ func openBrowser(url string) {
 		cmd = exec.Command("cmd", "/c", "start", url)
 	}
 	if cmd != nil {
-		_ = cmd.Start()
+		finishStage(cmd.Start())
+	} else {
+		finishStage(fmt.Errorf("browser launch is unsupported on %s", runtime.GOOS))
 	}
 }
 

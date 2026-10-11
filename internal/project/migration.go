@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"denova/internal/assetstore"
+	"denova/internal/book"
 	"denova/internal/book/versions"
+	"denova/internal/portablepath"
 	workspacelayout "denova/internal/workspace"
 )
 
@@ -41,6 +43,14 @@ func (registry *Registry) EnsureStore(record Record) (Layout, error) {
 	if err != nil {
 		return Layout{}, err
 	}
+	if err := registry.migrateProjectIDStoreDirectories([]Record{record}); err != nil {
+		return Layout{}, err
+	}
+	for _, relative := range []string{"migration.json", "meta.json"} {
+		if err := portablepath.CheckPath(layout.StoreRoot, relative); err != nil {
+			return Layout{}, fmt.Errorf("inspect Project Store metadata: %w", err)
+		}
+	}
 	if err := os.MkdirAll(layout.StoreRoot, 0o700); err != nil {
 		return Layout{}, fmt.Errorf("create Project Store: %w", err)
 	}
@@ -50,10 +60,7 @@ func (registry *Registry) EnsureStore(record Record) (Layout, error) {
 		return Layout{}, err
 	}
 	if complete {
-		if layout.Type == TypeBook {
-			return layout, assetstore.Migrate(layout.ContentRoot, layout.StoreRoot)
-		}
-		return layout, nil
+		return layout, registry.prepareBookStore(layout)
 	}
 	legacy := []struct {
 		name        string
@@ -107,10 +114,17 @@ func (registry *Registry) EnsureStore(record Record) (Layout, error) {
 	if err := writeFileAtomic(receiptPath, append(raw, '\n'), 0o600); err != nil {
 		return Layout{}, fmt.Errorf("write Project Store migration receipt: %w", err)
 	}
-	if layout.Type == TypeBook {
-		return layout, assetstore.Migrate(layout.ContentRoot, layout.StoreRoot)
+	return layout, registry.prepareBookStore(layout)
+}
+
+func (registry *Registry) prepareBookStore(layout Layout) error {
+	if layout.Type != TypeBook {
+		return nil
 	}
-	return layout, nil
+	if err := book.NewMetaStore(registry.denovaDir).MigrateLegacy(layout.ContentRoot, layout.StoreRoot); err != nil {
+		return fmt.Errorf("migrate Book metadata: %w", err)
+	}
+	return assetstore.Migrate(layout.ContentRoot, layout.StoreRoot)
 }
 
 // ensureCurrentStoreMigrationReceipt accepts the current receipt, upgrades the
@@ -153,16 +167,6 @@ func ensureCurrentStoreMigrationReceipt(receiptPath, projectID string) (bool, er
 			storeMigrationVersion,
 		)
 	}
-}
-
-func (registry *Registry) migrateReleasedStoreReceipts(projects []Record) error {
-	for _, record := range projects {
-		receiptPath := filepath.Join(registry.denovaDir, storeDirectoryName, record.StoreDirName, "migration.json")
-		if _, err := ensureCurrentStoreMigrationReceipt(receiptPath, record.ID); err != nil {
-			return fmt.Errorf("migrate Project %s Store receipt: %w", record.ID, err)
-		}
-	}
-	return nil
 }
 
 func copyStateEntry(source, destination string) error {
