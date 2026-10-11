@@ -21,16 +21,34 @@ type interruptedTreeDiscovery struct {
 	entered, release chan struct{}
 }
 
-func (store *interruptedTreeDiscovery) List(ctx context.Context, selector agentsession.Selector) ([]agentsession.Key, error) {
-	if store.probe.CompareAndSwap(true, false) {
-		close(store.entered)
-		<-store.release
-		return nil, errors.New("injected descendant discovery failure")
+func (store *interruptedTreeDiscovery) Open(ctx context.Context, key agentsession.Key) (agentsession.Log, error) {
+	log, err := store.Store.Open(ctx, key)
+	if err != nil {
+		return nil, err
 	}
-	return store.Store.List(ctx, selector)
+	return &interruptedTreeLog{Log: log, store: store, key: key}, nil
 }
 
-func TestPartialTreePauseKeepsAdmissionClosedUntilRetryFinishes(t *testing.T) {
+type interruptedTreeLog struct {
+	agentsession.Log
+	store *interruptedTreeDiscovery
+	key   agentsession.Key
+}
+
+func (log *interruptedTreeLog) Append(ctx context.Context, revision agentsession.Revision, records ...agentsession.Record) (agentsession.Revision, error) {
+	if log.key.ID == "partial-child" {
+		for _, record := range records {
+			if record.Kind == sessionControlRecord && log.store.probe.CompareAndSwap(true, false) {
+				close(log.store.entered)
+				<-log.store.release
+				return revision, context.Canceled
+			}
+		}
+	}
+	return log.Log.Append(ctx, revision, records...)
+}
+
+func TestPartialTreePauseKeepsAdmissionClosedAfterCommitFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	store := &interruptedTreeDiscovery{Store: agentsession.Memory(), entered: make(chan struct{}), release: make(chan struct{})}
@@ -59,6 +77,9 @@ func TestPartialTreePauseKeepsAdmissionClosedUntilRetryFinishes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := root.RegisterChildTask(ctx, ChildTask{Key: childKey}); err != nil {
+		t.Fatal(err)
+	}
 	store.probe.Store(true)
 	stopped := make(chan error, 1)
 	agentasync.SafeGo(func() {
@@ -66,16 +87,13 @@ func TestPartialTreePauseKeepsAdmissionClosedUntilRetryFinishes(t *testing.T) {
 		stopped <- err
 	}, func(err error) { stopped <- err })
 	<-store.entered
-	if _, err := child.Run(ctx, agentschema.Text("concurrent child start")); !errors.Is(err, agentschema.ErrSessionBusy) {
-		t.Fatalf("concurrent admission=%v", err)
+	close(store.release)
+	if err := <-stopped; err == nil {
+		t.Fatal("partial tree pause reported success")
 	}
 	queued, err := child.FollowUp(ctx, agentschema.Input{Text: "received while stopping", IdempotencyKey: "pending-child"})
 	if err != nil {
 		t.Fatal(err)
-	}
-	close(store.release)
-	if err := <-stopped; err == nil {
-		t.Fatal("partial tree pause reported success")
 	}
 	if _, err := child.Run(ctx, agentschema.Text("start after partial failure")); !errors.Is(err, agentschema.ErrSessionBusy) {
 		t.Fatalf("partial failure released admission: %v", err)

@@ -125,6 +125,8 @@ export interface ModeRouterProps {
   onStop: () => void
   onSuspend?: () => void
   onResumeTask?: () => void
+  recoveryFailed?: boolean
+  onRetryRecovery?: () => void
   onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>

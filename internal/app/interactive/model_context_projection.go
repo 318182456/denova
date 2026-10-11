@@ -76,12 +76,7 @@ func buildModelContextProjection(history interactive.StoryModelHistory, compacti
 			break
 		}
 		turn := history.Turns[boundary]
-		messages := []*agentschema.Message{agentschema.UserMessageWithAttachments(turn.User, turn.Attachments)}
-		messages = append(messages, settledTurnToolContextMessages(turn.ModelContextMessages)...)
-		assistant := agentschema.AssistantMessage(turn.Narrative, nil)
-		assistant.Extra = providers.ContinuationExtra(turn.ProviderContinuation)
-		messages = append(messages, assistant)
-		projection.Messages = append(projection.Messages, toolresult.ApplyContextPolicy(messages, policy)...)
+		projection.Messages = append(projection.Messages, interactive.ModelTurnMessages(turn, policy)...)
 	}
 	if compaction != nil {
 		// The live suffix is owned by Agent and may extend beyond this Story view.
@@ -99,13 +94,7 @@ func buildModelContextProjection(history interactive.StoryModelHistory, compacti
 // canonical final narrative is appended separately below, so replaying the
 // same prose inside submit_interactive_turn would duplicate every settled Turn.
 func settledTurnToolContextMessages(messages []interactive.ModelContextMessage) []*agents.Message {
-	projected := schemaMessagesFromInteractiveContext(messages)
-	for _, message := range projected {
-		if message != nil && message.Role == agents.RoleAssistant && len(message.ToolCalls) > 0 {
-			message.Content = ""
-		}
-	}
-	return projected
+	return interactive.SettledTurnToolMessages(messages)
 }
 
 func projectInteractivePendingContext(
@@ -153,11 +142,7 @@ func interactivePlayerInputContextMessages(
 	batches []interactive.ModelContextBatchEvent,
 	inputMessage func(interactive.PlayerInputAcceptedEvent) *agentschema.Message,
 ) []*agents.Message {
-	messages := []*agents.Message{inputMessage(input)}
-	for _, batch := range batches {
-		messages = append(messages, schemaMessagesFromInteractiveContext(batch.Messages)...)
-	}
-	return messages
+	return interactive.PlayerInputContextMessages(batches, inputMessage(input))
 }
 
 func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, input interactive.PlayerInputAcceptedEvent) (int, error) {

@@ -146,6 +146,8 @@ const chat = {
   'chat.runtime.invalidCommand': '这条指令已不适用于画面中的运行',
   'chat.runtime.commandFailed': 'Agent 指令提交失败',
   'chat.runtime.abortPending': 'Agent 正在中断，请等待当前运行结算',
+  'chat.activity.recoveryFailed': '暂时无法恢复连接。已接受的运行仍保存在持久化记录中，请重试恢复。',
+  'chat.activity.retryRecovery': '重试恢复',
   'chat.activity.recovering': '正在从持久化状态恢复已接受的 Agent 运行…',
   'chat.activity.displayRehydrated': '较早的实时轨迹已超出展示预算；已恢复规范历史，并继续观察同一次 Agent 运行。',
   'chat.activity.recoveryPaused': '运行在异常恢复点暂停，正在等待安全恢复…',

@@ -262,7 +262,7 @@ func validateEmbeddedRecord(record agentsession.Record) error {
 			return fmt.Errorf("Agent turn record is invalid")
 		}
 	case "session.input", "session.input_update", "session.control", "turn.checkpoint",
-		"turn.tool", "turn.interaction", "turn.interaction_response", "session.task_completion_delivery":
+		"turn.tool", "turn.interaction", "turn.interaction_response", "session.task_completion_delivery", "session.child_tasks":
 		if !json.Valid(record.Data) {
 			return fmt.Errorf("invalid Agent continuation record %q", record.Kind)
 		}
@@ -284,6 +284,28 @@ func cloneStringMap(input map[string]string) map[string]string {
 	result := make(map[string]string, len(input))
 	for key, value := range input {
 		result[key] = value
+	}
+	return result
+}
+
+// CurrentCheckpoint excludes historical receipts and locators from status reads.
+func (projection *Projection) CurrentCheckpoint() (json.RawMessage, error) {
+	current := Projection{Streams: make(map[string]*streamProjection, len(projection.Streams))}
+	for key, stream := range projection.Streams {
+		current.Streams[key] = &streamProjection{Start: stream.Start, Key: stream.Key, Recovery: *stream.Recovery.Current(), Locations: make(map[agentsession.Revision]recordLocator)}
+		for _, run := range stream.Recovery.Recent {
+			current.Streams[key].Locations[run.Settlement] = stream.Locations[run.Settlement]
+		}
+	}
+	return json.Marshal(currentCheckpoint{Version: currentProjectionVersion, Projection: current})
+}
+
+func (projection *Projection) CurrentReadCursors() []conversationjournal.Cursor {
+	var result []conversationjournal.Cursor
+	for _, stream := range projection.Streams {
+		for _, run := range stream.Recovery.Recent {
+			result = append(result, stream.Locations[run.Settlement].Cursor)
+		}
 	}
 	return result
 }

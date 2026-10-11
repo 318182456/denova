@@ -2,6 +2,7 @@ package canonical
 
 import (
 	"context"
+	agenthistory "github.com/alfredxw/denova/agent/context/history"
 
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
@@ -31,4 +32,11 @@ type CanonicalHistorySource interface {
 // discarded bodies in memory; the journal remains the sole recovery authority.
 type CanonicalHistoryVisitor interface {
 	VisitCanonicalMessages(context.Context, func(*agentschema.Message) error) error
+}
+
+// CanonicalHistoryWindow returns the retained window in semantic context-state
+// order. Coordinates count the complete lane; omitted bodies need not be read.
+// Implementations must verify the full lane count before selecting the window.
+type CanonicalHistoryWindow interface {
+	ReadCanonicalWindow(context.Context, int, *agenthistory.HistoryArchive) ([]*agentschema.Message, error)
 }

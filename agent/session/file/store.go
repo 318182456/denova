@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -105,7 +106,7 @@ func (store *Store) OpenReader(ctx context.Context, key session.Key) (session.Lo
 	if _, err := os.Stat(base + ".manifest.json"); err != nil {
 		return nil, err
 	}
-	return session.ReadOnlyLog{Reader: &logFile{path: base + ".jsonl"}}, nil
+	return &logFile{path: base + ".jsonl", readOnly: true}, nil
 }
 
 func (store *Store) List(ctx context.Context, selector session.Selector) ([]session.Key, error) {
@@ -171,7 +172,7 @@ func (store *Store) Delete(ctx context.Context, key session.Key) error {
 		return err
 	}
 	defer release()
-	for _, path := range []string{base + ".jsonl", base + ".manifest.json"} {
+	for _, path := range []string{base + ".jsonl", base + ".manifest.json", base + ".idx.json", base + ".idx.json.current"} {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("delete Agent Session file: %w", err)
 		}
@@ -189,24 +190,30 @@ func (store *Store) baseForKey(key session.Key) (string, [sha256.Size]byte, erro
 }
 
 type recordLocation struct {
-	offset   int64
-	length   int
-	previous session.Revision
+	Offset   int64            `json:"offset"`
+	Length   int              `json:"length"`
+	Previous session.Revision `json:"previous"`
 }
 
 type logFile struct {
-	locations        map[session.Revision]recordLocation
-	path             string
-	release          func() error
-	mu               sync.Mutex
-	initialized      bool
-	revision         session.Revision
-	validBytes       int64
-	closed           bool
-	closeOnce        sync.Once
-	closeErr         error
-	resilienceFormat bool
-	storageErr       error
+	locations          map[session.Revision]recordLocation
+	path               string
+	release            func() error
+	mu                 sync.Mutex
+	initialized        bool
+	revision           session.Revision
+	validBytes         int64
+	closed             bool
+	closeOnce          sync.Once
+	closeErr           error
+	resilienceFormat   bool
+	storageErr         error
+	readOnly           bool
+	projection         session.CheckpointProjection
+	firstDigest        string
+	lastDigest         string
+	lastLocation       recordLocation
+	checkpointRevision session.Revision
 }
 
 func (log *logFile) Replay(ctx context.Context, apply func(session.Record) error) (session.ReplayStats, error) {
@@ -218,6 +225,11 @@ func (log *logFile) Replay(ctx context.Context, apply func(session.Record) error
 	if log.closed {
 		return session.ReplayStats{}, session.ErrLogClosed
 	}
+	release, err := acquireLease(ctx, log.path+".domain.lock")
+	if err != nil {
+		return session.ReplayStats{}, err
+	}
+	defer release()
 	return log.replayLocked(ctx, apply)
 }
 
@@ -238,6 +250,14 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 	if log.closed {
 		return 0, session.ErrLogClosed
 	}
+	if log.readOnly {
+		return log.revision, errors.New("read-only Agent Session")
+	}
+	release, err := acquireLease(ctx, log.path+".domain.lock")
+	if err != nil {
+		return log.revision, err
+	}
+	defer release()
 	if log.storageErr != nil {
 		return log.revision, log.storageErr
 	}
@@ -315,11 +335,27 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 		log.locations = make(map[session.Revision]recordLocation)
 	}
 	for _, record := range committed {
-		log.locations[record.Revision] = recordLocation{offset: log.validBytes, length: len(encoded), previous: expected}
+		log.locations[record.Revision] = recordLocation{Offset: log.validBytes, Length: len(encoded), Previous: expected}
 	}
+	log.rememberTransaction(encoded, recordLocation{Offset: log.validBytes, Length: len(encoded), Previous: expected})
 	log.revision = body.End
 	log.resilienceFormat = log.resilienceFormat || upgrading
 	log.validBytes += int64(len(encoded))
+	if log.projection != nil {
+		for _, record := range committed {
+			if err := log.projection.Apply(record); err != nil {
+				log.storageErr = errors.Join(session.ErrCommitUnknown, err)
+				return log.revision, log.storageErr
+			}
+		}
+		// A cache failure cannot turn a committed command into a failed command.
+		// The next open verifies the older checkpoint and replays this tail.
+		if log.revision-log.checkpointRevision >= 256 {
+			if err := log.persistCheckpointLocked(); err != nil {
+				slog.WarnContext(ctx, "[agent-session-file] recovery cache write failed", "path", log.path, "error", err)
+			}
+		}
+	}
 	return log.revision, nil
 }
 
@@ -334,6 +370,8 @@ func (log *logFile) replayLocked(ctx context.Context, apply func(session.Record)
 	}
 	defer file.Close()
 	log.locations = make(map[session.Revision]recordLocation)
+	log.firstDigest, log.lastDigest = "", ""
+	log.lastLocation, log.resilienceFormat = recordLocation{}, false
 	reader := bufio.NewReaderSize(file, replayBufferBytes)
 	var stats session.ReplayStats
 	var revision session.Revision
@@ -358,7 +396,7 @@ func (log *logFile) replayLocked(ctx context.Context, apply func(session.Record)
 			return stats, err
 		}
 		for _, record := range records {
-			log.locations[record.Revision] = recordLocation{offset: validBytes, length: len(line), previous: revision}
+			log.locations[record.Revision] = recordLocation{Offset: validBytes, Length: len(line), Previous: revision}
 			log.resilienceFormat = log.resilienceFormat || isResilienceRecord(record.Kind)
 			stats.RecordsRead++
 			stats.BytesRead += int64(len(record.Kind) + len(record.Data))
@@ -366,6 +404,7 @@ func (log *logFile) replayLocked(ctx context.Context, apply func(session.Record)
 				return stats, err
 			}
 		}
+		log.rememberTransaction(line, recordLocation{Offset: validBytes, Length: len(line), Previous: revision})
 		revision = records[len(records)-1].Revision
 		validBytes += int64(len(line))
 		if readErr != nil {
@@ -406,6 +445,11 @@ func (log *logFile) Close() error {
 	log.mu.Lock()
 	defer log.mu.Unlock()
 	log.closeOnce.Do(func() {
+		if !log.readOnly && log.storageErr == nil {
+			if err := log.persistCheckpointLocked(); err != nil {
+				slog.Warn("[agent-session-file] recovery cache write failed", "path", log.path, "error", err)
+			}
+		}
 		log.closed = true
 		if log.release != nil {
 			log.closeErr = log.release()

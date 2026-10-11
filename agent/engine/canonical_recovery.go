@@ -48,7 +48,14 @@ func RestoreCanonicalCheckpoint(ctx context.Context, checkpoint PersistedMessage
 		appendMessage(message)
 		return nil
 	}
-	if visitor, ok := source.(canonical.CanonicalHistoryVisitor); ok {
+	if window, ok := source.(canonical.CanonicalHistoryWindow); ok {
+		messages, err := window.ReadCanonicalWindow(ctx, checkpoint.MessageCount, checkpoint.Archive)
+		if err != nil {
+			return nil, false, err
+		}
+		state.Messages = messages
+		count = checkpoint.MessageCount
+	} else if visitor, ok := source.(canonical.CanonicalHistoryVisitor); ok {
 		if err := visitor.VisitCanonicalMessages(ctx, visit); err != nil {
 			return nil, false, err
 		}

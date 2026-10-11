@@ -126,6 +126,43 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 				t.Error("history lookup started execution")
 				return agent.Definition{}, fmt.Errorf("unexpected execution")
 			})
+			currentPath := conversationjournal.SidecarPath(path) + ".current"
+			for _, cache := range []string{"valid", "missing", "corrupt"} {
+				if cache == "missing" {
+					if err := os.Remove(currentPath); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if cache == "corrupt" {
+					if err := os.WriteFile(currentPath, []byte(`{"invalid":true}`), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				reader, err := store.OpenReader(ctx, key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				recovery, err := reader.(agent.RecoveryLog).Recovery(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(recovery.Inputs) != 1 || len(recovery.Runs) != 32 || recovery.Cursor != completedRuns+1 {
+					t.Fatalf("cache=%s current recovery retained history or lost pending work: inputs=%d runs=%d cursor=%d", cache, len(recovery.Inputs), len(recovery.Runs), recovery.Cursor)
+				}
+				if _, err := reader.Append(ctx, recovery.Revision, queued); err == nil {
+					t.Fatal("status reader accepted a mutation")
+				}
+				if err := reader.Close(); err != nil {
+					t.Fatal(err)
+				}
+				current, err := os.ReadFile(currentPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(current) > 100_000 || bytes.Contains(current, []byte(body)) {
+					t.Fatalf("current checkpoint retained historical bodies: bytes=%d", len(current))
+				}
+			}
 			for _, rebuild := range []bool{false, true} {
 				if rebuild {
 					if err := os.Remove(conversationjournal.SidecarPath(path)); err != nil {

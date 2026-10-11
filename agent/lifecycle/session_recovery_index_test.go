@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,36 @@ import (
 	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
+
+func TestCurrentRecoveryKeepsDistinctRecentRunsAcrossSuspensions(t *testing.T) {
+	var index RecoveryIndex
+	settle := func(runID string, status agentschema.ResultStatus) {
+		record, err := sessionRecord(turnInterruptedRecord, persistedTurn{RunID: runID, CommandID: runID, Status: status})
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.Revision = index.Revision + 1
+		if err := index.Apply(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 31 {
+		settle(fmt.Sprintf("completed-%02d", i), agentschema.ResultCompleted)
+	}
+	for range 40 {
+		settle("resumable", agentschema.ResultSuspended)
+	}
+	current := index.Current()
+	if len(current.Runs) != 32 || len(current.Recent) != 32 || current.Recent[0].Receipt.RunID != "completed-00" {
+		t.Fatalf("repeated suspension evicted distinct historical runs: recent=%d runs=%d", len(current.Recent), len(current.Runs))
+	}
+	settle("resumable", agentschema.ResultCompleted)
+	settle("newest", agentschema.ResultCompleted)
+	current = index.Current()
+	if len(current.Recent) != 32 || current.Recent[0].Receipt.RunID != "completed-01" || current.Recent[31].Receipt.RunID != "newest" || current.Runs["resumable"].Status != agentschema.ResultCompleted {
+		t.Fatalf("current projection changed the distinct-run window or latest settlement: %+v", current.Recent)
+	}
+}
 
 func TestRecoveryIndexKeepsOnlyUnfinishedBodiesAndOriginalReceipts(t *testing.T) {
 	var index RecoveryIndex

@@ -19,12 +19,17 @@ func (session *Session) loadRecovery(ctx context.Context) error {
 		index, err = log.Recovery(ctx)
 	} else {
 		index = &RecoveryIndex{}
-		_, err = session.log.Replay(ctx, index.Apply)
+		if log, ok := session.log.(agentsession.IndexedLog); ok {
+			err = log.Recover(ctx, index)
+		} else {
+			_, err = session.log.Replay(ctx, index.Apply)
+		}
 	}
 	if err != nil {
 		return err
 	}
 	session.recovery = index
+	session.cursor = index.Cursor
 	for id, input := range index.Inputs {
 		session.inputs[id] = &acceptedInput{persistedInput: persistedInput{Receipt: input.Receipt, Kind: input.Kind, Hash: input.Hash}, targetRunID: input.RunID, status: input.Status}
 		session.cursor = max(session.cursor, input.Receipt.Cursor)

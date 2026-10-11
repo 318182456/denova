@@ -14,6 +14,7 @@ import (
 	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
 	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
+	sessionfile "github.com/alfredxw/denova/agent/session/file"
 )
 
 type inputAdmissionGate struct {
@@ -132,85 +133,99 @@ func TestInspectSessionDoesNotMaterializeRecoveryInteractions(t *testing.T) {
 }
 
 func TestCommandRunSurvivesRecentHistoryEvictionAndColdReopen(t *testing.T) {
-	ctx := t.Context()
-	store := newObservingSessionStore()
-	model := &lifecycleModel{}
-	for i := range 40 {
-		model.responses = append(model.responses, agentschema.AssistantMessage(fmt.Sprintf("answer-%d", i), nil))
-	}
-	owner, err := New(ctx, agentengine.Definition{Name: "inspect", Model: model}, WithSessionStore(store))
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := owner.Session(ctx, agentsession.Named("exact-command"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var first agentevent.CommandReceipt
-	for i := range 40 {
-		run, err := sess.Run(ctx, agentschema.Input{Text: fmt.Sprintf("message-%d", i), IdempotencyKey: fmt.Sprintf("command-%d", i)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if result, err := run.Wait(ctx); err != nil || result.Status != agentschema.ResultCompleted {
-			t.Fatalf("run %d: %+v %v", i, result, err)
-		}
-		if i == 0 {
-			first = run.Receipt()
-		}
-	}
-	recent, err := sess.Snapshot(ctx)
-	if err != nil || len(recent.RecentRuns) != 32 {
-		t.Fatalf("recent: %+v %v", recent, err)
-	}
-	assertExact := func(sess *Session) {
-		t.Helper()
-		if len(sess.runs) != 0 {
-			t.Fatalf("settled executions remain resident: %d", len(sess.runs))
-		}
-		for _, input := range sess.inputs {
-			if input.status != inputPending && (input.input.Text != "" || input.Input.Text != "") {
-				t.Fatal("settled input body remains resident")
+	for name, factory := range map[string]func(*testing.T) agentsession.Store{
+		"memory": func(t *testing.T) agentsession.Store { return newObservingSessionStore() },
+		"file": func(t *testing.T) agentsession.Store {
+			store, err := sessionfile.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-		run, found, err := sess.CommandRun(ctx, "command-0")
-		if err != nil || !found {
-			t.Fatalf("old command lost: %v %v", found, err)
-		}
-		snapshot := run.Snapshot()
-		if snapshot.Receipt != first || snapshot.Result == nil || snapshot.Result.Status != agentschema.ResultCompleted || snapshot.Output != "answer-0" {
-			t.Fatalf("exact snapshot: %+v", snapshot)
-		}
-		if _, found, err := sess.CommandRun(ctx, "missing"); found || err != nil {
-			t.Fatalf("missing lookup: %v %v", found, err)
-		}
-		retried, err := sess.Run(ctx, agentschema.Input{Text: "message-0", IdempotencyKey: "command-0"})
-		if err != nil || retried.Receipt() != first {
-			t.Fatalf("old command retry: %v %v", retried, err)
-		}
-		if _, err := sess.Run(ctx, agentschema.Input{Text: "changed", IdempotencyKey: "command-0"}); !errors.Is(err, ErrIdempotencyConflict) {
-			t.Fatalf("conflicting old command: %v", err)
-		}
-		if len(sess.runs) != 0 {
-			t.Fatal("historical lookup repopulated live Run registry")
-		}
-	}
-	assertExact(sess)
-	if err := owner.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	owner, err = New(ctx, agentengine.Definition{Name: "inspect", Model: model}, WithSessionStore(store))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer owner.Close(context.Background())
-	sess, err = owner.Session(ctx, agentsession.Named("exact-command"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertExact(sess)
-	if len(model.calls()) != 40 {
-		t.Fatalf("lookup executed model: %d", len(model.calls()))
+			return store
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+
+			ctx := t.Context()
+			store := factory(t)
+			model := &lifecycleModel{}
+			for i := range 40 {
+				model.responses = append(model.responses, agentschema.AssistantMessage(fmt.Sprintf("answer-%d", i), nil))
+			}
+			owner, err := New(ctx, agentengine.Definition{Name: "inspect", Model: model}, WithSessionStore(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sess, err := owner.Session(ctx, agentsession.Named("exact-command"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var first agentevent.CommandReceipt
+			for i := range 40 {
+				run, err := sess.Run(ctx, agentschema.Input{Text: fmt.Sprintf("message-%d", i), IdempotencyKey: fmt.Sprintf("command-%d", i)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result, err := run.Wait(ctx); err != nil || result.Status != agentschema.ResultCompleted {
+					t.Fatalf("run %d: %+v %v", i, result, err)
+				}
+				if i == 0 {
+					first = run.Receipt()
+				}
+			}
+			recent, err := sess.Snapshot(ctx)
+			if err != nil || len(recent.RecentRuns) != 32 {
+				t.Fatalf("recent: %+v %v", recent, err)
+			}
+			assertExact := func(sess *Session) {
+				t.Helper()
+				if len(sess.runs) != 0 {
+					t.Fatalf("settled executions remain resident: %d", len(sess.runs))
+				}
+				for _, input := range sess.inputs {
+					if input.status != inputPending && (input.input.Text != "" || input.Input.Text != "") {
+						t.Fatal("settled input body remains resident")
+					}
+				}
+				run, found, err := sess.CommandRun(ctx, "command-0")
+				if err != nil || !found {
+					t.Fatalf("old command lost: %v %v", found, err)
+				}
+				snapshot := run.Snapshot()
+				if snapshot.Receipt != first || snapshot.Result == nil || snapshot.Result.Status != agentschema.ResultCompleted || snapshot.Output != "answer-0" {
+					t.Fatalf("exact snapshot: %+v", snapshot)
+				}
+				if _, found, err := sess.CommandRun(ctx, "missing"); found || err != nil {
+					t.Fatalf("missing lookup: %v %v", found, err)
+				}
+				retried, err := sess.Run(ctx, agentschema.Input{Text: "message-0", IdempotencyKey: "command-0"})
+				if err != nil || retried.Receipt() != first {
+					t.Fatalf("old command retry: %v %v", retried, err)
+				}
+				if _, err := sess.Run(ctx, agentschema.Input{Text: "changed", IdempotencyKey: "command-0"}); !errors.Is(err, ErrIdempotencyConflict) {
+					t.Fatalf("conflicting old command: %v", err)
+				}
+				if len(sess.runs) != 0 {
+					t.Fatal("historical lookup repopulated live Run registry")
+				}
+			}
+			assertExact(sess)
+			if err := owner.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			owner, err = New(ctx, agentengine.Definition{Name: "inspect", Model: model}, WithSessionStore(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer owner.Close(context.Background())
+			sess, err = owner.Session(ctx, agentsession.Named("exact-command"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertExact(sess)
+			if len(model.calls()) != 40 {
+				t.Fatalf("lookup executed model: %d", len(model.calls()))
+			}
+		})
 	}
 }
 
@@ -254,5 +269,65 @@ func TestSlowSessionOpenDoesNotBlockOtherSessions(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("unrelated Session waited for slow open")
+	}
+}
+
+func TestColdInspectionDropsCancelledQueueControlHistoryAndKeepsCursor(t *testing.T) {
+	ctx := t.Context()
+	store, err := sessionfile.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := agentengine.Definition{Model: &lifecycleModel{}}
+	owner, err := New(ctx, definition, WithSessionStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := agentsession.Named("cancelled-queue-inspection")
+	session, err := owner.Session(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstInput, firstControl agentevent.CommandReceipt
+	for i := range 40 {
+		queued, err := session.Queue(ctx, agentschema.Input{Text: "queued evidence", IdempotencyKey: fmt.Sprintf("queue-%d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		control, err := queued.Cancel(ctx, agentevent.QueueControlRequest{IdempotencyKey: fmt.Sprintf("cancel-%d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			firstInput, firstControl = queued.Receipt(), control
+		}
+	}
+	before, err := session.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	owner, err = New(ctx, definition, WithSessionStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close(context.Background())
+	after, err := owner.InspectSession(ctx, key)
+	if err != nil || after.Cursor != before.Cursor || len(after.QueuedRuns) != 0 {
+		t.Fatalf("cancelled queue broke cold inspection: cursor=%d want=%d queues=%+v err=%v", after.Cursor, before.Cursor, after.QueuedRuns, err)
+	}
+	session, err = owner.Session(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued, err := session.Queue(ctx, agentschema.Input{Text: "queued evidence", IdempotencyKey: "queue-0"})
+	if err != nil || queued.Receipt() != firstInput {
+		t.Fatalf("observation changed historical input receipt: %v", err)
+	}
+	control, err := queued.Cancel(ctx, agentevent.QueueControlRequest{IdempotencyKey: "cancel-0"})
+	if err != nil || control != firstControl {
+		t.Fatalf("observation changed historical control receipt: got=%+v want=%+v err=%v", control, firstControl, err)
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"denova/internal/project"
 
 	"github.com/alfredxw/denova/agent"
+	agenthistory "github.com/alfredxw/denova/agent/context/history"
 	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
 	agentmodel "github.com/alfredxw/denova/agent/model"
 	agentstream "github.com/alfredxw/denova/agent/model/stream"
@@ -48,6 +49,10 @@ func (c countedWritingHistory) VisitCanonicalMessages(ctx context.Context, visit
 	*c.reads++
 	return c.SessionConversation.VisitCanonicalMessages(ctx, visit)
 }
+func (c countedWritingHistory) ReadCanonicalWindow(ctx context.Context, count int, archive *agenthistory.HistoryArchive) ([]*agentschema.Message, error) {
+	*c.reads++
+	return c.SessionConversation.ReadCanonicalWindow(ctx, count, archive)
+}
 func (c countedWritingHistory) NewAgentConversationCommitter(options agentrun.Options) (agentlifecycle.ConversationCommitter, error) {
 	return agentlifecycle.NewSessionConversationCommitter(agentlifecycle.SessionCommitterConfig{Conversation: c.SessionConversation, Session: c.CanonicalSession(), Options: options, Request: c.request})
 }
@@ -60,6 +65,11 @@ type countedGameHistory struct {
 func (c countedGameHistory) CanonicalMessages(ctx context.Context) ([]*agentschema.Message, error) {
 	*c.reads++
 	return c.Conversation.CanonicalMessages(ctx)
+}
+
+func (c countedGameHistory) ReadCanonicalWindow(ctx context.Context, count int, archive *agenthistory.HistoryArchive) ([]*agentschema.Message, error) {
+	*c.reads++
+	return c.Conversation.ReadCanonicalWindow(ctx, count, archive)
 }
 
 // Model responses are deterministic; both products use the actual Denova

@@ -400,14 +400,14 @@ describe('useAgentChat', () => {
     act(() => {
       oldInspection = result.current.resumeActiveChat('session-a')
     })
-    await waitFor(() => expect(getActiveChatTask).toHaveBeenCalledWith('session-a'))
+    await waitFor(() => expect(getActiveChatTask).toHaveBeenCalledWith('session-a', expect.any(AbortSignal)))
 
     await act(async () => {
       await result.current.switchChatSession('session-b')
     })
     expect(result.current.activeSessionId).toBe('session-b')
     expect(result.current.sessionTransitionPending).toBe(false)
-    expect(getActiveChatTask).toHaveBeenCalledWith('session-b')
+    expect(getActiveChatTask).toHaveBeenCalledWith('session-b', expect.any(AbortSignal))
 
     await act(async () => {
       staleInspection.resolve({ active: true, active_operation_id: 'operation-from-a' })
@@ -1397,7 +1397,7 @@ describe('useAgentChat', () => {
     act(() => window.dispatchEvent(new Event('online')))
 
     await waitFor(() => expect(recoverChatAgentRuntime).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[action, 'session-test'], [action, 'session-test']])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls.map(([action, session]) => [action, session])).toEqual([[action, 'session-test'], [action, 'session-test']])
     expect(vi.mocked(recoverChatAgentRuntime).mock.calls.flat()).not.toContain(laterAction)
     expect(setTarget).toHaveBeenCalledWith('recovery-task-1', undefined, { session_id: 'session-test' })
     expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
@@ -1407,6 +1407,110 @@ describe('useAgentChat', () => {
       runtime_recoverable: false,
       stream_attached: true,
     })
+  })
+
+  it('automatically retries a failed inspection without a focus or online event', async () => {
+    vi.useFakeTimers()
+    vi.mocked(getActiveChatTask).mockRejectedValueOnce(new TypeError('connection reset')).mockResolvedValue({ active: false })
+    const { result, unmount } = renderHook(() => useAgentChat())
+    try {
+      await act(async () => result.current.resumeActiveChat())
+      expect(result.current.isStreaming).toBe(true)
+      await act(async () => vi.advanceTimersByTimeAsync(1500))
+      expect(getActiveChatTask).toHaveBeenCalledTimes(2)
+      expect(result.current.isStreaming).toBe(false)
+      expect(result.current.recoveryFailed).toBe(false)
+      expect(chatMock.sendMessage).not.toHaveBeenCalled()
+    } finally { unmount(); vi.useRealTimers() }
+  })
+
+  it('stops repeated connection failures and allows an explicit recovery retry', async () => {
+    vi.useFakeTimers()
+    vi.mocked(getActiveChatTask).mockRejectedValue(new TypeError('connection reset'))
+    const { result, unmount } = renderHook(() => useAgentChat())
+    try {
+      await act(async () => result.current.resumeActiveChat())
+      for (let attempt = 0; attempt < 4; attempt++) await act(async () => vi.advanceTimersByTimeAsync(12000))
+      expect(getActiveChatTask).toHaveBeenCalledTimes(5)
+      expect(result.current.recoveryFailed).toBe(true)
+      expect(result.current.isStreaming).toBe(false)
+      await act(async () => vi.advanceTimersByTimeAsync(60000))
+      expect(getActiveChatTask).toHaveBeenCalledTimes(5)
+      vi.mocked(getActiveChatTask).mockResolvedValue({ active: false })
+      await act(async () => result.current.resumeActiveChat())
+      expect(result.current.recoveryFailed).toBe(false)
+      expect(result.current.isStreaming).toBe(false)
+      expect(chatMock.sendMessage).not.toHaveBeenCalled()
+    } finally { unmount(); vi.useRealTimers() }
+  })
+
+  it('ignores an old recovery response after switching A to B and back to A', async () => {
+    const stale = deferred<Awaited<ReturnType<typeof getActiveChatTask>>>()
+    vi.mocked(getActiveChatTask).mockImplementationOnce(() => stale.promise).mockResolvedValue({ active: false, phase: 'idle' })
+    writingAgentChatClient.fixedSessionId = 'session-a'
+    const { result, rerender } = renderHook(() => useAgentChat())
+    let oldRequest!: Promise<void>
+    act(() => { oldRequest = result.current.resumeActiveChat() })
+    act(() => { writingAgentChatClient.fixedSessionId = 'session-b'; rerender() })
+    await act(async () => result.current.loadSessions())
+    await act(async () => result.current.resumeActiveChat())
+    act(() => { writingAgentChatClient.fixedSessionId = 'session-a'; rerender() })
+    await act(async () => result.current.loadSessions())
+    await act(async () => result.current.resumeActiveChat())
+    await act(async () => {
+      stale.resolve({ active: true, phase: 'running', task_id: 'obsolete-display' })
+      await oldRequest
+    })
+    expect(result.current.runtimeProjection).toMatchObject({ active: false, phase: 'idle' })
+    expect(chatMock.resumeStream).not.toHaveBeenCalled()
+    expect(chatMock.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('allows retrying a failed runtime inspection while the display stream stays attached', async () => {
+    vi.useFakeTimers()
+    chatMock.status = 'streaming'
+    vi.mocked(getActiveChatTask).mockResolvedValueOnce({ active: true, phase: 'running', task_id: 'attached-display' }).mockRejectedValue(new TypeError('connection reset'))
+    const { result, unmount } = renderHook(() => useAgentChat())
+    try {
+      await act(async () => {
+        chatMock.options?.onData?.({ type: 'data-agent-activity', data: { event: 'runtime_recovery_required', code: 'agent_runtime.recovery_required' } })
+      })
+      for (let attempt = 0; attempt < 4; attempt++) await act(async () => vi.advanceTimersByTimeAsync(12000))
+      expect(result.current.recoveryFailed).toBe(true)
+      vi.mocked(getActiveChatTask).mockResolvedValue({ active: true, phase: 'running', task_id: 'attached-display' })
+      await act(async () => result.current.resumeActiveChat())
+      expect(result.current.recoveryFailed).toBe(false)
+      expect(result.current.runtimeProjection?.task_id).toBe('attached-display')
+      expect(chatMock.resumeStream).not.toHaveBeenCalled()
+      expect(chatMock.sendMessage).not.toHaveBeenCalled()
+    } finally { unmount(); vi.useRealTimers() }
+  })
+
+  it('ignores a late recovery action receipt after reopening the same session', async () => {
+    const stale = deferred<Awaited<ReturnType<typeof recoverChatAgentRuntime>>>()
+    const action = { kind: 'start_turn' as const, command_id: 'old-attach', operation_id: 'old-operation' }
+    vi.mocked(getActiveChatTask).mockResolvedValueOnce({
+      active: false, phase: 'running', runtime_recoverable: true,
+      recovery_actions: [action],
+    }).mockResolvedValue({ active: false, phase: 'idle' })
+    vi.mocked(recoverChatAgentRuntime).mockImplementationOnce(() => stale.promise)
+    writingAgentChatClient.fixedSessionId = 'session-a'
+    const { result, rerender } = renderHook(() => useAgentChat())
+    let oldRequest!: Promise<void>
+    await act(async () => { oldRequest = result.current.resumeActiveChat() })
+    expect(recoverChatAgentRuntime).toHaveBeenCalledOnce()
+    act(() => { writingAgentChatClient.fixedSessionId = 'session-b'; rerender() })
+    await act(async () => result.current.loadSessions())
+    act(() => { writingAgentChatClient.fixedSessionId = 'session-a'; rerender() })
+    await act(async () => result.current.loadSessions())
+    await act(async () => result.current.resumeActiveChat())
+    await act(async () => {
+      stale.resolve({ task_id: 'obsolete-display', status: 'running', recovery_action: action, cursor: 1, stream_cursor: 1 })
+      await oldRequest
+    })
+    expect(result.current.runtimeProjection).toMatchObject({ active: false, phase: 'idle' })
+    expect(chatMock.resumeStream).not.toHaveBeenCalled()
+    expect(chatMock.sendMessage).not.toHaveBeenCalled()
   })
 
   it('keeps attach-only recovery paused so Stop still uses the projected abort action', async () => {
@@ -1459,7 +1563,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[attachAction, 'session-test'], [abortAction, 'session-test']])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls.map(([action, session]) => [action, session])).toEqual([[attachAction, 'session-test'], [abortAction, 'session-test']])
     expect(submitChatCommand).not.toHaveBeenCalled()
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
   })
@@ -1566,7 +1670,7 @@ describe('useAgentChat', () => {
     await act(async () => { expect(await result.current.deleteQueuedCommand(queued)).toBe(true) })
     expect(submitQueuedChatCommand).toHaveBeenCalledWith('cancel_queued', expect.any(String), 'run-1', 'queued', 'session-test', 'user_deleted')
     await act(async () => result.current.resumeTask())
-    expect(recoverChatAgentRuntime).toHaveBeenCalledExactlyOnceWith(action, 'session-test')
+    expect(recoverChatAgentRuntime).toHaveBeenCalledExactlyOnceWith(action, 'session-test', expect.any(AbortSignal))
     expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
   })
@@ -1647,7 +1751,7 @@ describe('useAgentChat', () => {
     await act(async () => result.current.resumeActiveChat())
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[stateAction, 'session-test']])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls.map(([action, session]) => [action, session])).toEqual([[stateAction, 'session-test']])
     expect(vi.mocked(recoverChatAgentRuntime).mock.calls.flat()).not.toContain(attachAction)
     expect(vi.mocked(recoverChatAgentRuntime).mock.calls.flat()).not.toContain(laterAction)
     expect(result.current.runtimeProjection).toMatchObject({
@@ -1719,7 +1823,7 @@ describe('useAgentChat', () => {
     )
 
     await waitFor(() => expect(recoverChatAgentRuntime).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[firstAction, 'session-test'], [secondAction, 'session-test']])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls.map(([action, session]) => [action, session])).toEqual([[firstAction, 'session-test'], [secondAction, 'session-test']])
     expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
     expect(result.current.runtimeProjection).toMatchObject({
@@ -1823,7 +1927,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, 'session-test')
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, 'session-test', expect.any(AbortSignal))
     expect(chatMock.resumeStream).not.toHaveBeenCalled()
     expect(result.current.abortPending).toBe(true)
   })
@@ -1884,7 +1988,7 @@ describe('useAgentChat', () => {
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(2))
     expect(getActiveChatTask).toHaveBeenCalledTimes(2)
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(nextAction, 'session-test')
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(nextAction, 'session-test', expect.any(AbortSignal))
     expect(result.current.isStreaming).toBe(true)
   })
 
@@ -1931,7 +2035,7 @@ describe('useAgentChat', () => {
     })
 
     expect(recoverChatAgentRuntime).toHaveBeenCalledTimes(1)
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(attachAction, 'session-test')
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(attachAction, 'session-test', expect.any(AbortSignal))
     expect(submitChatCommand).toHaveBeenCalledWith(
       'follow_up',
       expect.any(String),
@@ -1976,7 +2080,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, 'session-test')
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, 'session-test', expect.any(AbortSignal))
     expect(submitChatCommand).not.toHaveBeenCalled()
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
     expect(result.current.abortPending).toBe(true)

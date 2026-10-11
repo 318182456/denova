@@ -292,21 +292,18 @@ func (owner *Agent) descendantKeys(ctx context.Context, root agentsession.Key) (
 	queue := []agentsession.Key{root}
 	seen := make(map[string]bool)
 	for index := 0; index < len(queue); index++ {
-		attributes, err := ChildSessionAttributes(queue[index])
+		session, err := owner.Session(ctx, queue[index])
 		if err != nil {
 			return nil, err
 		}
-		children, err := owner.ListSessions(ctx, agentsession.Selector{Attributes: attributes})
+		tasks, err := session.PendingChildTasks(ctx)
 		if err != nil {
 			return nil, err
 		}
-		owner.mu.RLock()
-		for _, session := range owner.sessions {
-			if (agentsession.Selector{Attributes: attributes}).Matches(session.key) {
-				children = append(children, session.Key())
-			}
+		children := make([]agentsession.Key, 0, len(tasks))
+		for _, task := range tasks {
+			children = append(children, task.Key)
 		}
-		owner.mu.RUnlock()
 		for _, child := range children {
 			canonical, err := agentsession.CanonicalKey(child)
 			if err != nil {

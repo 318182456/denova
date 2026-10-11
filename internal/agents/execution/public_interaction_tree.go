@@ -14,13 +14,13 @@ func (backend *publicBackend) taskSessions(ctx context.Context, root *agent.Sess
 	sessions := []*agent.Session{root}
 	seen := make(map[string]bool)
 	for index := 0; index < len(sessions); index++ {
-		attributes, err := agent.ChildSessionAttributes(sessions[index].Key())
+		children, err := sessions[index].PendingChildTasks(ctx)
 		if err != nil {
 			return nil, err
 		}
-		keys, err := backend.agent.ListSessions(ctx, agentsession.Selector{Attributes: attributes})
-		if err != nil {
-			return nil, err
+		keys := make([]agentsession.Key, 0, len(children))
+		for _, child := range children {
+			keys = append(keys, child.Key)
 		}
 		for _, key := range keys {
 			canonical, err := agentsession.CanonicalKey(key)

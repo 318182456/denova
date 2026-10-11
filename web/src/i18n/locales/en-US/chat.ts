@@ -146,6 +146,8 @@ const chat = {
   'chat.runtime.invalidCommand': 'This instruction is no longer valid for the displayed run.',
   'chat.runtime.commandFailed': 'Failed to submit the Agent instruction.',
   'chat.runtime.abortPending': 'The Agent is already stopping. Wait for the run to settle.',
+  'chat.activity.recoveryFailed': 'Could not restore the connection. The accepted run remains saved. Try recovery again.',
+  'chat.activity.retryRecovery': 'Retry recovery',
   'chat.activity.recovering': 'Recovering the accepted Agent run from durable state...',
   'chat.activity.displayRehydrated': 'Earlier live trace exceeded the display budget. Canonical history was restored and the same Agent run is still being observed.',
   'chat.activity.recoveryPaused': 'The run is paused at a recovery boundary while safe resumption is prepared...',

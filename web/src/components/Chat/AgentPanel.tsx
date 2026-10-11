@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { createPortal } from 'react-dom'
@@ -163,6 +164,8 @@ export interface AgentPanelProps {
   onStop: () => void
   onSuspend?: () => void
   onResumeTask?: () => void
+  recoveryFailed?: boolean
+  onRetryRecovery?: () => void
   onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>
@@ -249,6 +252,8 @@ function AgentPanelComponent({
   onStop,
   onSuspend,
   onResumeTask,
+  recoveryFailed = false,
+  onRetryRecovery,
   onSteerQueuedCommand,
   onDeleteQueuedCommand,
   onEditQueuedCommand,
@@ -295,7 +300,7 @@ function AgentPanelComponent({
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const pendingWritingInitRef = useRef<string | null>(null)
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
-  const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && runtimeProjection.phase !== 'suspended' && !runtimeProjection.stream_attached)
+  const runtimeRecovering = !recoveryFailed && Boolean(runtimeProjection?.runtime_recoverable && runtimeProjection.phase !== 'suspended' && !runtimeProjection.stream_attached)
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
   const activeControlsDisabled =
     isStreaming && (!runtimeProjection?.active_operation_id?.trim() || Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached))
@@ -611,7 +616,7 @@ function AgentPanelComponent({
     isStreaming,
     visible: active,
     isExecutionActive,
-    activityContent: runtimeRecovering ? t('chat.activity.recovering') : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
+    activityContent: recoveryFailed ? '' : runtimeRecovering ? t('chat.activity.recovering') : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
     scrollResetKey: `${workspace || 'none'}:${activeSessionId || 'current'}`,
     bottomPaddingClassName: 'pb-36',
     bottomPaddingPx: messageListBottomPadding,
@@ -632,6 +637,10 @@ function AgentPanelComponent({
     onResolveAsk: resolveAsk,
     activeRunId: runtimeProjection?.active_operation_id,
     afterContent: <>
+      {recoveryFailed && <div role="alert" className="rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">
+        <p>{t('chat.activity.recoveryFailed')}</p>
+        <Button variant="outline" size="sm" className="mt-2" onClick={onRetryRecovery}>{t('chat.activity.retryRecovery')}</Button>
+      </div>}
       <AgentTaskControls suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onResume={onResumeTask} onAbort={onStop} />
       {lastRuntimeFailure ? (
       <div
@@ -641,7 +650,7 @@ function AgentPanelComponent({
         {t('chat.activity.requestFailed', { error: lastRuntimeFailure })}
       </div>
     ) : null}</>,
-    afterContentKey: `${runtimeProjection?.phase || 'idle'}:${commandSubmitting}:${lastRuntimeFailure || ''}`,
+    afterContentKey: `${recoveryFailed}:${runtimeProjection?.phase || 'idle'}:${commandSubmitting}:${lastRuntimeFailure || ''}`,
   }
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
@@ -650,7 +659,7 @@ function AgentPanelComponent({
     onStop: runtimeRecovering || recoveryPaused || !supportsRuntimeOperation(agentSelectionConfig.snapshot, 'pause')
       ? onStop : onSuspend || onStop,
     disabled: sessionTransitionPending,
-    sendBlocked: persistedSettings.loading || sessionTransitionPending,
+    sendBlocked: persistedSettings.loading || sessionTransitionPending || recoveryFailed,
     generationActive: isStreaming,
     resumeAvailable: !isStreaming && Boolean(runtimeProjection?.pending_interruption_id?.trim()),
     queuedCommands: runtimeProjection?.queue || [],

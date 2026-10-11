@@ -20,8 +20,8 @@ import (
 const taskCompletionTruncatedMarker = "\n[Task result truncated. Use await with timeout_ms=0 and the Run ref for bounded output.]"
 
 // ReconcileTaskCompletions rebuilds the volatile parent mailbox from durable
-// child Session terminal records. Per-session corruption is logged and skipped
-// so one old child cannot make the parent Agent unusable.
+// pending child Session records. Failed current obligations stay pending and
+// are reported; settled historical children never participate in recovery.
 func (tasks *LocalTasks) ReconcileTaskCompletions(ctx context.Context) error {
 	if tasks == nil || tasks.completionParent == nil {
 		return nil
@@ -29,21 +29,21 @@ func (tasks *LocalTasks) ReconcileTaskCompletions(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	for _, info := range tasks.ordered {
-		candidate := tasks.agents[info.Name]
-		keys, err := candidate.Opener.ListSessions(ctx, taskSessionSelector(candidate, ""))
-		if err != nil {
-			return fmt.Errorf("list durable task completions for %s: %w", candidate.Name, err)
+	// A new Follow Up must not register on an edge between its settlement
+	// inspection and removal. Reuse the same admission boundary as Start/Resume.
+	localTaskAdmissionMu.Lock()
+	defer localTaskAdmissionMu.Unlock()
+	children, err := tasks.completionParent.PendingChildTasks(ctx)
+	if err != nil {
+		return err
+	}
+	for _, child := range children {
+		candidate, found := tasks.agents[child.Key.Attributes["agent"]]
+		if !found {
+			return fmt.Errorf("pending child Agent %q is unavailable", child.Key.Attributes["agent"])
 		}
-		for _, key := range keys {
-			if err := tasks.reconcileTaskSession(ctx, candidate, key); err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				slog.WarnContext(ctx, "skipping task completion reconciliation for one child Session",
-					"source", "agent/tool/builtin/task_local_completion.go", "agent", candidate.Name,
-					"session", key.ID, "error", err)
-			}
+		if err := tasks.reconcileTaskSession(ctx, candidate, child.Key); err != nil {
+			return fmt.Errorf("reconcile pending child Session %s: %w", child.Key.ID, err)
 		}
 	}
 	return nil
@@ -61,6 +61,15 @@ func (tasks *LocalTasks) reconcileTaskSession(
 	snapshot, err := session.Snapshot(ctx)
 	if err != nil {
 		return err
+	}
+	results, err := tasks.completionParent.PendingChildTaskResults(ctx, session)
+	if err != nil {
+		return err
+	}
+	if len(snapshot.RecentRuns) > 0 && len(results) == 0 && snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 && len(snapshot.PendingInteractions) == 0 {
+		if retired, err := tasks.completionParent.RetireChildTask(ctx, session); err != nil || retired {
+			return err
+		}
 	}
 	if snapshot.ActiveRunID != "" && snapshot.ActiveStatus != agentschema.ResultSuspended {
 		ref := TaskRef{Agent: candidate.Name, Session: key.ID, Run: snapshot.ActiveRunID}
@@ -81,9 +90,9 @@ func (tasks *LocalTasks) reconcileTaskSession(
 			tasks.watchCompletion(ctx, run, ref)
 		}
 	}
-	for _, recent := range snapshot.RecentRuns {
+	for _, recent := range results {
 		ref := TaskRef{Agent: candidate.Name, Session: key.ID, Run: recent.ID}
-		task, taskErr := taskFromSnapshot(ref, snapshot)
+		task, taskErr := taskFromSnapshot(ref, agentevent.SessionSnapshot{RecentRuns: []agentevent.RunSummary{recent}})
 		if taskErr != nil {
 			return taskErr
 		}
@@ -94,9 +103,6 @@ func (tasks *LocalTasks) reconcileTaskSession(
 			return err
 		}
 	}
-	if snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 {
-		return session.Close(context.Background())
-	}
 	return nil
 }
 
@@ -104,7 +110,17 @@ func (tasks *LocalTasks) trackTaskCompletion(ctx context.Context, ref TaskRef) e
 	if tasks == nil || tasks.completionParent == nil {
 		return nil
 	}
-	_, err := tasks.completionParent.TrackTaskCompletion(ctx, taskCompletionID(ref))
+	keys, err := taskSessionKeys(ctx, tasks.agents[ref.Agent], ref.Session)
+	if err != nil {
+		return err
+	}
+	if len(keys) != 1 {
+		return fmt.Errorf("task completion Session identity is missing or ambiguous")
+	}
+	if err := tasks.completionParent.RegisterChildTask(ctx, agent.ChildTask{Key: keys[0]}); err != nil {
+		return err
+	}
+	_, err = tasks.completionParent.TrackTaskCompletion(ctx, taskCompletionID(ref))
 	if err != nil {
 		return fmt.Errorf("track parent task completion: %w", err)
 	}
@@ -304,5 +320,5 @@ func (tasks *LocalTasks) enqueueTaskCompletion(ctx context.Context, task Task) e
 }
 
 func taskCompletionID(ref TaskRef) string {
-	return toolsetIdentity("task.completion", ref).ConfigHash
+	return agentschema.TaskCompletionID(ref.Agent, ref.Session, ref.Run)
 }

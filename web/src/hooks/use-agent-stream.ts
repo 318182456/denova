@@ -8,7 +8,9 @@ type Status = 'ready' | 'submitted' | 'streaming' | 'error'
 type MessageUpdate = AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])
 type DataPart = Extract<AgentUIMessage['parts'][number], { type: `data-${string}` }>
 interface StreamOptions {
-  transport: ChatTransport<AgentUIMessage>
+  transport: ChatTransport<AgentUIMessage> & {
+    reconnectToStream(options: Parameters<ChatTransport<AgentUIMessage>['reconnectToStream']>[0], signal?: AbortSignal): Promise<ReadableStream<UIMessageChunk> | null>
+  }
   throttle: number
   onData: (part: DataPart) => void
   onError: (error: Error) => void
@@ -118,7 +120,7 @@ export function useAgentStream(options: StreamOptions) {
       messages: [user], abortSignal: active.controller.signal,
     }))
   }, [connect, options.transport, setMessages])
-  const resumeStream = useCallback(() => connect('resume', () => options.transport.reconnectToStream({ chatId: chatID.current })), [connect, options.transport])
+  const resumeStream = useCallback(() => connect('resume', active => options.transport.reconnectToStream({ chatId: chatID.current }, active.controller.signal)), [connect, options.transport])
 
   useEffect(() => () => {
     const active = connection.current

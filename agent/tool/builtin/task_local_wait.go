@@ -26,6 +26,11 @@ type localTaskPendingInteraction struct {
 	request agentinteraction.InteractionRequest
 }
 
+type localTaskWaitObservation struct {
+	task        Task
+	observation agentevent.Observation
+}
+
 type localTaskWaitSource struct {
 	stream  int
 	isErr   bool
@@ -56,38 +61,35 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 	var pending []localTaskPendingInteraction
 
 	for index, ref := range refs {
-		_, session, err := tasks.open(waitCtx, ref)
+		observed, err := retryClosedTaskRead(waitCtx, func() (localTaskWaitObservation, error) {
+			_, session, err := tasks.open(waitCtx, ref)
+			if err != nil {
+				return localTaskWaitObservation{}, err
+			}
+			snapshot, err := session.Snapshot(waitCtx)
+			if err != nil {
+				return localTaskWaitObservation{}, err
+			}
+			task, err := tasks.taskFromSessionSnapshot(waitCtx, session, ref, snapshot)
+			if err != nil {
+				return localTaskWaitObservation{}, err
+			}
+			observed := localTaskWaitObservation{task: task, observation: agentevent.Observation{Snapshot: snapshot}}
+			if isTaskTerminal(task.Status) || task.Status == string(agentschema.ResultSuspended) {
+				return observed, nil
+			}
+			observed.observation, err = session.Observe(waitCtx, snapshot.Cursor)
+			if err != nil {
+				return localTaskWaitObservation{}, err
+			}
+			observed.task, err = tasks.taskFromSessionSnapshot(waitCtx, session, ref, observed.observation.Snapshot)
+			return observed, err
+		})
 		if err != nil {
 			outcomes[index].Err = err
 			continue
 		}
-		snapshot, err := session.Snapshot(waitCtx)
-		if err != nil {
-			outcomes[index].Err = err
-			continue
-		}
-		task, taskErr := tasks.taskFromSessionSnapshot(waitCtx, session, ref, snapshot)
-		if taskErr != nil {
-			outcomes[index].Err = taskErr
-			continue
-		}
-		outcomes[index].Task = &task
-		if isTaskTerminal(task.Status) || task.Status == string(agentschema.ResultSuspended) {
-			ready[index] = true
-			continue
-		}
-		observation, observeErr := session.Observe(waitCtx, snapshot.Cursor)
-		if observeErr != nil {
-			outcomes[index].Err = observeErr
-			outcomes[index].Task = nil
-			continue
-		}
-		task, taskErr = tasks.taskFromSessionSnapshot(waitCtx, session, ref, observation.Snapshot)
-		if taskErr != nil {
-			outcomes[index].Err = taskErr
-			outcomes[index].Task = nil
-			continue
-		}
+		task, observation := observed.task, observed.observation
 		outcomes[index].Task = &task
 		if isTaskTerminal(task.Status) || task.Status == string(agentschema.ResultSuspended) {
 			ready[index] = true

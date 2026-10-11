@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// Version 17 adds derived canonical history identities for active checkpoints.
-	storyProjectionVersion      = 17
+	// Version 19 adds canonical branch message locators without history bodies.
+	storyProjectionVersion      = 19
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -67,6 +67,7 @@ type storyJournalProjection struct {
 	AgentSessions    sessionjournal.Projection             `json:"agent_sessions,omitempty"`
 	TurnDrafts       map[string]storyDraftLocator          `json:"turn_drafts,omitempty"`
 	ExtensionRecords map[string]conversationjournal.Cursor `json:"extension_records,omitempty"`
+	ModelNodes       map[string]storyModelNode             `json:"model_nodes,omitempty"`
 
 	expectedID         string
 	expectedGeneration string
@@ -199,6 +200,9 @@ func (projection *storyJournalProjection) applyMeta(cursor conversationjournal.C
 }
 
 func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.Cursor, record StoryEventRecord) error {
+	if err := projection.indexModelEvent(cursor, record); err != nil {
+		return err
+	}
 	changesModelContext, err := storyEventChangesModelContext(record.Envelope.Type)
 	if err != nil {
 		return err
@@ -522,4 +526,12 @@ func cloneStoryState(state map[string]any) map[string]any {
 
 func storyJournalGeneration(meta StoryMeta) string {
 	return "story:" + strings.TrimSpace(meta.StoryID) + ":" + strings.TrimSpace(meta.CreatedAt)
+}
+
+func (projection *storyJournalProjection) CurrentCheckpoint() (json.RawMessage, error) {
+	return projection.AgentSessions.CurrentCheckpoint()
+}
+
+func (projection *storyJournalProjection) CurrentReadCursors() []conversationjournal.Cursor {
+	return projection.AgentSessions.CurrentReadCursors()
 }

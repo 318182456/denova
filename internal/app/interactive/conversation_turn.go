@@ -221,27 +221,7 @@ func interactiveToolCallsFromSchema(calls []agents.ToolCall) []interactive.Model
 }
 
 func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*agents.Message {
-	if len(messages) == 0 {
-		return nil
-	}
-	result := make([]*agents.Message, 0, len(messages))
-	for _, msg := range messages {
-		message := interactive.AgentMessageFromModelContext(msg)
-		if message == nil {
-			continue
-		}
-		continuation := providers.ContinuationExtra(msg.ProviderContinuation)
-		if len(continuation) > 0 {
-			if message.Extra == nil {
-				message.Extra = make(map[string]any)
-			}
-			for key, value := range continuation {
-				message.Extra[key] = value
-			}
-		}
-		result = append(result, message)
-	}
-	return result
+	return interactive.AgentMessagesFromModelContext(messages)
 }
 
 func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []agents.ToolCall {

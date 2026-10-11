@@ -8,9 +8,20 @@ import (
 	"denova/internal/agents/toolresult"
 	"denova/internal/interactive"
 
+	agenthistory "github.com/alfredxw/denova/agent/context/history"
 	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
+
+func (c *Conversation) ReadCanonicalWindow(ctx context.Context, count int, archive *agenthistory.HistoryArchive) ([]*agentschema.Message, error) {
+	storyContext, err := c.storyContextForCycle()
+	if err != nil {
+		return nil, err
+	}
+	snapshot := storyContext.Snapshot
+	snapshot.TurnCount = SnapshotTurnCount(snapshot)
+	return c.store.ReadCanonicalWindow(ctx, c.storyID, snapshot, count, archive)
+}
 
 func (c *Conversation) CanonicalHistoryHead(ctx context.Context) (agentcanonical.CanonicalHistoryHead, error) {
 	head, err := c.store.CanonicalHistoryHead(ctx, c.storyID, c.branchID)

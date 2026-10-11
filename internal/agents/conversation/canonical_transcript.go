@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"fmt"
+	agenthistory "github.com/alfredxw/denova/agent/context/history"
 
 	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
@@ -29,4 +30,8 @@ func (c *SessionConversation) CanonicalMessages(ctx context.Context) ([]*agentsc
 
 func (c *SessionConversation) VisitCanonicalMessages(ctx context.Context, visit func(*agentschema.Message) error) error {
 	return c.session.VisitCanonicalMessages(ctx, visit)
+}
+
+func (c *SessionConversation) ReadCanonicalWindow(ctx context.Context, count int, archive *agenthistory.HistoryArchive) ([]*agentschema.Message, error) {
+	return c.session.ReadCanonicalWindow(ctx, count, archive)
 }

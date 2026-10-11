@@ -23,6 +23,7 @@ if (typeof document !== 'undefined') {
 
 type APIRequestInit = RequestInit & {
   suppressBackendUnavailableToast?: boolean
+  timeoutMs?: number
 }
 
 /** HTTP/API domain failure with transport and machine-readable backend context intact. */
@@ -66,6 +67,15 @@ export async function fetchAPI(input: RequestInfo | URL, init?: APIRequestInit):
 }
 
 export async function requestJSON<T>(url: string, init?: APIRequestInit): Promise<T> {
+  const { timeoutMs, ...requestInit } = init ?? {}
+  const controller = new AbortController()
+  const timer = timeoutMs ? setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), timeoutMs) : undefined
+  const signal = timeoutMs ? AbortSignal.any([controller.signal, ...(requestInit.signal ? [requestInit.signal] : [])]) : requestInit.signal
+  try { return await readJSON<T>(url, { ...requestInit, signal }) }
+  finally { if (timer !== undefined) clearTimeout(timer) }
+}
+
+async function readJSON<T>(url: string, init?: APIRequestInit): Promise<T> {
   const res = await fetchAPI(url, init)
   const text = await res.text()
   let data: Record<string, any> = {}

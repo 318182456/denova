@@ -208,6 +208,8 @@ function App() {
     commandSubmitting,
     queueActionPendingCommandID,
     activityContent,
+    recoveryFailed,
+    resumeActiveChat,
     references,
     styleScenes,
     textSelections,
@@ -976,6 +978,8 @@ function App() {
         onStop={stop}
         onSuspend={suspend}
         onResumeTask={resumeTask}
+        recoveryFailed={recoveryFailed}
+        onRetryRecovery={() => { void resumeActiveChat() }}
         onSteerQueuedCommand={steerQueuedCommand}
         onDeleteQueuedCommand={deleteQueuedCommand}
         onEditQueuedCommand={editQueuedCommand}

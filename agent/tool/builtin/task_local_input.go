@@ -74,6 +74,8 @@ func (tasks *LocalTasks) SendMessage(ctx context.Context, ref TaskRef, input age
 	if err != nil {
 		return agentevent.CommandReceipt{}, err
 	}
+	localTaskAdmissionMu.Lock()
+	defer localTaskAdmissionMu.Unlock()
 	session, err := tasks.openExisting(ctx, candidate, ref.Session)
 	if err != nil {
 		return agentevent.CommandReceipt{}, err
@@ -87,6 +89,11 @@ func (tasks *LocalTasks) SendMessage(ctx context.Context, ref TaskRef, input age
 			return agentevent.CommandReceipt{}, err
 		}
 		input.HostData = original.HostData
+	}
+	if tasks.completionParent != nil {
+		if err := tasks.completionParent.RegisterChildTask(ctx, agent.ChildTask{Key: session.Key()}); err != nil {
+			return agentevent.CommandReceipt{}, err
+		}
 	}
 	queued, err := session.Queue(ctx, input)
 	if err != nil {

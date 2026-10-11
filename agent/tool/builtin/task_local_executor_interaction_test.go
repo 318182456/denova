@@ -173,13 +173,7 @@ func TestAttachedChildRejectsInteractionInsteadOfWaitingForUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	childSession, err := child.Session(ctx, agentsession.Key{
-		Namespace: "task." + DefaultTaskAgentName,
-		ID:        started.Ref.Session,
-		Attributes: map[string]string{
-			"agent": DefaultTaskAgentName,
-		},
-	})
+	childSession, err := child.Session(ctx, localTaskSessionKey(executor.agents[DefaultTaskAgentName], started.Ref.Session))
 	if err != nil {
 		t.Fatal(err)
 	}

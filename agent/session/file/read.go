@@ -26,18 +26,26 @@ func (log *logFile) ReadRecord(ctx context.Context, revision session.Revision) (
 	}
 	location, found := log.locations[revision]
 	if !found {
-		return session.Record{}, fmt.Errorf("Agent record revision %d is missing", revision)
+		// Observation caches deliberately retain only recent locators. An exact
+		// historical read remains available from the self-contained journal.
+		if _, err := log.replayLocked(ctx, func(session.Record) error { return nil }); err != nil {
+			return session.Record{}, err
+		}
+		location, found = log.locations[revision]
+		if !found {
+			return session.Record{}, fmt.Errorf("Agent record revision %d is missing", revision)
+		}
 	}
 	file, err := os.Open(log.path)
 	if err != nil {
 		return session.Record{}, err
 	}
 	defer file.Close()
-	data := make([]byte, location.length)
-	if _, err := file.ReadAt(data, location.offset); err != nil {
+	data := make([]byte, location.Length)
+	if _, err := file.ReadAt(data, location.Offset); err != nil {
 		return session.Record{}, err
 	}
-	records, err := decodeTransaction(data[:len(data)-1], location.previous)
+	records, err := decodeTransaction(data[:len(data)-1], location.Previous)
 	if err != nil {
 		return session.Record{}, err
 	}

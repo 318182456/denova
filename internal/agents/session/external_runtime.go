@@ -185,23 +185,28 @@ func (s *Session) externalStateLocked(ctx context.Context) (ExternalState, error
 		ScanContext: func(source ExternalContextSource, visit func(ExternalContextRecord) error) error {
 			return s.scanExternalContextLocked(ctx, source, visit)
 		}, Read: func(locator externaljournal.Locator) (externaljournal.Record, error) {
-			if locator.Cursor == 0 || locator.Index < 0 {
-				return externaljournal.Record{}, errors.New("invalid external journal locator")
-			}
-			records, err := s.journal.ReadRange(ctx, conversationjournal.Range{After: locator.Cursor - 1, Through: locator.Cursor})
-			if err != nil {
-				return externaljournal.Record{}, err
-			}
-			for _, source := range records {
-				if source.Location.Cursor != locator.Cursor || source.Location.RecordIndex != locator.Index {
-					continue
-				}
-				var record externaljournal.Record
-				if err := json.Unmarshal(source.Payload, &record); err != nil {
-					return externaljournal.Record{}, err
-				}
-				return record, record.Validate()
-			}
-			return externaljournal.Record{}, errors.New("external journal record is missing")
+			return s.readExternalRecordLocked(ctx, locator)
 		}}, nil
+}
+
+// readExternalRecordLocked resolves immutable protocol facts from the journal.
+func (s *Session) readExternalRecordLocked(ctx context.Context, locator externaljournal.Locator) (externaljournal.Record, error) {
+	if locator.Cursor == 0 || locator.Index < 0 {
+		return externaljournal.Record{}, errors.New("invalid external journal locator")
+	}
+	records, err := s.journal.ReadRange(ctx, conversationjournal.Range{After: locator.Cursor - 1, Through: locator.Cursor})
+	if err != nil {
+		return externaljournal.Record{}, err
+	}
+	for _, source := range records {
+		if source.Location.Cursor != locator.Cursor || source.Location.RecordIndex != locator.Index {
+			continue
+		}
+		var record externaljournal.Record
+		if err := json.Unmarshal(source.Payload, &record); err != nil {
+			return externaljournal.Record{}, err
+		}
+		return record, record.Validate()
+	}
+	return externaljournal.Record{}, errors.New("external journal record is missing")
 }

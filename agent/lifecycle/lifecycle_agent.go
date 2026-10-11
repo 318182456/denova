@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"sync"
 
 	agentengine "github.com/alfredxw/denova/agent/engine"
@@ -266,6 +267,18 @@ func (agent *Agent) loadSession(ctx context.Context, key agentsession.Key, log a
 		return nil, err
 	}
 
+	self, _ := agentsession.CanonicalKey(key)
+	for _, child := range session.recovery.Children.Pending {
+		parent, err := ParentSessionKey(child.Key)
+		canonical, _ := agentsession.CanonicalKey(parent)
+		if err != nil || canonical != self {
+			_ = log.Close()
+			return nil, fmt.Errorf("child task checkpoint parent identity mismatch")
+		}
+	}
+	if session.revision == 0 {
+		session.recovery.Children = childTasks{Initialized: true, Pending: make(map[string]ChildTask)}
+	}
 	return session, nil
 }
 
@@ -434,4 +447,46 @@ func (agent *Agent) Close(ctx context.Context) error {
 		result = errors.Join(result, session.Close(ctx))
 	}
 	return result
+}
+
+// SessionExists checks one exact identity without replay or catalog discovery.
+func (agent *Agent) SessionExists(ctx context.Context, key agentsession.Key) (bool, error) {
+	canonical, err := agentsession.CanonicalKey(key)
+	if err != nil {
+		return false, err
+	}
+	agent.mu.RLock()
+	live, closed := agent.sessions[canonical], agent.closed
+	agent.mu.RUnlock()
+	if closed {
+		return false, agentschema.ErrAgentClosed
+	}
+	if live != nil {
+		return true, nil
+	}
+	reader, ok := agent.store.(agentsession.ReaderStore)
+	if !ok {
+		keys, err := agent.ListSessions(ctx, agentsession.Selector{Namespace: key.Namespace, ID: key.ID, Attributes: key.Attributes})
+		if err != nil {
+			return false, err
+		}
+		for _, candidate := range keys {
+			identity, err := agentsession.CanonicalKey(candidate)
+			if err != nil {
+				return false, err
+			}
+			if identity == canonical {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	log, err := reader.OpenReader(ctx, key)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, log.Close()
 }

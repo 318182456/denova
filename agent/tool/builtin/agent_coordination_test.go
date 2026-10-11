@@ -230,8 +230,7 @@ func TestResumedChildStillDeliversCompletion(t *testing.T) {
 	release := make(chan struct{})
 	child := newTaskAgent(t, agentsession.Memory(), &blockingTaskModel{release: release, response: "resumed result"})
 	defer child.Close(context.Background())
-	executor := newTaskExecutor(t, child)
-	executor.completionParent = parent
+	executor := newTaskExecutor(t, child, parent)
 	started, err := executor.Start(ctx, TaskRequest{Agent: "researcher", Prompt: "inspect", IdempotencyKey: "start"})
 	if err != nil {
 		t.Fatal(err)

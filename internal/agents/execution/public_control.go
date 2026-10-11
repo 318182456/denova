@@ -3,6 +3,9 @@ package execution
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"os"
+	"time"
 
 	agentrun "denova/internal/agents/run"
 
@@ -34,32 +37,70 @@ func (backend *publicBackend) openSession(ctx context.Context, options agentrun.
 	return session, binding, nil
 }
 
-func (backend *publicBackend) status(ctx context.Context, options agentrun.Options) (agentrun.RuntimeStatus, error) {
-	session, binding, err := backend.openSession(ctx, options)
+func (backend *publicBackend) status(ctx context.Context, options agentrun.Options) (status agentrun.RuntimeStatus, err error) {
+	if backend == nil || backend.agent == nil {
+		return status, ErrRuntimeProjectionUnavailable
+	}
+	started := time.Now()
+	observed := 0
+	defer func() {
+		if err != nil || time.Since(started) >= time.Second {
+			slog.WarnContext(ctx, "[agent-recovery] status inspection",
+				"project_id", options.ProjectID, "session_id", options.SessionID,
+				"agent_kind", options.AgentKind, "phase", status.Phase,
+				"observed_sessions", observed, "duration_ms", time.Since(started).Milliseconds(), "error", err)
+		}
+	}()
+	options = options.Normalize(options.Workspace)
+	binding, err := agentrun.RuntimeBindingForOptions(options)
 	if err != nil {
 		return agentrun.RuntimeStatus{}, err
 	}
-	snapshot, err := session.Snapshot(ctx)
+	key, err := binding.AgentSessionKey()
 	if err != nil {
 		return agentrun.RuntimeStatus{}, err
 	}
-	status := publicRuntimeStatus(binding, snapshot)
-	sessions, err := backend.taskSessions(ctx, session)
+	snapshot, err := backend.inspectTaskSession(ctx, key)
 	if err != nil {
 		return agentrun.RuntimeStatus{}, err
 	}
-	for _, child := range sessions[1:] {
-		childSnapshot, err := child.Snapshot(ctx)
+	observed++
+	status = publicRuntimeStatus(binding, snapshot)
+	queue := append([]agentevent.ChildTaskSnapshot(nil), snapshot.ChildTasks...)
+	for index := 0; index < len(queue); index++ {
+		child, err := backend.inspectTaskSession(ctx, queue[index].Key)
 		if err != nil {
 			return agentrun.RuntimeStatus{}, err
 		}
-		for _, request := range childSnapshot.PendingInteractions {
+		observed++
+		for _, request := range child.PendingInteractions {
 			if request.Verification != nil {
 				status.PendingInteractions = append(status.PendingInteractions, request)
 			}
 		}
+		queue = append(queue, child.ChildTasks...)
 	}
 	return status, nil
+}
+
+// Released journals are adopted once through a writer. Normal status reads
+// use only the bounded observation checkpoint and never acquire execution.
+func (backend *publicBackend) inspectTaskSession(ctx context.Context, key agentsession.Key) (agentevent.SessionSnapshot, error) {
+	snapshot, err := backend.agent.InspectSession(ctx, key)
+	if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, agentschema.ErrCapabilityUnsupported) {
+		return snapshot, err
+	}
+	if err == nil && snapshot.ChildTasksInitialized {
+		return snapshot, nil
+	}
+	session, err := backend.agent.Session(ctx, key)
+	if err != nil {
+		return agentevent.SessionSnapshot{}, err
+	}
+	if _, err := session.PendingChildTasks(ctx); err != nil {
+		return agentevent.SessionSnapshot{}, err
+	}
+	return session.Snapshot(ctx)
 }
 
 func (backend *publicBackend) goal(ctx context.Context, options agentrun.Options) (agentgoal.GoalState, bool, error) {

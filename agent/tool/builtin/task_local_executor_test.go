@@ -193,9 +193,13 @@ func newTaskAgent(t *testing.T, store agentsession.Store, model agentmodel.BaseC
 	return owner
 }
 
-func newTaskExecutor(t *testing.T, owner *agent.Agent) *LocalTasks {
+func newTaskExecutor(t *testing.T, owner *agent.Agent, parents ...*agent.Session) *LocalTasks {
 	t.Helper()
-	executor, err := NewLocalTasks(LocalTaskOptions{Parallelism: 4}, LocalTaskAgent{
+	options := LocalTaskOptions{Parallelism: 4}
+	if len(parents) > 0 {
+		options.CompletionParent = parents[0]
+	}
+	executor, err := NewLocalTasks(options, LocalTaskAgent{
 		Name: "researcher", Description: "Researches one bounded question", Opener: owner,
 		Identity: agentschema.CapabilityIdentity{Kind: "test.task.researcher", Version: 1},
 	})
@@ -418,9 +422,7 @@ func TestLocalTasksPublishesCompletionWithoutTaskWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	childSession, err := child.Session(ctx, agentsession.Key{
-		Namespace: "task.researcher", ID: task.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
-	})
+	childSession, err := child.Session(ctx, localTaskSessionKey(executor.agents["researcher"], task.Ref.Session))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,16 +545,20 @@ func TestLocalTasksWaitQueuesTerminalCompletionBeforeReturning(t *testing.T) {
 		agentschema.AssistantMessage("synchronized result", nil),
 	}})
 	defer child.Close(context.Background())
-	started := newTaskExecutor(t, child)
+	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
+	defer parentOwner.Close(context.Background())
+	parent, err := parentOwner.Session(ctx, agentsession.Named("wait-completion-parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := newTaskExecutor(t, child, parent)
 	task, err := started.Start(ctx, TaskRequest{
 		Agent: "researcher", Prompt: "research", IdempotencyKey: "synchronized-task",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	childSession, err := child.Session(ctx, agentsession.Key{
-		Namespace: "task.researcher", ID: task.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
-	})
+	childSession, err := child.Session(ctx, localTaskSessionKey(started.agents["researcher"], task.Ref.Session))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,12 +570,6 @@ func TestLocalTasksWaitQueuesTerminalCompletionBeforeReturning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
-	defer parentOwner.Close(context.Background())
-	parent, err := parentOwner.Session(ctx, agentsession.Named("wait-completion-parent"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	executor, err := NewLocalTasks(LocalTaskOptions{
 		Parallelism: 4, CompletionParent: parent, MaxResultBytes: 4096,
 	}, LocalTaskAgent{
@@ -581,7 +581,7 @@ func TestLocalTasksWaitQueuesTerminalCompletionBeforeReturning(t *testing.T) {
 	}
 	outcomes, err := executor.Wait(ctx, []TaskRef{task.Ref})
 	if err != nil || len(outcomes) != 1 || outcomes[0].Task == nil || !outcomes[0].Ready || outcomes[0].Task.Output != "" {
-		t.Fatalf("wait outcomes=%#v err=%v", outcomes, err)
+		t.Fatalf("wait outcomes=%#v err=%v item_error=%v", outcomes, err, outcomes[0].Err)
 	}
 	id := taskCompletionID(task.Ref)
 	watch, err := parent.WatchTaskCompletions(ctx, []string{id})
@@ -592,20 +592,19 @@ func TestLocalTasksWaitQueuesTerminalCompletionBeforeReturning(t *testing.T) {
 
 func TestLocalTasksReconcilesCompletionFromDurableChildSession(t *testing.T) {
 	ctx := context.Background()
-	childStore := agentsession.Memory()
-	first := newTaskAgent(t, childStore, &taskModel{responses: []*agentschema.Message{
-		agentschema.AssistantMessage("cold mailbox result", nil),
-	}})
-	started := newTaskExecutor(t, first)
-	task, err := started.Start(ctx, TaskRequest{
-		Agent: "researcher", Prompt: "research", IdempotencyKey: "cold-mailbox-task",
-	})
+	parentStore, childStore := agentsession.Memory(), agentsession.Memory()
+	parentOwner := newTaskAgent(t, parentStore, &taskModel{})
+	parent, err := parentOwner.Session(ctx, agentsession.Named("cold-completion-parent"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	childSession, err := first.Session(ctx, agentsession.Key{
-		Namespace: "task.researcher", ID: task.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
-	})
+	first := newTaskAgent(t, childStore, &taskModel{responses: []*agentschema.Message{agentschema.AssistantMessage("cold mailbox result", nil)}})
+	started := newTaskExecutor(t, first, parent)
+	task, err := started.Start(ctx, TaskRequest{Agent: "researcher", Prompt: "research", IdempotencyKey: "cold-mailbox-task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childSession, err := first.Session(ctx, localTaskSessionKey(started.agents["researcher"], task.Ref.Session))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,24 +618,18 @@ func TestLocalTasksReconcilesCompletionFromDurableChildSession(t *testing.T) {
 	if err := first.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-
-	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
-	defer parentOwner.Close(context.Background())
-	parent, err := parentOwner.Session(ctx, agentsession.Named("cold-completion-parent"))
+	if err := parentOwner.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	parentOwner = newTaskAgent(t, parentStore, &taskModel{})
+	defer parentOwner.Close(ctx)
+	parent, err = parentOwner.Session(ctx, agentsession.Named("cold-completion-parent"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	cold := newTaskAgent(t, childStore, &taskModel{})
-	defer cold.Close(context.Background())
-	executor, err := NewLocalTasks(LocalTaskOptions{
-		Parallelism: 4, CompletionParent: parent, MaxResultBytes: 4096,
-	}, LocalTaskAgent{
-		Name: "researcher", Description: "Research", Opener: cold,
-		Identity: agentschema.CapabilityIdentity{Kind: "test.task.mailbox-recovery", Version: 1},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	defer cold.Close(ctx)
+	executor := newTaskExecutor(t, cold, parent)
 	if err := executor.ReconcileTaskCompletions(ctx); err != nil {
 		t.Fatal(err)
 	}

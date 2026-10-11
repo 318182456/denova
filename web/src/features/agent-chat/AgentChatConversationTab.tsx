@@ -396,6 +396,8 @@ function AgentChatConversationTabComponent({
       onStop={chat.stop}
       onSuspend={chat.suspend}
       onResumeTask={chat.resumeTask}
+      recoveryFailed={chat.recoveryFailed}
+      onRetryRecovery={() => { void chat.resumeActiveChat() }}
       onSteerQueuedCommand={chat.steerQueuedCommand}
       onDeleteQueuedCommand={chat.deleteQueuedCommand}
       onEditQueuedCommand={chat.editQueuedCommand}

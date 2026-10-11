@@ -97,6 +97,7 @@ func TestInteractiveProviderContinuationSurvivesTurnCommitAndReload(t *testing.T
 	if strings.Contains(string(publicJSON), "encrypted-state") || strings.Contains(string(publicJSON), "tool-encrypted-state") || strings.Contains(string(publicJSON), providers.ExtraKeyContinuation) {
 		t.Fatalf("opaque provider continuation leaked into public Game snapshot: %s", publicJSON)
 	}
+	assertGameCanonicalWindow(t, NewConversation(reloaded, "", workspace, story.ID, "main", "", 0, nil))
 }
 
 func TestInteractiveToolResultSummaryRoundTripsThroughStorySchema(t *testing.T) {

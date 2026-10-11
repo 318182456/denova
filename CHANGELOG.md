@@ -54,6 +54,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 减少 Agent 恢复时重复扫描历史子任务、写作、通用会话、游戏分支及 Native 子会话日志的等待；连接恢复支持自动退避重试和失败后的手动重试，保留已接受的运行。
+- Reduced Agent recovery delays from repeated scans of historical subtasks, Writing/General conversations, Game branches, and Native child-session journals. Connection recovery now retries with backoff and offers a manual retry while preserving accepted runs.
+
 - 修复 Agent 连续读取大量长文本时的内存与会话日志膨胀；历史分页与压缩后恢复保留完整内容。
 - Fix excessive memory and session-log growth during Agent runs with many large text results, preserving complete content through history paging and recovery after compaction.
 

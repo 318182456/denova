@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -23,6 +24,10 @@ import (
 type SessionOpener interface {
 	Session(context.Context, agentsession.Key) (*agent.Session, error)
 	ListSessions(context.Context, agentsession.Selector) ([]agentsession.Key, error)
+}
+
+type exactSessionCatalog interface {
+	SessionExists(context.Context, agentsession.Key) (bool, error)
 }
 
 type activeSessionCounter interface {
@@ -100,6 +105,26 @@ func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*Loc
 		if _, duplicate := resolved[candidate.Name]; duplicate {
 			return nil, fmt.Errorf("local task Agent %q is duplicated", candidate.Name)
 		}
+		if options.CompletionParent != nil {
+			parentAttributes, err := agent.ChildSessionAttributes(options.CompletionParent.Key())
+			if err != nil {
+				return nil, err
+			}
+			candidate.Attributes = cloneTaskAttributes(candidate.Attributes)
+			candidate.LookupAttributes = cloneTaskAttributes(candidate.LookupAttributes)
+			if candidate.Attributes == nil {
+				candidate.Attributes = make(map[string]string)
+			}
+			if candidate.LookupAttributes == nil {
+				candidate.LookupAttributes = make(map[string]string)
+			}
+			for name, value := range parentAttributes {
+				if existing := candidate.Attributes[name]; existing != "" && existing != value {
+					return nil, fmt.Errorf("child Agent parent identity differs from completion parent")
+				}
+				candidate.Attributes[name], candidate.LookupAttributes[name] = value, value
+			}
+		}
 		candidate.Attributes = cloneTaskAttributes(candidate.Attributes)
 		candidate.HostData = cloneTaskHostData(candidate.HostData)
 		candidate.LookupAttributes = cloneTaskAttributes(candidate.LookupAttributes)
@@ -171,12 +196,31 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 	if err := tasks.checkCapacity(ctx); err != nil {
 		return Task{}, err
 	}
-	session, err := candidate.Opener.Session(ctx, localTaskSessionKey(candidate, sessionID))
+	key := localTaskSessionKey(candidate, sessionID)
+	if tasks.completionParent != nil {
+		if err := tasks.completionParent.RegisterChildTask(ctx, agent.ChildTask{Key: key}); err != nil {
+			return Task{}, err
+		}
+	}
+	session, err := candidate.Opener.Session(ctx, key)
 	if err != nil {
 		return Task{}, fmt.Errorf("open task Session: %w", err)
 	}
 	run, err := session.Run(ctx, agent.Input{Text: prompt, IdempotencyKey: commandID, HostData: cloneTaskHostData(candidate.HostData)})
 	if err != nil {
+		if errors.Is(err, agentsession.ErrCommitUnknown) {
+			return Task{}, fmt.Errorf("task Run admission is uncertain: %w", err)
+		}
+		// A rejected call can still refer to accepted work after a failed
+		// attachment. Only remove an empty, authoritatively unaccepted child.
+		if tasks.completionParent != nil {
+			_, discardErr := tasks.completionParent.DiscardRejectedChildTask(context.Background(), session)
+			return Task{}, errors.Join(fmt.Errorf("start task Run: %w", err), discardErr)
+		}
+		snapshot, inspectErr := session.Snapshot(context.Background())
+		if inspectErr != nil || snapshot.ActiveRunID != "" || len(snapshot.QueuedRuns) != 0 || len(snapshot.RecentRuns) != 0 {
+			return Task{}, errors.Join(fmt.Errorf("start task Run: %w", err), inspectErr)
+		}
 		if deleteErr := session.Delete(context.Background()); deleteErr != nil {
 			return Task{}, errors.Join(
 				fmt.Errorf("start task Run: %w", err),
@@ -189,7 +233,8 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 	receipt := run.Receipt()
 	accepted := Task{Ref: ref, Status: "running", Receipt: &receipt}
 	if completionErr := tasks.trackTaskCompletion(ctx, ref); completionErr != nil {
-		_, _ = run.Abort(context.Background(), agentevent.AbortRequest{Reason: "parent task completion tracking failed"})
+		// The durable intent still names this child. Recovery can repair the lost
+		// parent receipt without cancelling already accepted work.
 		return accepted, completionErr
 	}
 	tasks.watchCompletion(ctx, run, ref)
@@ -321,6 +366,13 @@ func (tasks *LocalTasks) existingTask(
 		return Task{}, false, err
 	}
 	if !found {
+		snapshot, err := session.Snapshot(ctx)
+		if err != nil {
+			return Task{}, false, err
+		}
+		if snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 && len(snapshot.RecentRuns) == 0 {
+			return Task{}, false, nil
+		}
 		return Task{}, false, errors.New("task Session idempotency identity is inconsistent")
 	}
 	ref := TaskRef{Agent: candidate.Name, Session: sessionID, Run: exact.Receipt.RunID}
@@ -419,6 +471,14 @@ func taskSessionKeys(
 	candidate LocalTaskAgent,
 	sessionID string,
 ) ([]agentsession.Key, error) {
+	if exact, ok := candidate.Opener.(exactSessionCatalog); ok && sessionID != "" && maps.Equal(candidate.Attributes, candidate.LookupAttributes) {
+		key := localTaskSessionKey(candidate, sessionID)
+		found, err := exact.SessionExists(ctx, key)
+		if err != nil || !found {
+			return nil, err
+		}
+		return []agentsession.Key{key}, nil
+	}
 	return candidate.Opener.ListSessions(ctx, taskSessionSelector(candidate, sessionID))
 }
 

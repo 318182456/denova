@@ -263,7 +263,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     [t],
   )
 
-  const { abortRecovery, resumeTask: continueTask, projectStreamCycle, recoveryPending, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
+  const { abortRecovery, resumeTask: continueTask, projectStreamCycle, recoveryPending, recoveryFailed, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
     activeSessionId,
     displayRehydrateRequest,
     loadHistoryAuthoritative,
@@ -843,6 +843,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     commandSubmitting,
     queueActionPendingCommandID,
     activityContent,
+    recoveryFailed,
     references,
     loreReferences,
     styleScenes,

@@ -44,8 +44,8 @@ export interface AgentChatClient {
   fixedSessionId?: string
   getSessions: () => Promise<SessionSummary[]>
   getMessagesPage: (sessionId?: string, options?: { limit?: number; before?: string }) => Promise<SessionMessagesPage>
-  getActiveChatTask: (sessionId: string) => Promise<ActiveChatTask>
-  recoverChatAgentRuntime: (action: AgentRuntimeRecoveryAction, sessionId: string) => Promise<AgentRuntimeRecoveryReceipt>
+  getActiveChatTask: (sessionId: string, signal?: AbortSignal) => Promise<ActiveChatTask>
+  recoverChatAgentRuntime: (action: AgentRuntimeRecoveryAction, sessionId: string, signal?: AbortSignal) => Promise<AgentRuntimeRecoveryReceipt>
   submitChatCommand: (
     type: AgentCommandDelivery | 'abort' | 'suspend',
     commandId: string,
@@ -135,7 +135,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
       const data = await requestJSON<{
         messages?: SessionMessagesPage['messages']
         page?: { next_before?: string; has_more?: boolean; total?: number }
-      }>(`${basePath}/session/messages?${query.toString()}`)
+      }>(`${basePath}/session/messages?${query.toString()}`, { timeoutMs: 15_000 })
       return {
         messages: data.messages || [],
         nextBefore: data.page?.next_before || '0',
@@ -143,9 +143,10 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         total: data.page?.total || 0,
       }
     },
-    getActiveChatTask: () => requestJSON(`${basePath}/chat/active?${new URLSearchParams(scope).toString()}`),
-    recoverChatAgentRuntime: (action) =>
+    getActiveChatTask: (_sessionId, signal) => requestJSON(`${basePath}/chat/active?${new URLSearchParams(scope).toString()}`, { signal, timeoutMs: 15_000 }),
+    recoverChatAgentRuntime: (action, _sessionId, signal) =>
       requestJSON(`${basePath}/chat/recovery`, {
+        signal, timeoutMs: 15_000,
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, action }),

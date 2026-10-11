@@ -77,6 +77,7 @@ func DefinitionBehaviorIdentity(definition Definition) (string, error) {
 // Session owns input admission and the canonical journal; Run is one admitted
 // execution. Type aliases preserve handle identity without method forwarding.
 type Session = lifecycle.Session
+type ChildTask = lifecycle.ChildTask
 type Run = lifecycle.Run
 type RunSnapshot = lifecycle.RunSnapshot
 type QueuedInput = lifecycle.QueuedInput

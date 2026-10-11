@@ -16,11 +16,12 @@ import (
 	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/sessionjournal"
 
+	agenthistory "github.com/alfredxw/denova/agent/context/history"
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 const (
-	sessionProjectionVersion      = 27
+	sessionProjectionVersion      = 28
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -82,6 +83,9 @@ type assistantTargetCheckpoint struct {
 // conversation index. It deliberately stores locators and current state only;
 // the canonical JSONL remains the sole source of transcript and display text.
 type sessionJournalProjection struct {
+	CanonicalCount        int                                   `json:"canonical_count"`
+	CanonicalPendingUser  bool                                  `json:"canonical_pending_user,omitempty"`
+	CanonicalAnchors      []canonicalAnchor                     `json:"canonical_anchors,omitempty"`
 	Version               int                                   `json:"version"`
 	SessionID             string                                `json:"session_id"`
 	Generation            string                                `json:"generation"`
@@ -210,6 +214,13 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 			if external.Kind == externaljournal.ToolStarted {
 				projection.rememberHistoryRow(record.Location.Cursor, false)
 			}
+			if external.Kind == externaljournal.ToolFinished {
+				if projection.CanonicalPendingUser {
+					projection.CanonicalCount++
+					projection.CanonicalPendingUser = false
+				}
+				projection.CanonicalCount += 2
+			}
 			if external.Kind == externaljournal.OperationClosed {
 				event, err := ExternalUsageDisplay(external)
 				if err != nil {
@@ -258,6 +269,9 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.rememberHistoryRow(record.Location.Cursor, true)
 		projection.ClearAfter = projection.MessageCount
 		projection.ClearCursor = record.Location.Cursor
+		projection.CanonicalCount = 0
+		projection.CanonicalPendingUser = false
+		projection.CanonicalAnchors = nil
 		projection.External.Reset()
 		clear(projection.ReleasedContextCompactions)
 		projection.advanceRevision(marker.ContextRevision)
@@ -395,6 +409,7 @@ func (projection *sessionJournalProjection) applyContextBatch(record conversatio
 		return fmt.Errorf("session context batch revision is not contiguous")
 	}
 	for index := range batch.Messages {
+		projection.rememberCanonicalMessage(&batch.Messages[index], record.Location, index)
 		projection.rememberMessage(record.Location, batch.Messages[index].Role, MessageMetadata{}, "")
 	}
 	projection.RecentContextBatches = append(projection.RecentContextBatches, contextBatchLocator{
@@ -469,6 +484,7 @@ func (projection *sessionJournalProjection) applyMessage(record conversationjour
 			return err
 		}
 	}
+	projection.rememberCanonicalMessage(&message.Message, record.Location, 0)
 	projection.rememberMessage(record.Location, message.Message.Role, metadata, commitHash)
 	if kind == historyTypeMessage {
 		projection.VisibleMessageCount++
@@ -499,6 +515,7 @@ func (projection *sessionJournalProjection) applyLegacyMessage(record conversati
 	if message.Role == "" && message.Content == "" && len(message.ToolCalls) == 0 {
 		return fmt.Errorf("legacy session message is empty")
 	}
+	projection.rememberCanonicalMessage(&message, record.Location, 0)
 	projection.rememberMessage(record.Location, message.Role, MessageMetadata{}, "")
 	projection.VisibleMessageCount++
 	safeBoundary := message.Role == agentschema.User
@@ -763,4 +780,30 @@ func (projection *sessionJournalProjection) messageBaseForCursor(cursor conversa
 		}
 	}
 	return projection.MessageCount
+}
+
+func (projection *sessionJournalProjection) CurrentCheckpoint() (json.RawMessage, error) {
+	return projection.AgentSessions.CurrentCheckpoint()
+}
+
+// Anchors start where context-state ordering has no deferred user. External
+// tool starts have their own exact journal locators and can be read on demand.
+func (projection *sessionJournalProjection) rememberCanonicalMessage(message *agentschema.Message, location conversationjournal.Location, batchIndex int) {
+	contextState := agenthistory.IsContextStateMessage(message)
+	if projection.CanonicalPendingUser && !contextState {
+		projection.CanonicalCount++
+		projection.CanonicalPendingUser = false
+	}
+	if !projection.CanonicalPendingUser && (len(projection.CanonicalAnchors) == 0 || projection.CanonicalCount-projection.CanonicalAnchors[len(projection.CanonicalAnchors)-1].Index >= 256) {
+		projection.CanonicalAnchors = append(projection.CanonicalAnchors, canonicalAnchor{Index: projection.CanonicalCount, Cursor: location.Cursor, RecordIndex: location.RecordIndex, BatchIndex: batchIndex})
+	}
+	if message.Role == agentschema.User && !contextState {
+		projection.CanonicalPendingUser = true
+	} else {
+		projection.CanonicalCount++
+	}
+}
+
+func (projection *sessionJournalProjection) CurrentReadCursors() []conversationjournal.Cursor {
+	return projection.AgentSessions.CurrentReadCursors()
 }

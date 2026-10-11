@@ -21,7 +21,6 @@ import (
 	"denova/internal/project"
 
 	"github.com/alfredxw/denova/agent"
-	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
 	sessionfile "github.com/alfredxw/denova/agent/session/file"
 )
@@ -77,12 +76,15 @@ func (store *Store) OpenReader(ctx context.Context, key agentsession.Key) (agent
 	if err != nil {
 		return nil, err
 	}
-	if !child {
-		return nil, agentschema.ErrCapabilityUnsupported
-	}
-	_, layout, err := store.resolve(root, false)
+	binding, layout, err := store.resolve(root, false)
 	if err != nil {
 		return nil, err
+	}
+	if !child {
+		if binding.AgentKind == agentrun.AgentKindInteractiveStory {
+			return interactive.OpenAgentReader(ctx, layout.ContentRoot, store.dataDir, binding.StoryID, key)
+		}
+		return productsession.OpenStoreAgentReader(ctx, layout.SessionsDir(), binding.SessionID, key)
 	}
 	path := filepath.Join(layout.SessionsDir(), "children")
 	if _, err := os.Stat(path); err != nil {

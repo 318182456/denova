@@ -102,6 +102,7 @@ type Session struct {
 	observers           map[uint64]*sessionObserver
 	nextObserver        uint64
 	taskCompletions     taskCompletionMailbox
+	childTasksMu        sync.Mutex
 }
 
 func (session *Session) Key() agentsession.Key {
@@ -169,6 +170,8 @@ func (session *Session) replay(ctx context.Context, access sessionAccess) error 
 			}
 			delete(session.capabilities, capability.Capability)
 			delete(session.durableCapabilities, capability.Capability)
+		case sessionChildTasksRecord:
+			// Already reduced into the current obligation checkpoint.
 		case sessionTaskCompletionDeliveryRecord:
 			var delivery persistedTaskCompletionDelivery
 			if err := json.Unmarshal(record.Data, &delivery); err != nil {
@@ -378,7 +381,10 @@ func (session *Session) Snapshot(_ context.Context) (agentevent.SessionSnapshot,
 }
 
 func (session *Session) snapshotLocked() agentevent.SessionSnapshot {
-	snapshot := agentevent.SessionSnapshot{Key: session.Key(), Cursor: session.cursor, RetentionStart: 1}
+	snapshot := agentevent.SessionSnapshot{Key: session.Key(), Cursor: session.cursor, RetentionStart: 1, ChildTasksInitialized: session.recovery.Children.Initialized}
+	for _, child := range session.recovery.Children.values() {
+		snapshot.ChildTasks = append(snapshot.ChildTasks, agentevent.ChildTaskSnapshot{Key: child.Key})
+	}
 	if len(session.history) > 0 {
 		snapshot.RetentionStart = session.history[0].Cursor
 	} else {
@@ -566,6 +572,15 @@ func (session *Session) appendRecordLocked(ctx context.Context, kind string, val
 func (session *Session) appendRecordsLocked(ctx context.Context, records ...agentsession.Record) error {
 	if session.storageErr != nil {
 		return session.storageErr
+	}
+	// Persist the empty child set with a new journal's first transaction. A
+	// cold reopen must distinguish new Sessions from released, unadopted ones.
+	if session.revision == 0 && session.recovery.Children.Initialized && len(records) > 0 && records[0].Kind != sessionChildTasksRecord {
+		initialized, err := sessionRecord(sessionChildTasksRecord, session.recovery.Children)
+		if err != nil {
+			return err
+		}
+		records = append([]agentsession.Record{initialized}, records...)
 	}
 	next, err := session.log.Append(ctx, session.revision, records...)
 	if err != nil {

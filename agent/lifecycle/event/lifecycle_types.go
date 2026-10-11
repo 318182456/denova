@@ -402,26 +402,32 @@ type ActiveOutputSnapshot struct {
 	RehydrateRequired bool
 }
 
+type ChildTaskSnapshot struct {
+	Key agentsession.Key
+}
+
 type SessionSnapshot struct {
-	Key                 agentsession.Key
-	Cursor              Cursor
-	RetentionStart      Cursor
-	ActiveRunID         string
-	ActiveCommandID     string
-	ActiveAbortPending  bool
-	ActiveStatus        agentschema.ResultStatus
-	ActiveReceiptCursor Cursor
-	ActiveCycle         int
-	ActiveOutput        ActiveOutputSnapshot
-	QueuedRuns          []QueuedRunSnapshot
-	OpenTools           []OpenToolSnapshot
-	RecentRuns          []RunSummary
-	Goal                *agentgoal.GoalState
-	Todo                *TodoState
-	Compaction          *agenthistory.CompactionState
-	ClearRevision       uint64
-	PendingInteractions []agentinteraction.InteractionRequest
-	MessagesTruncated   bool
+	ChildTasksInitialized bool
+	ChildTasks            []ChildTaskSnapshot
+	Key                   agentsession.Key
+	Cursor                Cursor
+	RetentionStart        Cursor
+	ActiveRunID           string
+	ActiveCommandID       string
+	ActiveAbortPending    bool
+	ActiveStatus          agentschema.ResultStatus
+	ActiveReceiptCursor   Cursor
+	ActiveCycle           int
+	ActiveOutput          ActiveOutputSnapshot
+	QueuedRuns            []QueuedRunSnapshot
+	OpenTools             []OpenToolSnapshot
+	RecentRuns            []RunSummary
+	Goal                  *agentgoal.GoalState
+	Todo                  *TodoState
+	Compaction            *agenthistory.CompactionState
+	ClearRevision         uint64
+	PendingInteractions   []agentinteraction.InteractionRequest
+	MessagesTruncated     bool
 }
 
 type RunSummary struct {

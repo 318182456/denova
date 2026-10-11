@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -71,6 +72,10 @@ func (s *Session) VisitCanonicalMessages(ctx context.Context, visit func(*agents
 		return fmt.Errorf("session canonical journal is unavailable")
 	}
 
+	return s.visitCanonicalMessagesLocked(ctx, nil, visit)
+}
+
+func (s *Session) visitCanonicalMessagesLocked(ctx context.Context, start *canonicalAnchor, visit func(*agentschema.Message) error) error {
 	// Start immediately before the projected clear cursor so its transaction is
 	// included. Replaying the clear record itself remains correct if one physical
 	// transaction ever contains records on both sides of that marker.
@@ -78,10 +83,23 @@ func (s *Session) VisitCanonicalMessages(ctx context.Context, visit func(*agents
 	if s.projection.ClearCursor > 0 {
 		after = s.projection.ClearCursor - 1
 	}
+	if start != nil {
+		after = start.Cursor - 1
+	}
 	through := s.journal.Head().Cursor
 	starts := map[string]externaljournal.StartedTool{}
-	afterClear := s.projection.ClearCursor == 0
-	return s.journal.VisitRange(ctx, conversationjournal.Range{After: after, Through: through}, func(record conversationjournal.Record) error {
+	afterClear := start != nil || s.projection.ClearCursor == 0
+	needStart := errors.New("canonical external tool start required")
+	var missingKey, missingOperation, missingExecution string
+	var missingLocator externaljournal.Locator
+	var resume conversationjournal.Location
+	visitRecord := func(record conversationjournal.Record) error {
+		if resume.Cursor == record.Location.Cursor && record.Location.RecordIndex < resume.RecordIndex {
+			return nil
+		}
+		if start != nil && record.Location.Cursor == start.Cursor && record.Location.RecordIndex < start.RecordIndex {
+			return nil
+		}
 		var typed struct {
 			Type string `json:"type"`
 		}
@@ -112,7 +130,10 @@ func (s *Session) VisitCanonicalMessages(ctx context.Context, visit func(*agents
 			}
 			// Retaining one message must not pin the array containing the rest
 			// of this batch, which may belong to the archived prefix.
-			for _, message := range batch.Messages {
+			for index, message := range batch.Messages {
+				if start != nil && record.Location.Cursor == start.Cursor && record.Location.RecordIndex == start.RecordIndex && index < start.BatchIndex {
+					continue
+				}
 				if err := visit(&message); err != nil {
 					return err
 				}
@@ -141,6 +162,15 @@ func (s *Session) VisitCanonicalMessages(ctx context.Context, visit func(*agents
 			}
 			key := event.OperationID + "\x00" + finished.ExecutionID
 			started, ok := starts[key]
+			if !ok && start != nil {
+				if operation := s.projection.External.Operations[event.OperationID]; operation != nil {
+					if tool, found := operation.Tools[finished.ExecutionID]; found {
+						missingKey, missingOperation, missingExecution = key, event.OperationID, finished.ExecutionID
+						missingLocator, resume = tool.Started, record.Location
+						return needStart
+					}
+				}
+			}
 			if !ok {
 				return fmt.Errorf("external tool start is missing")
 			}
@@ -162,5 +192,27 @@ func (s *Session) VisitCanonicalMessages(ctx context.Context, visit func(*agents
 			return visit(agentschema.ToolMessage(result, id, agentschema.WithToolName(started.Tool)))
 		}
 		return nil
-	})
+	}
+	for {
+		err := s.journal.VisitRange(ctx, conversationjournal.Range{After: after, Through: through}, visitRecord)
+		if !errors.Is(err, needStart) {
+			return err
+		}
+		// VisitRange owns the read lock. Resolve an earlier start after the
+		// visitor returns, then continue at this exact record without repeating
+		// messages from its transaction or recursing into the journal lock.
+		original, err := s.readExternalRecordLocked(ctx, missingLocator)
+		if err != nil {
+			return err
+		}
+		var started externaljournal.StartedTool
+		if err := json.Unmarshal(original.Data, &started); err != nil {
+			return err
+		}
+		if original.Kind != externaljournal.ToolStarted || original.OperationID != missingOperation || started.ExecutionID != missingExecution {
+			return fmt.Errorf("external tool start identity changed")
+		}
+		starts[missingKey] = started
+		after = resume.Cursor - 1
+	}
 }

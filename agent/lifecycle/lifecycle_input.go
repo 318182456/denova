@@ -123,9 +123,33 @@ func (session *Session) receiveInput(ctx context.Context, input agentschema.Inpu
 	}
 	session.agent.admissionMu.Lock()
 	defer session.agent.admissionMu.Unlock()
+	if err := session.usable(); err != nil {
+		return agentevent.CommandReceipt{}, nil, err
+	}
 	sealed, err := session.agent.treeSealed(ctx, session.key, resumeTreePermit(ctx))
 	if err != nil {
 		return agentevent.CommandReceipt{}, nil, err
+	}
+	if _, child := session.key.Attributes[ParentSessionAttribute]; child && ((kind == inputRun && !sealed) || kind == inputFollowUp || kind == inputQueue) {
+		parentKey, err := ParentSessionKey(session.key)
+		if err != nil {
+			return agentevent.CommandReceipt{}, nil, err
+		}
+		exists, err := session.agent.SessionExists(ctx, parentKey)
+		if err != nil {
+			return agentevent.CommandReceipt{}, nil, err
+		}
+		// Independent child owners register through LocalTasks in the actual
+		// parent store; admission must not create a second parent journal.
+		if exists {
+			parent, err := session.agent.Session(ctx, parentKey)
+			if err != nil {
+				return agentevent.CommandReceipt{}, nil, err
+			}
+			if err := parent.RegisterChildTask(ctx, ChildTask{Key: session.key}); err != nil {
+				return agentevent.CommandReceipt{}, nil, err
+			}
+		}
 	}
 	input = cloneInput(input)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
