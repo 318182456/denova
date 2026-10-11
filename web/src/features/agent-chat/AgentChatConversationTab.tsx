@@ -26,6 +26,7 @@ export interface AgentChatPendingAction {
 }
 
 export interface AgentChatConversationTabProps {
+  page?: AgentPanelProps['page']
   projectId: string
   projectType: 'book' | 'general' | 'agents'
   workspace: string
@@ -109,6 +110,7 @@ export interface AgentChatConversationHost {
  * to one immutable project/session pair, so switching tabs never re-points a shared runtime.
  */
 function AgentChatConversationTabComponent({
+  page,
   projectId,
   projectType,
   workspace,
@@ -335,6 +337,7 @@ function AgentChatConversationTabComponent({
 
   return (
     <AgentPanel
+      page={page}
       projectId={projectId}
       active={active}
       agentKind={projectType === 'book' ? 'writing' : 'general'}

@@ -1,3 +1,4 @@
+import type { AgentPage } from './AgentPageContext'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -82,6 +83,7 @@ export const WRITING_COMPOSER_SETTING_DEFAULTS = {
 export type WritingComposerSettingsController = PersistedUserSettingsController<typeof WRITING_COMPOSER_SETTING_DEFAULTS>
 
 export interface AgentPanelProps {
+  page?: AgentPage
   /** Stable identity for every project-owned API and cache key. */
   projectId: string
   workspace: string
@@ -156,6 +158,7 @@ export interface AgentPanelProps {
     message: string,
     options?: {
       writingSkill?: string
+      pageContext?: ChatSendOptions['pageContext']
       ideContext?: IDEContext
       imagePresetId?: string
       tellerId?: string
@@ -198,6 +201,7 @@ export interface AgentPanelProps {
  * `chrome` selects which frame it renders with.
  */
 function AgentPanelComponent({
+  page,
   projectId,
   workspace,
   agentKind = 'writing',
@@ -345,7 +349,7 @@ function AgentPanelComponent({
 
   useEffect(() => {
     // Cached configuration and workbench conversations must not consume Writing's entry action.
-    if (generalAgent || chrome === 'workbench' || (configuredQuickPromptScope && configuredQuickPromptScope !== 'writing')) return
+    if (page || generalAgent || chrome === 'workbench' || (configuredQuickPromptScope && configuredQuickPromptScope !== 'writing')) return
     if (!active) return
     const handleWritingInitRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
@@ -371,7 +375,7 @@ function AgentPanelComponent({
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [active, chrome, configuredQuickPromptScope, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
+  }, [active, chrome, configuredQuickPromptScope, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, page, persistedSettings.loading, t, writingSkill])
 
   useEffect(() => {
     if (generalAgent) return
@@ -403,9 +407,10 @@ function AgentPanelComponent({
         await onAnalyzeContext(
           message,
           generalAgent
-            ? undefined
+            ? { pageContext: page?.context }
             : {
-                writingSkill,
+                writingSkill: page ? undefined : writingSkill,
+                pageContext: page?.context,
                 ideContext,
                 imagePresetId,
                 tellerId: ideTellerId,
@@ -522,7 +527,8 @@ function AgentPanelComponent({
     }
     const accepted = await onSend(effectiveMessage, {
       attachments: inputOptions?.attachments,
-      ...(generalAgent ? {} : { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId }),
+      ...(generalAgent || page ? {} : { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId }),
+      pageContext: page?.context,
       reviewFeedback: feedback,
       reviewFeedbackDisplay: feedbackSelection.length
         ? {
@@ -576,7 +582,7 @@ function AgentPanelComponent({
     }))
   }, [onEditQueuedCommand])
 
-  const quickPromptScope = configuredQuickPromptScope ?? (generalAgent ? undefined : 'writing')
+  const quickPromptScope = configuredQuickPromptScope ?? (generalAgent || page ? undefined : 'writing')
   const fillQuickPrompt = useCallback((prompt: string) => {
     setInputPrefill((current) => ({
       prompt,
@@ -653,6 +659,7 @@ function AgentPanelComponent({
     afterContentKey: `${recoveryFailed}:${runtimeProjection?.phase || 'idle'}:${commandSubmitting}:${lastRuntimeFailure || ''}`,
   }
   const inputAreaProps = {
+    page,
     onSend: sendWithWritingSkill,
     attachmentsEnabled: true,
     // Preserve resumable output only when the selected engine supports pause.
@@ -685,11 +692,11 @@ function AgentPanelComponent({
     referencedFiles: references,
     onReferenceRemove,
     fileSuggestions,
-    loreReferences: generalAgent ? [] : loreReferences,
+    loreReferences: generalAgent && !page ? [] : loreReferences,
     loreReferenceLabels,
     onLoreReferenceAdd,
     onLoreReferenceRemove,
-    loreSuggestions: generalAgent ? [] : loreSuggestions,
+    loreSuggestions: generalAgent && !page ? [] : loreSuggestions,
     styleScenes: generalAgent ? [] : styleScenes,
     onStyleSceneAdd,
     onStyleSceneRemove,
@@ -709,7 +716,7 @@ function AgentPanelComponent({
     composerSettingsControl: (
       <>
         {quickPrompts.menuItem}
-        {!generalAgent ? (
+        {!generalAgent && !page ? (
           <>
             <ImageGenerationSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming}>
               <WritingImagePresetMenu

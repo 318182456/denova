@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { runtimeRoot } from './e2e-paths.mjs'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
 import { loreCompletion, loreIndexCompletion, loreQueryCompletion } from './e2e-lore-fixture.mjs'
+import { comicEpisodeCompletion } from './e2e-comic-fixture.mjs'
 import { extensionImage, extensionOpening, extensionScene } from './e2e-extension-fixture.mjs'
 import { responsesRequest, responsesControl, captureNativeRequest, runtimeCompletion, writeCompletionFrame, finishCompletion } from './e2e-responses-fixture.mjs'
 import { geminiRequest, geminiControl, writeGeminiFrame, finishGemini, writeGeminiGenerated } from './e2e-gemini-fixture.mjs'
@@ -356,8 +357,16 @@ const server = createServer(async (request, response) => {
   if (request.method === 'POST' && ['/v1/images/generations', '/v1/images/edits'].includes(request.url)) {
     const body = await readJSONBody(request)
     recordRequest('E2E_EXTENSION_IMAGE')
+    if (body.prompt?.includes('E2E_COMIC_EPISODE_IMAGE_')) {
+      recordRequest('E2E_COMIC_EPISODE_IMAGE')
+      capturedRequests.set('E2E_COMIC_EPISODE_IMAGE', body)
+    }
+    if (body.prompt?.includes('E2E_PLUGIN_IMAGE_RECOVERY')) {
+      recordRequest('E2E_PLUGIN_IMAGE_RECOVERY')
+      await waitForDelayedRelease('E2E_PLUGIN_IMAGE_RECOVERY')
+    }
     const image = body.prompt?.includes('E2E_COMIC_PAGE') ? readFileSync(new URL('../tests/fixtures/comic-page.png', import.meta.url)).toString('base64') : extensionImage
-    if (request.url === '/v1/images/edits') {
+    if (request.url === '/v1/images/edits' && !body.prompt?.includes('E2E_COMIC_EPISODE_IMAGE_')) {
       recordRequest('E2E_COMIC_EDIT')
       if (body.images?.length !== 3 || !body.mask?.image_url) { writeJSON(response, 400, { error: 'Comic edit requires source, two references and mask' }); return }
     }
@@ -515,8 +524,16 @@ const server = createServer(async (request, response) => {
       : chatCompletionFrames())
     return
   }
+  const comicEpisode = comicEpisodeCompletion(body)
+  if (comicEpisode) {
+    if (comicEpisode.hold) await waitForDelayedRelease(comicEpisode.hold)
+    writeChatCompletion(response, comicEpisode.tool
+      ? toolCompletionFrames(comicEpisode.tool, JSON.stringify(comicEpisode.input), comicEpisode.id)
+      : textCompletionFrames(comicEpisode.content))
+    return
+  }
   if (latestUserMessageIncludesMarker(body, 'E2E_COMIC_PAGE')) {
-    const tool = body.tools?.find(item => item.function?.name?.endsWith('_render'))?.function?.name
+    const tool = body.tools?.find(item => item.function?.name === 'plugin_comic_render')?.function?.name
     const lastUser = body.messages.findLastIndex(message => message.role === 'user')
     const results = toolResultMessages({ messages: body.messages.slice(lastUser) }, tool)
     if (tool && !results.length) {
@@ -528,7 +545,7 @@ const server = createServer(async (request, response) => {
     return
   }
   if (latestUserMessageIncludesMarker(body, 'E2E_COMIC_AGENT')) {
-    const tool = body.tools?.find(item => item.function?.name?.endsWith('_inspect'))?.function?.name
+    const tool = body.tools?.find(item => item.function?.name === 'plugin_comic_inspect')?.function?.name
     if (tool && toolResultMessages(body, tool).length === 0) {
       const match = JSON.stringify(body.messages).match(/\\"pageId\\"\s*:\s*\\"([^\\"]+)\\"/)
       writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify(match ? { pageId: match[1] } : {}), 'call-comic-inspect'))

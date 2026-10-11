@@ -53,6 +53,7 @@ func (service *Service) MaterializeAttachments(ctx context.Context, binding Bind
 }
 
 type projectRuntime struct {
+	pageInstructions func(context.Context, string, string, string) (string, error)
 	projectID        string
 	projectType      projectdomain.Type
 	agentKind        string
@@ -73,7 +74,8 @@ func (runtime *projectRuntime) conversation(sess *session.Session) conversationa
 		return conversationapp.Runtime{}
 	}
 	return conversationapp.Runtime{
-		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectStore: runtime.stateRoot,
+		PageInstructions: runtime.pageInstructions,
+		ProjectID:        runtime.projectID, ProjectType: runtime.projectType, ProjectStore: runtime.stateRoot,
 		AgentKind: runtime.agentKind, Session: sess, State: runtime.state,
 		BookService: runtime.bookService, ExecutionRuntime: runtime.executionRuntime, Workspace: runtime.workspace,
 		VersionService: runtime.versionService, Config: runtime.cfg,
@@ -345,7 +347,8 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	}
 	runtimeCfg.ProjectID = record.ID
 	project = &projectRuntime{
-		projectID: record.ID, projectType: record.Type, agentKind: agentKind, stateRoot: layout.StoreRoot,
+		pageInstructions: service.host.PageInstructions,
+		projectID:        record.ID, projectType: record.Type, agentKind: agentKind, stateRoot: layout.StoreRoot,
 		workspace: workspace, state: state, store: store, bookService: book.NewService(workspace),
 		versionService: versionService, executionRuntime: executionRuntime, cfg: runtimeCfg,
 	}

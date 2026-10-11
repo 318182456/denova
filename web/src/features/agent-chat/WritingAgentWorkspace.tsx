@@ -445,6 +445,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
               className="absolute inset-0 min-h-0 min-w-0"
             >
               <AgentChatConversationTab
+                page={props.page}
                 onCreateSession={createSession}
                 projectId={props.projectId}
                 projectType={props.projectType ?? 'book'}

@@ -1,3 +1,4 @@
+import { AgentPageAccessories, type AgentPage } from './AgentPageContext'
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import { BarChart3, ClipboardList, List, Paperclip, ScrollText, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -49,6 +50,7 @@ export function applyInputPrefill(current: string, prefill: InputAreaPrefill): s
 }
 
 interface InputAreaProps {
+  page?: AgentPage
   onSend: (message: string, options?: InputAreaSendOptions) => boolean | void | Promise<boolean | void>
   onStop?: () => void
   disabled: boolean
@@ -117,6 +119,7 @@ interface InputAreaProps {
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
 export function InputArea({
+  page,
   onSend,
   onStop,
   disabled,
@@ -592,6 +595,10 @@ export function InputArea({
           heading={t('chat.styleReference.heading')}
         />
 
+        {page && <AgentPageAccessories page={page} onPrefill={(prompt) => {
+          setValue(prompt)
+          inputRef.current?.focus()
+        }} />}
         <AgentQueuedCommandList
           items={queuedCommands}
           pendingCommandID={queueActionPendingCommandID}

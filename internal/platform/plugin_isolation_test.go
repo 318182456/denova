@@ -16,7 +16,11 @@ func TestBrokenPluginDoesNotBlockUnrelatedHostTools(t *testing.T) {
 		t.Run(broken, func(t *testing.T) {
 			m, projectID := testManager(t)
 			testInstall(t, m, testCandidate(t, m, projectID, "tool", "test.healthy", Plugin))
-			bad := testInstall(t, m, testCandidate(t, m, projectID, "tool", "test.broken", Plugin))
+			brokenCandidate, err := namedToolCandidate(t, m, projectID, "test.broken", "test.broken", "broken_probe")
+			if err != nil {
+				t.Fatal(err)
+			}
+			bad := testInstall(t, m, brokenCandidate)
 			path := m.settingsPath(bad.Ref)
 			if broken == "installation" {
 				path = filepath.Join(m.packagePath(bad.Ref.Package), "installed.json")
@@ -56,6 +60,8 @@ func TestPluginContextFilteringAndExplicitDependency(t *testing.T) {
 	}
 	testInstall(t, m, provider)
 	consumer := testCandidate(t, m, projectID, "tool", "test.writing", Plugin)
+	consumer.Manifest.Contributes.Tools[0].ID = "writing_probe"
+	consumer.Manifest.Contributes.Toolsets[0].Tools = []string{"writing_probe"}
 	consumer.Manifest.Contributes.Tools[0].AgentContexts = []ContributionContext{ContextWriting}
 	consumer.Manifest.Requires = []Dependency{{PluginID: "test.explicit", VersionRange: "*", Contributions: []string{"probe"}}}
 	consumer.files[Plugin.manifestFile()], _ = json.Marshal(consumer.Manifest)

@@ -1,3 +1,4 @@
+import type { AgentPageContext } from './types'
 import type { UIMessageChunk } from 'ai'
 import { fetchAPI, jsonHeaders, parseUIMessageStream, readErrorMessage, requestJSON } from './client'
 import type { AgentAskAnswer, AgentAskInteraction, AgentAskResolution, AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, GlobalAgentRunTraceCatalog, IDEContext, SessionSummary, TextSelection } from './types'
@@ -69,6 +70,7 @@ export async function analyzeChatContext(
   ideContext?: IDEContext,
   imagePresetId?: string,
   tellerId?: string,
+  pageContext?: AgentPageContext,
 ): Promise<ContextAnalysis> {
   return requestJSON('/api/chat/context-analysis', {
     method: 'POST',
@@ -89,6 +91,7 @@ export async function analyzeChatContext(
       writing_skill: writingSkill || undefined,
       image_preset_id: imagePresetId || undefined,
       teller_id: tellerId || undefined,
+      page_context: pageContext,
     }),
   })
 }

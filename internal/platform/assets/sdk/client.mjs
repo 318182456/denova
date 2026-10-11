@@ -34,6 +34,9 @@ export function connect({ prepareExit } = {}) {
       }, setPresentation(presentation) {
         if (new TextEncoder().encode(JSON.stringify(presentation)).byteLength > 8192) throw new Error('Page presentation exceeds 8 KiB');
         parent.postMessage({ type: 'denova:page-presentation', presentation }, parentOrigin);
+      }, openTab(tab) {
+        if (tab !== 'lore') throw new Error('Unsupported host tab');
+        parent.postMessage({ type: 'denova:open-tab', tab }, parentOrigin);
       }, setState({ busy = false, dirty = false } = {}) {
         parent.postMessage({ type: 'denova:state', busy: !!busy, dirty: !!dirty }, parentOrigin);
       }, exit() {

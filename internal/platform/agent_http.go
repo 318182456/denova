@@ -126,11 +126,6 @@ func (s *AgentService) ServeHTTP(w http.ResponseWriter, request *http.Request, r
 		if _, err := s.definition(runtime, caller, "builtin/assistant"); err == nil {
 			items = append(items, "builtin/assistant")
 		}
-		for _, page := range caller.release.Manifest.contributions().Pages {
-			if page.Agent != nil {
-				items = append(items, "page:"+page.ID)
-			}
-		}
 		for _, entry := range caller.release.Manifest.privateAgents() {
 			id := "local:" + entry.ID
 			if _, err := s.definition(runtime, caller, id); err == nil {

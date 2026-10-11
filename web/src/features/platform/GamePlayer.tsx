@@ -16,7 +16,6 @@ export interface GamePlayerHandle {
   refresh: () => void
   isBusy: () => boolean
   pageAction: (id: string) => void
-  openMenu: () => void
 }
 
 /** Only the selected cross-origin frame receives this instance's credential. */
@@ -32,6 +31,7 @@ export function GamePlayer({
   onStop,
   onContext,
   onPresentation,
+  onOpenLore,
   showMenu = true,
   externalBusy = false,
 }: {
@@ -47,6 +47,8 @@ export function GamePlayer({
   onStop?: () => Promise<void>
   onContext?: (context: unknown) => void
   onPresentation?: (presentation: PagePresentation) => void
+  /** Only a top-level plugin page can open native Project content. */
+  onOpenLore?: () => void
   showMenu?: boolean
   /** Host-owned page Agent work participates in the same close guard. */
   externalBusy?: boolean
@@ -90,7 +92,7 @@ export function GamePlayer({
     } catch (error) { setFrameMounted(true); setError(platformError(error)) }
     finally { exiting.current = false; setBusy(false) }
   }, [runtime.id, runtime.viewUrl, onExit, onStop, variant, externalBusy, t])
-  useImperativeHandle(ref, () => ({ requestExit: () => exit(), isBusy: () => externalBusy || viewState.current.busy || viewState.current.dirty, refresh: () => frame.current?.contentWindow?.postMessage({ type: 'denova:refresh' }, new URL(runtime.viewUrl!).origin), openMenu: () => setMenuOpen(true), pageAction: id => frame.current?.contentWindow?.postMessage({ type: 'denova:page-action', id }, new URL(runtime.viewUrl!).origin) }), [exit, runtime.viewUrl, externalBusy])
+  useImperativeHandle(ref, () => ({ requestExit: () => exit(), isBusy: () => externalBusy || viewState.current.busy || viewState.current.dirty, refresh: () => frame.current?.contentWindow?.postMessage({ type: 'denova:refresh' }, new URL(runtime.viewUrl!).origin), pageAction: id => frame.current?.contentWindow?.postMessage({ type: 'denova:page-action', id }, new URL(runtime.viewUrl!).origin) }), [exit, runtime.viewUrl, externalBusy])
   useEffect(() => {
     if (!runtime.viewUrl) return
     const origin = new URL(runtime.viewUrl).origin
@@ -99,6 +101,10 @@ export function GamePlayer({
         event.source !== frame.current?.contentWindow ||
         event.origin !== origin
       ) return
+      if (event.data?.type === 'denova:open-tab' && event.data.tab === 'lore' && variant === 'plugin' && visible && onOpenLore) {
+        onOpenLore()
+        return
+      }
       if (event.data?.type === 'denova:page-presentation' && onPresentation) {
         const value = parsePagePresentation(event.data.presentation)
         if (value) onPresentation(value)
@@ -169,7 +175,7 @@ export function GamePlayer({
       origin,
     )
     return () => window.removeEventListener('message', receive)
-  }, [runtime, i18n.language, resolvedTheme, visible, onOpenInstance, onContext, onPresentation, t, exit, variant])
+  }, [runtime, i18n.language, resolvedTheme, visible, onOpenInstance, onContext, onPresentation, onOpenLore, t, exit, variant])
   useEffect(() => () => { exitReply.current?.finish(false) }, [])
   useEffect(() => {
     if (!runtime.viewUrl) return

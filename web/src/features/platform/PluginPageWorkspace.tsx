@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
-import { Ellipsis, Settings2, Sparkles } from 'lucide-react'
+import { ArrowLeft, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { LoreWorkspaceTab } from '@/features/lore/LoreWorkspaceTab'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from '@/components/layout/panel-motion'
+import { resolvePanelInitialSize, usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { isPluginPageRoute, type PluginPageRoute, type WorkspaceMode } from '@/stores/workspace-store'
 import { GamePlayer, type GamePlayerHandle } from './GamePlayer'
-import { PluginPageAgent } from './PluginPageAgent'
+import { PluginPageAgent, type PluginPageLoreReferences } from './PluginPageAgent'
+import { usePluginPageLore } from './use-plugin-page-lore'
 import type { PagePresentation } from './page-presentation'
-import { RuntimeSetup } from './RuntimeSetup'
+import { openInstalledExtension } from './extension-navigation'
 import {
   localized,
   management,
@@ -17,7 +23,6 @@ import {
   releasePluginConsumer,
   type PluginPage,
   type ProjectPlugin,
-  type ProjectExtensionConfiguration,
   type RuntimeSnapshot,
 } from './api'
 
@@ -35,13 +40,17 @@ export function PluginPageWorkspace({
   projectId,
   route,
   visible,
+  loreReferenceLabels,
+  loreSuggestions,
+  onFlushHandlerChange,
   onChooseProject,
 }: {
   projectId?: string
   route: WorkspaceMode
   visible: boolean
   onChooseProject: () => void
-}) {
+  onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
+} & PluginPageLoreReferences) {
   const previous = useRef<PluginPageRoute | undefined>(undefined)
   if (isPluginPageRoute(route)) previous.current = route
   const identity = previous.current?.slice('plugin:'.length)
@@ -62,19 +71,19 @@ export function PluginPageWorkspace({
       page={page}
       projectId={projectId}
       visible={visible}
+      loreReferenceLabels={loreReferenceLabels}
+      loreSuggestions={loreSuggestions}
+      onFlushHandlerChange={onFlushHandlerChange}
     />
   )
 }
 
-function ProjectPluginPage({ page, projectId, visible }: { page: PluginPage; projectId: string; visible: boolean }) {
+function ProjectPluginPage({ page, projectId, visible, loreReferenceLabels, loreSuggestions, onFlushHandlerChange }: {
+  page: PluginPage; projectId: string; visible: boolean
+  onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
+} & PluginPageLoreReferences) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
-  const client = useQueryClient()
-  const configurationKey = ['platform', 'project-config', projectId]
-  const configuration = useQuery({
-    queryKey: configurationKey,
-    queryFn: () => management<ProjectExtensionConfiguration>(`/projects/${projectId}/extensions`),
-  })
   const plugins = useQuery({
     queryKey: ['platform', 'project-plugins', projectId, 'general', i18n.language],
     queryFn: () =>
@@ -83,27 +92,23 @@ function ProjectPluginPage({ page, projectId, visible }: { page: PluginPage; pro
       ),
   })
   const plugin = plugins.data?.find((item) => item.id === page.pluginId)
-  const [models, setModels] = useState<Record<string, string>>({})
   const [runtime, setRuntime] = useState<RuntimeSnapshot>()
   const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [configure, setConfigure] = useState(false)
   const [agentBusy, setAgentBusy] = useState(false)
   const [activation, setActivation] = useState(0)
   const [pageContext, setPageContext] = useState<unknown>(null)
   const [presentation, setPresentation] = useState<PagePresentation>({})
-  const [showAssistant, setShowAssistant] = useState(false)
+  const [showAssistant, setShowAssistant] = useState(true)
+  const [mobileAssistant, setMobileAssistant] = useState(false)
+  const isMobile = useIsMobile()
+  const assistantVisible = !!page.agent && (isMobile ? mobileAssistant : showAssistant)
+  const showAgent = useCallback(() => { setShowAssistant(true); setMobileAssistant(true) }, [])
+  const showContent = useCallback(() => setMobileAssistant(false), [])
+  const lore = usePluginPageLore({ projectId, agentVisible: visible && assistantVisible, onShowAgent: showAgent, onShowContent: showContent, onFlushHandlerChange })
+  const layoutKey = `nova-plugin-page-layout:${page.pluginId}/${page.id}`
+  const layout = usePersistedPanelLayout({ storageKey: layoutKey, panelIds: ['main', 'right'] })
   const frame = useRef<GamePlayerHandle>(null)
-  useEffect(() => {
-    setModels(configuration.data?.extensions.models ?? {})
-  }, [configuration.data])
-  const selectedModels = configuration.data?.extensions.models ?? {}
-  const binding = JSON.stringify(plugin?.models.map((slot) => [slot.key, selectedModels[slot.key]]) ?? [])
-  const ready =
-    !!plugin?.enabled &&
-    !plugin.problem &&
-    !!configuration.data &&
-    plugin.models.every((slot) => !slot.required || !!selectedModels[slot.key])
+  const ready = !!plugin?.enabled && !plugin.problem
   useEffect(() => {
     if (!ready) return
     let disposed = false
@@ -139,146 +144,86 @@ function ProjectPluginPage({ page, projectId, visible }: { page: PluginPage; pro
     }
     // Appearance updates use the existing frame protocol, without restarting work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, activation, binding, page.id, page.pluginId, page.releaseId, projectId])
-  const save = async () => {
-    if (!configuration.data) return
-    if (agentBusy || frame.current?.isBusy()) {
-      setError(t('platform.pages.busySettings'))
-      return
-    }
-    setSaving(true)
-    setError('')
-    try {
-      const saved = await management<ProjectExtensionConfiguration>(`/projects/${projectId}/extensions`, 'PUT', {
-        expectedRevision: configuration.data.revision,
-        extensions: { ...configuration.data.extensions, models },
-      })
-      client.setQueryData(configurationKey, saved)
-      setConfigure(false)
-      if (!runtime) setActivation((value) => value + 1)
-    } catch (error) {
-      setError(platformError(error))
-    } finally {
-      setSaving(false)
-    }
-  }
+  }, [ready, activation, page.id, page.pluginId, page.releaseId, projectId])
   const title = localized(page.title, i18n.language)
   return (
-    <section className="flex h-full min-h-0 flex-col" aria-label={title}>
-      <header className="flex h-14 shrink-0 min-w-0 items-center justify-between gap-3 border-b px-5">
-        <h1 className="truncate text-base font-medium" title={presentation.title || title}>
-          {presentation.title || title}
-        </h1>
-        <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
-          <span className="mr-3 hidden text-xs sm:inline">{title}</span>
-          {page.agent && runtime && (
-            <Button
-              className="lg:hidden"
-              size="sm"
-              variant={showAssistant ? 'secondary' : 'ghost'}
-              aria-label={t('platform.pages.agent')}
-              aria-pressed={showAssistant}
-              onClick={() => setShowAssistant((value) => !value)}
-            >
-              <Sparkles data-icon="inline-start" />
-              {t('platform.pages.assistantTab')}
-            </Button>
-          )}
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={t('platform.pages.models')}
-            onClick={() => setConfigure((value) => !value)}
-          >
-            <Settings2 />
-          </Button>
-          {runtime && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={t('platform.plugins.panelMenu')}
-              onClick={() => frame.current?.openMenu()}
-            >
-              <Ellipsis />
-            </Button>
-          )}
-        </div>
-      </header>
-      {(error || configuration.error || plugins.error) && (
-        <InlineErrorNotice className="m-3" message={error || platformError(configuration.error || plugins.error)} />
+    <section className="relative flex h-full min-h-0 flex-col" aria-label={title}>
+      {(error || plugins.error) && (
+        <InlineErrorNotice className="absolute inset-x-3 top-12 z-40" message={error || platformError(plugins.error)} />
       )}
-      {configure || !ready ? (
-        <div className="mx-auto w-full max-w-xl overflow-y-auto p-6">
-          {!plugin?.enabled && plugins.isSuccess && <p>{t('platform.plugins.disabled')}</p>}
-          {plugin?.problem && <InlineErrorNotice message={t(plugin.problem.messageKey)} />}
-          <p className="mb-4 text-sm text-muted-foreground">{t('platform.pages.setup')}</p>
-          {plugin && (
-            <RuntimeSetup
-              projectLocked
-              value={{ projectId, models, configuration: {} }}
-              modelRequirements={plugin.models}
-              onChange={(value) => setModels(value.models)}
-            />
-          )}
-          <Button
-            className="mt-4"
-            disabled={
-              saving ||
-              !plugin?.enabled ||
-              !configuration.data ||
-              plugin.models.some((slot) => slot.required && !models[slot.key])
-            }
-            onClick={() => void save()}
-          >
-            {t('platform.pages.open')}
-          </Button>
-        </div>
-      ) : null}
+      {(!ready || !runtime) && <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
+        <p>{plugins.isPending ? t('common.loading') : !plugin?.enabled ? t('platform.plugins.disabled') : plugin.problem ? t(plugin.problem.messageKey) : error || t('common.loading')}</p>
+        {error && <Button variant="outline" onClick={() => setActivation(value => value + 1)}>{t('common.retry')}</Button>}
+        <Button variant="link" onClick={() => openInstalledExtension('plugin', page.pluginId)}>{t('platform.pages.manage')}</Button>
+      </div>}
       {runtime && ready ? (
-        <div className={configure ? 'hidden' : 'flex min-h-0 flex-1 flex-col lg:flex-row'}>
-          <div className={`${showAssistant ? 'hidden lg:flex' : 'flex'} min-h-0 min-w-0 flex-1 flex-col`}>
-            <GamePlayer
-              ref={frame}
-              runtime={runtime}
-              title={title}
-              visible={visible && !configure}
-              variant="plugin"
-              showMenu={false}
-              externalBusy={agentBusy}
-              onContext={setPageContext}
-              onPresentation={setPresentation}
-              onStop={() => releasePluginConsumer(runtime)}
-              onExit={() => {
-                setConfigure(true)
-                setRuntime(undefined)
-              }}
-            />
-          </div>
-          {page.agent && (
-            <aside
-              className={`${showAssistant ? 'flex' : 'hidden lg:flex'} min-h-0 flex-1 flex-col lg:flex-none lg:w-[clamp(19rem,27vw,27rem)] lg:border-l`}
-            >
-              <PluginPageAgent
-                runtime={runtime}
-                page={page}
-                context={pageContext}
-                presentation={presentation}
-                onPageAction={(id) => {
-                  setShowAssistant(false)
-                  frame.current?.pageAction(id)
-                }}
-                modelBinding={binding}
-                onBusyChange={setAgentBusy}
-                onChange={() => frame.current?.refresh()}
-              />
-            </aside>
-          )}
-        </div>
-      ) : ready && !configure ? (
-        <p className="p-6" role="status">
-          {t('common.loading')}
-        </p>
-      ) : null}
+        <>
+          {page.agent && <Button variant="ghost" size="icon-sm"
+            className="absolute right-2 top-1 z-40"
+            aria-label={t(assistantVisible ? 'platform.pages.hideAgent' : 'platform.pages.showAgent')}
+            aria-expanded={assistantVisible} aria-controls="plugin-page-agent"
+            onClick={() => isMobile ? setMobileAssistant(value => !value) : setShowAssistant(value => !value)}>
+            {assistantVisible ? <PanelRightClose /> : <PanelRightOpen />}
+          </Button>}
+          <PanelMotionGroup id={layoutKey} orientation="horizontal"
+            className="h-full min-h-0 min-w-0 flex-1"
+            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+            defaultLayout={!isMobile && page.agent ? layout.defaultLayout : undefined}
+            onLayoutChanged={value => { if (!isMobile && assistantVisible) layout.persistUserLayout(value) }}>
+            <CollapsibleResizablePanel id="main" visible={!isMobile || !assistantVisible} side="left"
+              minSize={isMobile ? '0px' : '360px'} className="min-w-0" contentClassName="flex flex-col">
+              <div hidden={lore.open} className="flex h-full min-h-0 flex-col [&[hidden]]:hidden">
+                <GamePlayer ref={frame} runtime={runtime} title={title} visible={visible && !lore.open}
+                  variant="plugin" showMenu={false} externalBusy={agentBusy}
+                  onContext={setPageContext} onPresentation={setPresentation} onOpenLore={lore.openTab}
+                  onStop={() => releasePluginConsumer(runtime)}
+                  onExit={() => { setRuntime(undefined); openInstalledExtension('plugin', page.pluginId) }} />
+              </div>
+              {lore.open && <div className="flex h-full min-h-0 flex-col" data-plugin-host-tab="lore">
+                <header className="flex h-10 shrink-0 items-center gap-2 border-b px-3 pr-12">
+                  <Button variant="ghost" size="sm" className="min-w-0 shrink" onClick={() => void lore.closeTab().then(saved => { if (saved) frame.current?.refresh() })}>
+                    <ArrowLeft /><span className="truncate">{t('platform.pages.backToPage', { title })}</span>
+                  </Button>
+                  <h2 className="truncate text-sm font-medium">{t('tab.lore')}</h2>
+                </header>
+                <div className="min-h-0 flex-1">
+                  <LoreWorkspaceTab projectId={projectId} documentReview={lore.documentReview}
+                    navigationIntent={lore.navigation} onEditorFlushHandlerChange={lore.onEditorFlushHandlerChange}
+                    onActiveItemChange={lore.setActiveItemId}
+                    onReferenceItem={page.agent ? id => void lore.referenceItem(id) : undefined} />
+                </div>
+              </div>}
+            </CollapsibleResizablePanel>
+            {page.agent && <>
+              <CollapsiblePanelSeparator visible={!isMobile && assistantVisible}
+                aria-label={t('layout.resize.right')}
+                className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
+                {...layout.resizeHandleIntentProps}
+                onPointerDownCapture={event => {
+                  layout.resizeHandleIntentProps.onPointerDownCapture(event)
+                  // The adjacent cross-origin frame can consume the first pointer move before
+                  // the resize library captures it. Own the pointer from the start of the drag.
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                }} />
+              <CollapsibleResizablePanel id="right" visible={assistantVisible} side="right"
+                defaultSize={isMobile ? '100%' : '380px'}
+                initialExpandSize={isMobile ? '100%' : resolvePanelInitialSize(layout.defaultLayout, 'right', '380px')}
+                restorationKey={`${layoutKey}/${isMobile ? 'mobile' : 'desktop'}`}
+                minSize={isMobile ? '0px' : '300px'} maxSize={isMobile ? '100%' : '60%'}
+                groupResizeBehavior="preserve-pixel-size" className="min-w-0">
+                <div id="plugin-page-agent" className="h-full min-h-0 [&_.nova-writing-agent-toolbar]:pr-11">
+                  <PluginPageAgent projectId={projectId} active={visible && assistantVisible}
+                    page={page} context={pageContext} presentation={presentation}
+                    loreReferenceLabels={loreReferenceLabels} loreSuggestions={loreSuggestions}
+                    lore={{ ...lore.agentProps, open: lore.open, activeItemId: lore.activeItemId }}
+                    onPageAction={id => { setMobileAssistant(false); frame.current?.pageAction(id) }}
+                    onBusyChange={setAgentBusy} onChange={() => frame.current?.refresh()} />
+                </div>
+              </CollapsibleResizablePanel>
+            </>}
+          </PanelMotionGroup>
+        </>
+      ) : ready ? <p className="p-6" role="status">{t('common.loading')}</p> : null}
     </section>
   )
 }

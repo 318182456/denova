@@ -24,7 +24,15 @@ type resourceTestHost struct {
 	calls    atomic.Int32
 	blocking bool
 	entered  chan struct{}
+	release  <-chan struct{}
 	requests chan ImageRequest
+}
+
+func (h *resourceTestHost) ImageModels(ctx context.Context, project string) ([]ImageModel, error) {
+	if project != h.project {
+		return nil, failure("PERMISSION_DENIED", "Wrong Project")
+	}
+	return []ImageModel{{ID: h.profile, Name: "Test image", ImageInput: true}}, ctx.Err()
 }
 
 func (h *resourceTestHost) LibraryCategories(ctx context.Context, project string) ([]LibraryCategory, error) {
@@ -56,6 +64,13 @@ func (h *resourceTestHost) GenerateImage(ctx context.Context, project, profile s
 	}
 	if h.entered != nil {
 		close(h.entered)
+	}
+	if h.release != nil {
+		select {
+		case <-h.release:
+		case <-ctx.Done():
+			return ImageBytes{}, ctx.Err()
+		}
 	}
 	if h.blocking {
 		<-ctx.Done()
@@ -275,7 +290,11 @@ func TestImageCancelAndUncertainRecoveryNeverResubmit(t *testing.T) {
 	command.CommandID = "uncertain"
 	encoded, _ := json.Marshal([]any{command, "test-image"})
 	receipt := imageReceipt{Version: 1, InputHash: stableID(string(encoded)), Result: ImageResult{CommandID: command.CommandID, Status: "running", Images: []GeneratedImage{}}}
-	key := imageReceiptPath(m.runtimes[instance.ID].owner, command.CommandID)
+	directory, err := imageResourceDirectory(m.runtimes[instance.ID], m.runtimes[instance.ID].owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := imageReceiptPath(directory, command.CommandID)
 	if err := writeJSON(key, receipt); err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +319,7 @@ func TestImageCancelAndUncertainRecoveryNeverResubmit(t *testing.T) {
 	if err := m.Stop(context.Background(), instance.ID); err != nil {
 		t.Fatal(err)
 	}
-	opened, err := m.OpenInstance(context.Background(), instance.ID, OpenOptions{ParentOrigin: "http://127.0.0.1:15173"})
+	opened, err = m.OpenInstance(context.Background(), instance.ID, OpenOptions{ParentOrigin: "http://127.0.0.1:15173"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -131,6 +131,7 @@ func EmptyIDEStateHint() string {
 func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {
 	var sb strings.Builder
 	sb.WriteString("# Writing Workflow Configuration\n\n")
+	sb.WriteString("These novel-writing rules apply when the user works on prose chapters. The same Project may contain other creative workspaces. When a plugin page supplies the current task context, follow that page's workflow and artifact structure; do not create or update novel files unless the user requests novel work. Shared Project tools and Lore remain available.\n\n")
 	sb.WriteString("- Primary flow: creative premise -> outline -> next chapter-group plan -> chapter writing -> synchronize progress and character state.\n")
 	sb.WriteString("- Chapter-group plan directory: setting/chapter-groups/. Each file plans only the next contiguous group of chapters and remains short, scannable, easy to review, and easy to update.\n")
 	sb.WriteString(fmt.Sprintf("- Chapter filename template: %s. Hidden ordering prefixes decouple real paths from display names, for example chapters/v00001-volume-one-wasteland/ch00001-prologue.md and chapters/v00001-volume-one-wasteland/ch00002-chapter-one-opening.md. `order` is the reading sequence. Before creating a chapter, inspect existing ch prefixes and increment them; never automatically rename old chapters.\n", normalizedChapterFilenameFormat(in.ChapterFilenameFormat)))
@@ -183,7 +184,7 @@ func normalizedVolumeDirFormat(format string) string {
 // systemInstructionBody contains Denova's base writing rules and workflow. It
 // has 12 %s placeholders. Every rendered path is Project-relative so moving
 // the same Denova data directory does not invalidate the model prompt prefix.
-const systemInstructionBody = `You are Denova, a professional AI novel-writing assistant. Help the author develop outlines, continue chapters, rewrite prose, manage characters, and complete related creative work.
+const systemInstructionBody = `You are Denova, an AI creative assistant. Help the author develop outlines, continue chapters, rewrite prose, manage characters, and complete related creative work in the current Project.
 
 ## Important Rules
 

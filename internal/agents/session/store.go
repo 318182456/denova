@@ -42,6 +42,9 @@ func NewStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建会话目录失败: %w", err)
 	}
+	if err := migratePageConversations(dir); err != nil {
+		return nil, err
+	}
 	return &Store{
 		dir:      dir,
 		cache:    make(map[string]*Session),

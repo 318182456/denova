@@ -28,6 +28,10 @@ func gameRuntimeBoundary(snapshot interactive.Snapshot) string {
 }
 
 func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.OperationMode) (external.Input, error) {
+	definitions, err := turn.config.Assembly.PrepareTools(ctx)
+	if err != nil {
+		return external.Input{}, err
+	}
 	c := turn.config.Conversation
 	for _, guidance := range turn.config.Guidance {
 		if err := turn.commitGuidance(guidance); err != nil {
@@ -37,7 +41,7 @@ func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.Operat
 	// Schema initialization changes only the in-memory opening draft. Restore
 	// it from accepted tool batches before assembling context after a restart.
 	if c.openingStateSchemaDraft != nil {
-		for _, definition := range turn.config.Assembly.Tools {
+		for _, definition := range definitions {
 			info, err := definition.Tool.Info(ctx)
 			if err != nil {
 				return external.Input{}, err
@@ -129,7 +133,7 @@ func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.Operat
 		input.Text += "\n\nThe following narrative has already been accepted. Retain it verbatim and complete only missing turn submission modules:\n" + narrative
 	}
 	turn.tools = make(map[string]agenttool.ToolDefinition)
-	for _, definition := range turn.config.Assembly.Tools {
+	for _, definition := range definitions {
 		if err := definition.Validate(ctx); err != nil {
 			return external.Input{}, err
 		}

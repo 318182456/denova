@@ -48,7 +48,11 @@ func TestImageOptionsRoundTripAndFenceChangedReplay(t *testing.T) {
 	// replay without invoking the provider. Empty new fields marshal away.
 	const legacyInput = `[{"commandId":"legacy","modelSlot":"art","prompt":"A portrait","size":"1024x1024","aspectRatio":"1:1","quality":"high"},"test-image"]`
 	legacyResult := ImageResult{CommandID: "legacy", Status: "completed", Images: []GeneratedImage{}}
-	key := imageReceiptPath(m.runtimes[instance.ID].owner, "legacy")
+	directory, err := imageResourceDirectory(m.runtimes[instance.ID], m.runtimes[instance.ID].owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := imageReceiptPath(directory, "legacy")
 	if err := writeJSON(key, imageReceipt{Version: 1, InputHash: stableID(legacyInput), Result: legacyResult}); err != nil {
 		t.Fatal(err)
 	}

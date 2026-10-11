@@ -126,16 +126,9 @@ func decodeTurnHostData(hostData *agent.HostData, inputText string) (TurnHostDat
 }
 
 func (data TurnHostData) ChatRequest() agentchat.ChatRequest {
-	return agentchat.ChatRequest{
-		CommandID: data.Caller.CommandID, Message: data.Caller.Message, DisplayMessage: data.Caller.DisplayMessage,
-		AttachmentIDs: append([]string(nil), data.Caller.AttachmentIDs...),
-		References:    append([]string(nil), data.Caller.References...), LoreReferences: append([]string(nil), data.Caller.LoreReferences...),
-		StyleScenes: append([]string(nil), data.Caller.StyleScenes...), Selections: append([]agentchat.TextSelectionRef(nil), data.Caller.Selections...),
-		IDEContext: data.Caller.IDEContext, ReviewFeedback: data.Caller.ReviewFeedback.Clone(),
-		PlanMode: data.Caller.PlanMode, WritingSkill: data.Caller.WritingSkill,
-		ImagePresetID: data.Caller.ImagePresetID, TellerID: data.Caller.TellerID,
-		Locale: data.Caller.Locale, InputVisibility: data.InputVisibility,
-	}
+	request := data.Caller.Request()
+	request.InputVisibility = data.InputVisibility
+	return request
 }
 
 // DefinitionRequest is Denova's product composition seam. It contains product

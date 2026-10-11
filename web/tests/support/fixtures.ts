@@ -17,7 +17,7 @@ interface BrowserDiagnostics {
 
 interface E2EFixtures {
   browserDiagnostics: BrowserDiagnostics
-  _sharedSettings: void
+  _sharedState: void
 }
 
 interface BrowserDiagnostic {
@@ -35,14 +35,30 @@ const knownExpectedBrowserDiagnostics = [
 
 /** Every browser-backed test fails on uncaught errors, console errors, and unexpected 5xx responses. */
 export const test = base.extend<E2EFixtures>({
-  // Restore shared defaults after closing the browser so late UI saves cannot
+  // Restore shared state after closing the browser so late UI saves cannot
   // leak into the next test. Project-owned settings stay with their unique Project.
-  _sharedSettings: [async ({ context, request }, use) => {
+  _sharedState: [async ({ context, request }, use) => {
     const beforeResponse = await request.get('/api/settings')
     expect(beforeResponse.ok(), await beforeResponse.text()).toBe(true)
     const before = (await beforeResponse.json()).user as Settings
+    const beforeCatalog = await request.get('/api/platform/manage/catalog')
+    expect(beforeCatalog.ok(), await beforeCatalog.text()).toBe(true)
+    const plugins = new Map<string, { enabled: boolean; removed: boolean }>((await beforeCatalog.json())
+      .filter((item: { kind: string }) => item.kind === 'plugin')
+      .map((item: { id: string; enabled: boolean; removed?: boolean }) => [item.id, { enabled: Boolean(item.enabled), removed: Boolean(item.removed) }]))
     await use()
     await context.close()
+    // Disabled installations still reserve their tool names. Restore package
+    // availability and remove each journey's new plugins after its UI closes.
+    const afterCatalog = await request.get('/api/platform/manage/catalog')
+    expect(afterCatalog.ok(), await afterCatalog.text()).toBe(true)
+    for (const item of await afterCatalog.json()) {
+      if (item.kind !== 'plugin') continue
+      const original = plugins.get(item.id) ?? { enabled: false, removed: true }
+      if (Boolean(item.enabled) === original.enabled && Boolean(item.removed) === original.removed) continue
+      const restored = await request.patch(`/api/platform/manage/packages/plugin/${item.id}`, { data: original })
+      expect(restored.ok(), await restored.text()).toBe(true)
+    }
     const afterResponse = await request.get('/api/settings')
     expect(afterResponse.ok(), await afterResponse.text()).toBe(true)
     const after = await afterResponse.json()
@@ -55,7 +71,7 @@ export const test = base.extend<E2EFixtures>({
       expect(sharedSettings((await restored.json()).user)).toEqual(sharedSettings(before))
     }
   }, { auto: true }],
-  browserDiagnostics: [async ({ page, context, _sharedSettings }, use, testInfo) => {
+  browserDiagnostics: [async ({ page, context, _sharedState }, use, testInfo) => {
     const diagnostics: BrowserDiagnostic[] = []
     const allowed = [...knownExpectedBrowserDiagnostics]
     const staleStreamURLs = new Map<string, boolean>()

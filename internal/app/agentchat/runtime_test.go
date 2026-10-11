@@ -81,3 +81,7 @@ func TestActiveViewProjectsPendingInterruptionForIdleAgentChat(t *testing.T) {
 		t.Fatalf("pending interruption id = %q, want %q", view.PendingInterruptionID, pending.ID)
 	}
 }
+
+func (activeViewTestHost) PageInstructions(context.Context, string, string, string) (string, error) {
+	return "Create content in the current page.", nil
+}

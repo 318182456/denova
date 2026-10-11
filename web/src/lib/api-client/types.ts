@@ -1222,3 +1222,10 @@ export interface TextSelection {
   endLine: number
   content: string
 }
+
+/** A plugin page snapshot travels with one durable Project Agent command. */
+export interface AgentPageContext {
+  plugin_id: string
+  page_id: string
+  data: unknown
+}

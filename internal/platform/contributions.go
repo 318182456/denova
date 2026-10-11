@@ -43,10 +43,10 @@ type PanelContribution struct {
 // PageContribution adds a Project-bound first-level destination. Its optional
 // Agent is private to this page, not installed as a user Agent profile.
 type PageContribution struct {
-	ID       string           `json:"id"`
-	TitleKey string           `json:"titleKey"`
-	ViewID   string           `json:"viewId"`
-	Agent    *AgentDefinition `json:"agent,omitempty"`
+	ID       string     `json:"id"`
+	TitleKey string     `json:"titleKey"`
+	ViewID   string     `json:"viewId"`
+	Agent    *PageAgent `json:"agent,omitempty"`
 }
 
 func validContexts(values []ContributionContext, required bool) error {
@@ -149,4 +149,10 @@ func validateUIContributions(kind Kind, manifest Manifest, views map[string]bool
 		}
 	}
 	return nil
+}
+
+// PageAgent contributes task guidance to the host Project Agent. It owns no
+// model, tools, execution loop or conversation; plugin tools use AgentContexts.
+type PageAgent struct {
+	Instructions string `json:"instructions"`
 }

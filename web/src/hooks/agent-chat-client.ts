@@ -1,3 +1,4 @@
+import type { AgentPageContext } from '@/lib/api-client/types'
 import {
   analyzeChatContext,
   answerSessionAsk,
@@ -74,6 +75,7 @@ export interface AgentChatClient {
     ideContext?: IDEContext,
     imagePresetId?: string,
     tellerId?: string,
+    pageContext?: AgentPageContext,
   ) => Promise<ContextAnalysis>
   createSession: (title?: string, customAgentId?: string) => Promise<SessionSummary>
   switchSession: (id: string) => Promise<SessionSummary>
@@ -196,6 +198,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
       ideContext,
       imagePresetId,
       tellerId,
+      pageContext,
     ) =>
       requestJSON(`${basePath}/chat/context-analysis`, {
         method: 'POST',
@@ -217,6 +220,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
           writing_skill: writingSkill || undefined,
           image_preset_id: imagePresetId || undefined,
           teller_id: tellerId || undefined,
+          page_context: pageContext,
         }),
       }),
     createSession: unsupportedSessionMutation,

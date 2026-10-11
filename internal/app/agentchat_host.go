@@ -93,3 +93,7 @@ func (host agentChatHost) OnVerifiedMutations(
 		}
 	}
 }
+
+func (host agentChatHost) PageInstructions(_ context.Context, projectID, pluginID, pageID string) (string, error) {
+	return host.app.platform.PageInstructions(projectID, pluginID, pageID)
+}

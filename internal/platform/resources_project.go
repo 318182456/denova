@@ -178,7 +178,11 @@ func (s *ResourceService) readImageAsset(ctx context.Context, runtime *Runtime, 
 		}
 		return files.ReadProjectAsset(ctx, caller.context.Scope.ProjectID, asset.Path)
 	case "generated":
-		return ReadRasterAsset(filepath.Join(resourceDirectory(caller), "assets"), asset.Path)
+		directory, err := imageResourceDirectory(runtime, caller)
+		if err != nil {
+			return nil, err
+		}
+		return ReadRasterAsset(filepath.Join(directory, "assets"), asset.Path)
 	case "shared":
 		directory, err := sharedContentDirectory(runtime, caller)
 		if err != nil {

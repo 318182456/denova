@@ -31,6 +31,9 @@ func (pluginCallingModel) Generate(_ context.Context, messages []*agentschema.Me
 	}
 	for _, tool := range agentmodel.GetCommonOptions(nil, options...).Tools {
 		if strings.HasPrefix(tool.Name, "plugin_") {
+			if tool.Name != "plugin_probe" {
+				return nil, fmt.Errorf("unexpected plugin tool name %q", tool.Name)
+			}
 			return agentschema.AssistantMessage("", []agentschema.ToolCall{{ID: "count-text", Type: "function", Function: agentschema.FunctionCall{Name: tool.Name, Arguments: `{"text":"A🌷中"}`}}}), nil
 		}
 	}

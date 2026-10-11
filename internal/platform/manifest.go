@@ -198,8 +198,8 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 	permissions := map[string]bool{}
 	slots := map[string]bool{}
 	for _, slot := range m.ModelSlots {
-		if kind == Plugin && slot.Kind == "text" && !slices.ContainsFunc(m.contributions().Pages, func(page PageContribution) bool { return page.Agent != nil && page.Agent.ModelSlot == slot.ID }) {
-			return m, failure("INVALID_ARGUMENT", "Plugin text model slots must belong to a declared page Agent")
+		if kind == Plugin && slot.Kind == "text" {
+			return m, failure("INVALID_ARGUMENT", "Plugin pages use the host Project Agent model")
 		}
 		if err := validateID(slot.ID); err != nil {
 			return m, err
@@ -252,21 +252,27 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 	tools := map[string]bool{}
 	sets := map[string]bool{}
 	agents := map[string]bool{}
-	addID := func(id string) error {
-		if err := validateID(id); err != nil {
-			return err
-		}
+	claimID := func(id string) error {
 		if ids[id] {
 			return failure("INVALID_ARGUMENT", "Duplicate contribution %s", id)
 		}
 		ids[id] = true
 		return nil
 	}
+	addID := func(id string) error {
+		if err := validateID(id); err != nil {
+			return err
+		}
+		return claimID(id)
+	}
 	for _, tool := range c.Tools {
 		if err := validContexts(tool.AgentContexts, false); err != nil {
 			return m, err
 		}
-		if err := addID(tool.ID); err != nil {
+		if err := validateToolID(kind, tool.ID); err != nil {
+			return m, err
+		}
+		if err := claimID(tool.ID); err != nil {
 			return m, err
 		}
 		tools[tool.ID] = true
@@ -367,28 +373,8 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 		if page.Agent == nil {
 			continue
 		}
-		def := page.Agent
-		if strings.TrimSpace(def.Instructions) == "" || len(def.Instructions) > 256<<10 || !slices.ContainsFunc(m.ModelSlots, func(slot ModelSlot) bool { return slot.ID == def.ModelSlot && slot.Kind == "text" }) {
-			return m, failure("INVALID_ARGUMENT", "Page %s requires bounded instructions and a declared text model slot", page.ID)
-		}
-		if !slices.Contains(m.Permissions.Required, "agents.run") {
-			return m, failure("INVALID_ARGUMENT", "Page Agent requires agents.run")
-		}
-		for _, ref := range def.Tools {
-			if ref == "builtin/assistant" {
-				return m, failure("INVALID_ARGUMENT", "Page tools require a plugin tool reference")
-			}
-			if err := checkRef(ref, tools); err != nil {
-				return m, err
-			}
-		}
-		for _, ref := range def.Toolsets {
-			if ref == "builtin/assistant" {
-				return m, failure("INVALID_ARGUMENT", "Page toolsets require a plugin toolset reference")
-			}
-			if err := checkRef(ref, sets); err != nil {
-				return m, err
-			}
+		if strings.TrimSpace(page.Agent.Instructions) == "" || len(page.Agent.Instructions) > 16<<10 {
+			return m, failure("INVALID_ARGUMENT", "Page %s requires instructions up to 16 KiB", page.ID)
 		}
 	}
 	for _, entry := range m.privateAgents() {

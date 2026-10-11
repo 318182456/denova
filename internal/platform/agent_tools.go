@@ -94,12 +94,7 @@ func (m *Manager) agentTool(release Release, tool Tool, settings map[string]any,
 	if err := json.Unmarshal(definition.InputSchema, &schema); err != nil {
 		return agenttool.ToolDefinition{}, err
 	}
-	key := string(release.Ref.Package.Kind) + "/" + release.Manifest.ID + "/" + tool.ID
-	label := strings.NewReplacer(".", "_", "-", "_").Replace(tool.ID)
-	if len(label) > 40 {
-		label = label[:40]
-	}
-	info := &agentschema.ToolInfo{Name: "plugin_" + stableID(key)[:12] + "_" + label, Desc: definition.Description, ParamsOneOf: agentschema.NewParamsOneOfByJSONSchema(&schema)}
+	info := &agentschema.ToolInfo{Name: agentToolName(release.Ref.Package.Kind, tool.ID), Desc: definition.Description, ParamsOneOf: agentschema.NewParamsOneOfByJSONSchema(&schema)}
 	descriptor := agenttool.ToolDescriptor{Source: agenttool.ToolSourceOther, Execution: agenttool.ToolExecutionParallelRead, MutationScope: agenttool.ToolMutationNone, PostCheck: agenttool.ToolPostCheckNone, Recovery: agenttool.ToolRecoveryReadOnly, ResultProjection: agentschema.ToolResultBoundedModelContext, ResultRetention: agentschema.ToolResultDeferred, Steering: agenttool.SteeringFinishCurrent, MaxResultBytes: MaxDefinitionBytes}
 	switch definition.Effect {
 	case "pure", "read":

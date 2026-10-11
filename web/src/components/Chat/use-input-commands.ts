@@ -52,7 +52,6 @@ export function useInputCommands({ scope, builtinCommands, skills, quickPrompts,
       .map((skill) => ({
         cmd: `/${skill.name}`,
         description: skill.description || skill.name,
-        hint: t('chat.command.skill.hint'),
         icon: Sparkles,
         source: 'skill' as const,
       }))

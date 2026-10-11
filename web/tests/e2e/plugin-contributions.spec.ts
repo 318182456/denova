@@ -2,7 +2,7 @@ import { openExtensions, selectExtension } from '../support/resource-center'
 import { cp, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
-import { createAndOpenBook } from '../support/api'
+import { createAndOpenBook, enablePlugin } from '../support/api'
 
 // The plugin scaffold is copied outside the repository and installed through the
 // ordinary package API. Its view only receives the public scoped connection.
@@ -18,8 +18,7 @@ async function installStarter(request: APIRequestContext) {
   const candidate = await check.json()
   const response = await request.post('/api/platform/manage/packages/install', { data: { candidateId: candidate.candidateId, grants: [...candidate.manifest.permissions.required, ...candidate.manifest.permissions.optional] } })
   expect(response.ok(), await response.text()).toBe(true)
-  const enabled = await request.patch(`/api/platform/manage/packages/plugin/${candidate.manifest.id}`, { data: { enabled: true } })
-  expect(enabled.ok(), await enabled.text()).toBe(true)
+  await enablePlugin(request, candidate.manifest.id)
   return { project: { ...project, name: index.projects.find((item: { id: string }) => item.id === project.id).name }, release: await response.json() }
 }
 

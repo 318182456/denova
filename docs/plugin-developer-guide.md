@@ -64,13 +64,21 @@ Project 界面修改模型、发行设置或依赖后，已有运行继续使用
 
 插件可声明 `contributes.pages: [{ id, titleKey, viewId, agent? }]`。安装启用后加入一级导航，点击绑定当前 Project；停用、卸载后移除。页面使用既有 view、消费者与生命周期，切换写作或游戏时保留，切换 Project 时释放。只选中当前目的地，不新增全局创作模式。
 
-可选 `agent` 使用 `{ instructions, modelSlot, tools?, toolsets? }`，instructions 使用英文且最多 256 KiB。modelSlot 必须是本包的 text 槽；工具使用本包 ID 或声明的跨插件引用。须授予 `agents.run`。当前由宿主 Native runtime 执行，右侧宿主 Agent 负责模型、凭证、消息、提问与取消；不公开为用户 Agent profile。页面 Agent 的恢复事实仍在 Project Store 的 canonical Product Session JSONL，不写到作品目录。
+可选 `agent` 使用 `{ instructions }`，instructions 使用英文且最多 16 KiB，说明页面任务和业务工具的用法。宿主直接复用 Project 创作 Agent 的前端、会话、配置、Skills、工具过程、子 Agent 与运行时控制；可用能力由所选运行时决定。插件不提供独立语言模型槽、聊天实现或 Agent profile，也不为侧栏申请 `agents.run`。业务工具在 `contributes.tools[].agentContexts` 中声明 `writing` / `general`，通过现有宿主工具桥接调用；图像模型仍使用插件 image 槽。
 
-页面调用 `client.setContext(value)` 提供至多 32 KiB 的当前页、选区与参考资料。宿主仅接受当前 frame/origin 的消息，在用户发言时作为有来源的 turn context 注入，视为用户数据；稳定提示词前缀不受影响。Agent 操作完成后宿主发送 `denova:refresh`，页面重读作品。会话按 Project、页面、准确发行和本插件模型绑定隔离。
+页面调用 `client.setContext(value)` 提供至多 32 KiB 的当前页、选区与参考资料。宿主仅接受当前 frame/origin 的消息，在用户提交标准创作请求时冻结为 `page_context: { plugin_id, page_id, data }`；后端检查 Project 插件启用状态并解析已安装页面的 instructions。上下文是用户数据，不授予工具或模型权限。页面指引与数据进入同一轮上下文查看、canonical journal 和恢复链路，稳定提示词前缀不受影响。页面任务不会自动选择小说 Skill 或小说插图预设，显式 Skills 仍可使用。
 
-页面可调用 `client.setPresentation({ title, contextLabel, referenceCount, suggestions, actions })` 同步宿主标题和创作输入框。`suggestions` 为 `{ label, prompt }[]`，点击只填入输入框，仍由用户发送；`actions` 为 `{ id, label }[]`，点击向原页面发送 `denova:page-action`，在事件 `detail.id` 中返回动作 ID，可用于打开插件自己的参考资料选择器。展示消息最多 8 KiB，标题/标签/动作 ID 最多 200 字符，最多 4 个建议（各 2000 字符）与 4 个动作；不携带权限，也不替代模型上下文。页面自行提供当前语言的文案。
+Agent 操作完成后宿主发送 `denova:refresh`，页面重读作品。会话归整个 Project 所有；每个插件页面独立记住选中的会话与输入草稿，切页不换会话，插件升级或模型切换不改变会话身份。旧试用版 `platform-*` 页面聊天在首次打开会话 Store 时保留 `.pre-project-agent.bak` 原始备份，并将完整消息和工具上下文转入普通 Project 会话；旧执行状态不会恢复或重放付费任务。游戏私有 Agent 保持原机制。
+
+页面可调用 `client.setPresentation({ title, contextLabel, referenceCount, suggestions, actions })` 同步页面信息和创作输入框。`suggestions` 为 `{ label, prompt }[]`，点击只填入输入框，仍由用户发送；`actions` 为 `{ id, label }[]`，点击向原页面发送 `denova:page-action`，在事件 `detail.id` 中返回动作 ID，可用于打开插件自己的参考资料选择器。展示消息最多 8 KiB，标题/标签/动作 ID 最多 200 字符，最多 4 个建议（各 2000 字符）与 4 个动作；不携带权限，也不替代模型上下文。页面自行提供当前语言的文案。
+
+插件页采用全高内容区与可收起、可调宽度的宿主 Agent 面板，不增加跨页面顶栏。插件自行设计作品标题、业务菜单和图像模型选择。宿主通过 `GET /images/models` 提供安全的模型目录，插件在生成请求中传 `modelId`，无需为切换模型重启插件。启停、权限及插件 schema 自定义配置统一在资源中心管理。左右收起仅改变布局，保留画布、会话及输入草稿；共享 Agent 的对话模型仍在会话内选择。
+
+页面可在自己的侧栏调用 `client.openTab('lore')`，打开当前 Project 的原生设定 Tab。宿主复用写作的资料目录、搜索、编辑、自动保存、批注与引用，保留同一个 Agent 会话和输入草稿；返回前完成资料保存，插件 iframe 保持挂载。设定打开时，发送给 Agent 的页面数据为 `{ surface: 'lore', itemId: string | null }`，替代隐藏画布的页码、选区和业务快捷操作。“引用到 Agent”进入现有对话草稿，不修改插件作品的长期参考资料。该接口仅供一级插件页面使用，不接受 Project ID，不向插件返回资料内容或授予 `library.read/write` 权限；插件配置仍在资源中心管理。
 
 作品可声明 `projectContent: ["comic"]`，并申请 `project.content.read/write`，使用 `/project-content/*` 保存到当前 Project ContentRoot 的 `comic/`。JSON、图片历史与上传参考图都属于作品；路径相对且可移动，不另建 Project 类型。写入沿用 Project 文件修订检查、变更锁与自动版本服务；图片仅可新增，相同字节重放可接受，已有不同内容拒绝覆盖。资料库继续使用 `/library/*`，按 stable item ID 引用，共享角色、场景与画风。旧 `/assets/document` 仍承载插件私有共享内容；其专属 ZIP 导出不包含 Project 的 `comic/`，作品按 Project 文件与版本流程管理。
+
+已安装插件的 Project/Session 图像任务与 `generated` 素材统一归属同一 Project、同一插件，页面可用原 commandId 查询宿主 Agent 工具发起的任务并采用结果。commandId 应使用 UUID 等跨会话唯一值。执行生命周期仍归属发起任务的运行实例与消费者；页面仅查询进度不会改变该归属。不同 Project、插件、游戏范围和预览不共享这些任务。
 
 完整示例见 [denova-index 漫画工坊](https://github.com/alfredxw/denova-index/tree/main/examples/comic-studio)。
 
@@ -118,15 +126,17 @@ ID 为 example.text-tools 的参考示例公开六个工具：count-characters�
 { "content": "The text contains 3 Unicode code points.", "data": { "count": 3 } }
 ```
 
+工具 ID 使用 `[a-z][a-z0-9_-]*`，插件最长 57 个字符；宿主直接以 `plugin_<tool.id>` 注册给模型，不添加 hash、不替换字符、不截断。游戏私有工具使用 `game_<tool.id>`，含前缀最长 64 个字符。建议插件使用有业务含义的 ID，如 `comic_inspect`。安装、更新及批量导入会拒绝不同插件的同名工具，并报告工具名和双方插件 ID；禁用插件及保留发行仍占用名字，同一插件更新可复用自己的名字。卸载后释放名字，再安装时重新校验。历史会话保留原始工具调用记录。
+
 公共引用是 pluginId/localId。工具集必须引用本包已有工具；跨插件引用需要 requires 中明确列出对应贡献。游戏私有定义使用 local:id，不注册为其他游戏可见能力。
 
 ## 清单和发布
 
-清单使用 denova.plugin.json，至少声明 manifestVersion: 1、id、严格语义版本 version、apiMajor: 1、minHostVersion: "0.6.0"、中英文 name、permissions 和 contributes。最低宿主版本与 API 主版本分别校验，不兼容时在检查与激活阶段拒绝。ID 使用小写字母、数字、点和连字符；builtin、local 保留。一个产物根只能有一种清单。
+清单使用 denova.plugin.json，至少声明 manifestVersion: 1、id、严格语义版本 version、apiMajor: 1、minHostVersion: "0.6.0"、中英文 name、permissions 和 contributes。最低宿主版本与 API 主版本分别校验，不兼容时在检查与激活阶段拒绝。包及其他贡献 ID 使用小写字母、数字、点和连字符；builtin、local 保留。工具 ID 遵循上述模型工具名规则。一个产物根只能有一种清单。
 
 - distribution.files 是文件或目录白名单；未列出的依赖、入口或定义会使检查失败。
 - runtime.backend 支持 protocol: denova-runtime-v1 与 launch.kind: runtime、runtime: node、entry、args。
-- 插件 modelSlots 支持 image，以及被一级页面私有 Agent 使用的 text 槽；其他文本调用复用 builtin/assistant。titleKey 必须存在于中英 locale 文件，宿主只公开绑定状态，不公开 provider 配置。游戏仍可以声明 text/image 私有模型槽。
+- 插件图像调用优先使用 `/images/models` 和显式 `modelId`，模型选择及作品状态属于插件。已有 image 槽位仍可用于声明式启动配置；插件文本对话复用宿主创作 Agent，不声明私有 text 槽。游戏仍可声明 text/image 私有模型槽。槽位 titleKey 必须存在于中英 locale 文件，不公开 provider 配置。
 - settings 引用分发内的 JSON Schema 与 defaults TOML，可选 uiSchema 提供声明式布局；字段必须有中英文标题。详见[扩展设置标准](extension-settings.md)。
 - requires 声明插件 ID、语义版本范围和所需贡献。运行时使用准确发行，不按加载顺序替换。
 - 按实际调用声明 agents.run、tools.invoke、pluginData 等权限，纯前端插件不必声明不用的能力；消费者直接调用或游戏 NPC 使用 `effect: write/propose` 的工具还需显式授予 `tools.write`。尚未实现的能力会明确拒绝。

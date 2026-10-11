@@ -153,17 +153,7 @@ func (s *AgentService) definition(runtime *Runtime, caller *activation, id strin
 		config.ModelProfile = runtime.models["builtin/assistant"]
 		return config, nil
 	}
-	if caller.release.Ref.Package.Kind == Plugin && strings.HasPrefix(id, "page:") {
-		for _, page := range caller.release.Manifest.contributions().Pages {
-			if page.ID == strings.TrimPrefix(id, "page:") && page.Agent != nil {
-				config.Content = *page.Agent
-				config.Provider = caller.release.Ref
-				config.ModelProfile = runtime.models[caller.release.Manifest.ID+"/"+page.Agent.ModelSlot]
-				return config, nil
-			}
-		}
-		return config, failure("NOT_FOUND", "Page Agent is unavailable")
-	}
+
 	if caller.release.Ref.Package.Kind != Game || !strings.HasPrefix(id, "local:") {
 		return config, failure("PERMISSION_DENIED", "Only the calling game's private Agent definitions are available")
 	}
@@ -209,10 +199,7 @@ func (s *AgentService) ensure(ctx context.Context, runtime *Runtime, caller *act
 	if err != nil {
 		return AgentSession{}, false, failure("NOT_CONFIGURED", "Resolve model profile %s: %v", config.ModelProfile, err)
 	}
-	if caller.release.Ref.Package.Kind == Plugin && strings.HasPrefix(request.Definition, "page:") {
-		identity, _ := json.Marshal(config.ModelIdentity)
-		config.Key += "/" + stableID(string(identity))
-	}
+
 	id := "platform-" + stableID(string(caller.release.Ref.Package.Kind), caller.release.Manifest.ID, config.Scope.Kind, config.Scope.InstanceID, config.Scope.ProjectID, config.Scope.SessionID, config.Key)
 	product, err := s.product(request.ProjectID, id, true)
 	if err != nil {

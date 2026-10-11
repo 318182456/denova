@@ -203,6 +203,9 @@ func (m *Manager) WithInstallBatch(ctx context.Context, expectedState string, se
 		}
 		candidates = append(candidates, candidate)
 	}
+	if err := validatePluginToolNames(plugins); err != nil {
+		return err
+	}
 	for _, candidate := range candidates {
 		if _, err := resolveAvailableDependencies(candidate.Manifest, nil, plugins); err != nil {
 			return err

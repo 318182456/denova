@@ -85,6 +85,10 @@ func TestPlatformResourcesReuseScopedLibraryAndImageProvider(t *testing.T) {
 		}
 	}
 	host := platformapp.NewResources(platformHost{application})
+	models, err := host.ImageModels(ctx, projects[1].ID)
+	if err != nil || len(models) != 1 || models[0] != (platform.ImageModel{ID: "illustrator", Name: "test-image-model", ImageInput: true}) {
+		t.Fatalf("scoped image catalog: %#v %v", models, err)
+	}
 	items, err := host.LibraryItems(ctx, projects[1].ID)
 	if err != nil || len(items) != 1 || items[0].Name != "second" || items[0].Image == nil || items[0].Image.Path != "assets/portrait.png" {
 		t.Fatalf("scoped library: %#v %v", items, err)

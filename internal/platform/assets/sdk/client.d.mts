@@ -12,6 +12,8 @@ export interface Capabilities {
   capabilities: Record<string, CapabilityState>; models: Record<string, boolean>;
   limits: Record<string, number>; schemaDialect: string;
 }
+/** GET /images/models, scoped to the credential Project and images.generate grant. */
+export interface ImageModel { id: string; name: string; imageInput: boolean }
 export interface Client {
   context: Context;
   setContext(value: unknown): void;
@@ -19,6 +21,9 @@ export interface Client {
    * denova:page-action with detail.id inside this frame. Limits: 4 actions,
    * 4 suggestions, labels/title <= 200 chars, prompts <= 2000 chars, 8 KiB total. */
   setPresentation(value: { title?: string; contextLabel?: string; referenceCount?: number; suggestions?: { label: string; prompt: string }[]; actions?: { id: string; label: string }[] }): void;
+  /** Open the native Project lore workspace beside the same page Agent. This
+   * navigation grants no library read/write access to the plugin. Page views only. */
+  openTab(tab: 'lore'): void;
   setState(state: { busy?: boolean; dirty?: boolean }): void;
   exit(): void;
   openInstance(instanceId: string): void;

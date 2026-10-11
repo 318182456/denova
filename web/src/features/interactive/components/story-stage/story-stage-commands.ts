@@ -1,7 +1,7 @@
 export interface StoryStageCommandItem {
   name: string
   description: string
-  hint: string
+  hint?: string
   builtIn: boolean
 }
 
@@ -13,7 +13,6 @@ interface SkillCommand {
 interface CommandLabels {
   compactDescription: string
   compactHint: string
-  skillHint: string
 }
 
 interface StoryStageCommandMenu {
@@ -41,7 +40,6 @@ export function buildStoryStageCommandMenu(query: string | null, skills: SkillCo
     commands.push({
       name: skill.name,
       description: skill.description || skill.name,
-      hint: labels.skillHint,
       builtIn: false,
     })
   }

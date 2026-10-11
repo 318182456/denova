@@ -1,12 +1,16 @@
 package agents
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"denova/config"
 	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
+	producttools "denova/internal/agents/tools"
+
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 func TestExternalAssembliesExcludeNativeDelegation(t *testing.T) {
@@ -25,14 +29,41 @@ func TestExternalAssembliesExcludeNativeDelegation(t *testing.T) {
 						InteractiveStory: config.AgentToolOverride{config.AgentToolDelegation: true},
 					},
 				}
-				host := AgentHostCapabilities{Interactive: true}
-				var assembly ExternalAssembly
-				var err error
-				if kind == config.AgentKindInteractiveStory {
-					assembly, err = BuildExternalGameAssembly(t.Context(), cfg, nil, prompts.InteractiveStorySystemInstructionInput{}, host, agentinteractive.InteractiveStoryToolContext{})
-				} else {
-					assembly, err = BuildExternalConversationAssembly(t.Context(), cfg, nil, prompts.IDEStoryTeller{}, kind, host)
+				called := false
+				var bound *externalPluginToolset
+				plugin, err := agenttool.InferTool("plugin_validation", "Read a plugin result.", func(context.Context, struct{}) (string, error) {
+					if err := bound.owner.Err(); err != nil {
+						return "", err
+					}
+					called = true
+					return "plugin result", nil
+				})
+				if err != nil {
+					t.Fatal(err)
 				}
+				descriptor := producttools.BoundedReadDescriptor(agenttool.ToolSourceOther, "")
+				pluginTools, err := agenttool.StaticTools(agenttool.ToolDefinition{Tool: plugin, Descriptor: descriptor})
+				if err != nil {
+					t.Fatal(err)
+				}
+				bound = &externalPluginToolset{Toolset: pluginTools}
+				host := AgentHostCapabilities{Interactive: true, PluginTools: bound}
+				admission, cancelAdmission := context.WithCancel(t.Context())
+				defer cancelAdmission()
+				var assembly ExternalAssembly
+				if kind == config.AgentKindInteractiveStory {
+					assembly, err = BuildExternalGameAssembly(admission, cfg, nil, prompts.InteractiveStorySystemInstructionInput{}, host, agentinteractive.InteractiveStoryToolContext{})
+				} else {
+					assembly, err = BuildExternalConversationAssembly(admission, cfg, nil, prompts.IDEStoryTeller{}, kind, host)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelAdmission()
+				if bound.owner != nil {
+					t.Fatal("plugin tools must not bind to admission context")
+				}
+				definitions, err := assembly.PrepareTools(t.Context())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -50,17 +81,37 @@ func TestExternalAssembliesExcludeNativeDelegation(t *testing.T) {
 				if assembly.ToolSettings.Allows(config.AgentToolDelegation) || len(assembly.Tools) == 0 {
 					t.Fatal("external assembly must expose product tools without Native delegation")
 				}
-				for _, definition := range assembly.Tools {
+				for _, definition := range definitions {
 					info, err := definition.Tool.Info(t.Context())
 					if err != nil {
 						t.Fatal(err)
 					}
 					switch info.Name {
+					case "plugin_validation":
+						if definition.Descriptor != descriptor {
+							t.Fatal("external assembly changed the plugin tool contract")
+						}
+						if _, err := definition.Tool.Run(t.Context(), "{}"); err != nil {
+							t.Fatal(err)
+						}
 					case "send", "await", "list_agents", "task", "task_wait":
 						t.Errorf("external assembly exposed Native delegation tool %q", info.Name)
 					}
 				}
+				if !called {
+					t.Fatal("external assembly must expose and dispatch host plugin tools")
+				}
 			})
 		}
 	}
+}
+
+type externalPluginToolset struct {
+	agenttool.Toolset
+	owner context.Context
+}
+
+func (tools *externalPluginToolset) PrepareTools(ctx context.Context, request agenttool.ToolRequest) ([]agenttool.ToolDefinition, error) {
+	tools.owner = ctx
+	return tools.Toolset.PrepareTools(ctx, request)
 }

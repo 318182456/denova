@@ -329,8 +329,14 @@ func (m *Manager) SetAvailability(ctx context.Context, kind Kind, id string, sta
 	if index < 0 {
 		return failure("NOT_FOUND", "Package %s is not installed", id)
 	}
+	restoring := items[index].Removed && !state.Removed
 	items[index].Enabled = state.Enabled && !state.Removed
 	items[index].Removed = state.Removed
+	if kind == Plugin && restoring {
+		if err := validatePluginToolNames(items); err != nil {
+			return err
+		}
+	}
 	if err := m.saveInstalled(kind, items[index]); err != nil {
 		return err
 	}

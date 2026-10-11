@@ -17,8 +17,8 @@ Denova records only major user-visible features, important compatibility or data
 - 语言模型连接新增 Gemini 原生协议，支持工具调用、图片输入与会话恢复。
 - Language model connections add the native Gemini protocol with tool calls, image inputs and session recovery.
 
-- 插件可添加绑定当前 Project 的一级创作页面与宿主 Agent，支持 Project 作品目录、图像编辑、选区及多图参考；漫画示例由独立资源索引提供，作品保存于 comic/，复用共享资料库并保留图片历史。
-- Plugins can add Project-bound creation pages with a host Agent, Project content directories, image edits, regions and multiple references. The comic example is distributed through the separate resource index, saves artwork under comic/, shares Lore and preserves image history.
+- 插件可添加绑定当前 Project 的一级创作页面与宿主 Agent，支持 Project 作品目录、图像编辑、选区及多图参考；独立资源索引中的漫画示例复用 Agent、工具与 Skill，支持统一参考的整话生成、进度、中断续作和批量采用，作品保存于 comic/ 并保留图片历史。
+- Plugins can add Project-bound creation pages with a host Agent, Project content directories, image edits, regions and multiple references. The comic example in the separate resource index uses the existing Agent, tools and a Skill for episode generation with shared references, progress, continuation and bulk adoption, saving artwork under comic/ with image history.
 
 - 资料库新增文档式资料索引，支持自定义与自动分组、逐项双向关联和实时预览；按组直接向写作与游戏 Agent 注入名称、简介或全文，并可按组名或全文关键词查询。
 - Lore adds a document-style index with custom and automatic groups, shared item associations and live previews. Groups directly inject names, briefs or full text into Writing and Game, with group queries and full-body keyword search.

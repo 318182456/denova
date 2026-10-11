@@ -8,15 +8,27 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	imagegen "denova/internal/image/generation"
+	"denova/internal/portablepath"
 	"denova/internal/revisionfile"
 )
 
-// ImageRequest requests one raster from an image slot selected by the user.
+// ImageModel is a credential-free projection of a configured image profile.
+// ImageInput describes host protocol support, not provider quality guarantees.
+type ImageModel struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	ImageInput bool   `json:"imageInput"`
+}
+
+// ImageRequest requests one raster from an explicit catalog model or a bound
+// model slot. Exactly one selection is required; it is fixed for the command.
 // commandId is stable across transport retries; it must change for a deliberate
 // new generation, including retrying an interrupted or cancelled operation.
+// Installed plugin commands are unique within their Project, across Sessions.
 // Optional output controls pass unchanged to native generation; omitted or
 // empty values retain the selected profile's defaults and provider validation.
 type ImageRequest struct {
@@ -27,7 +39,8 @@ type ImageRequest struct {
 	Inputs       []imagegen.InputImage `json:"-"`
 	InputMask    *imagegen.InputImage  `json:"-"`
 	CommandID    string                `json:"commandId"`
-	ModelSlot    string                `json:"modelSlot"`
+	ModelSlot    string                `json:"modelSlot,omitempty"`
+	ModelID      string                `json:"modelId,omitempty"`
 	Prompt       string                `json:"prompt" jsonschema_description:"English image prompt; 1..65536 UTF-8 bytes."`
 	Size         string                `json:"size,omitempty"`
 	AspectRatio  string                `json:"aspectRatio,omitempty"`
@@ -50,12 +63,13 @@ type GeneratedImage struct {
 
 type ImageResult struct {
 	CommandID string           `json:"commandId"`
+	ModelID   string           `json:"modelId,omitempty"`
 	Status    string           `json:"status" jsonschema:"enum=running,enum=completed,enum=failed,enum=cancelled,enum=interrupted"`
 	Images    []GeneratedImage `json:"images"`
 	Error     *Error           `json:"error,omitempty"`
 }
 
-// Direct provider requests have no Agent Session. This scope-owned record
+// Direct provider requests have no Agent Session. This resource-owned record
 // fences replay before any paid request; an uncertain provider outcome is
 // reported as interrupted and never automatically submitted a second time.
 type imageReceipt struct {
@@ -95,6 +109,15 @@ func (s *ResourceService) StopRuntime(ctx context.Context, runtime *Runtime) err
 }
 
 func (s *ResourceService) serveImages(w http.ResponseWriter, request *http.Request, runtime *Runtime, caller *activation, route string) {
+	if route == "/images/models" && request.Method == http.MethodGet {
+		models, err := s.host.ImageModels(request.Context(), caller.context.Scope.ProjectID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeResponse(w, http.StatusOK, models)
+		return
+	}
 	if route == "/images/generations" && request.Method == http.MethodPost {
 		var input ImageRequest
 		if err := readRequest(request, &input); err != nil {
@@ -123,7 +146,12 @@ func (s *ResourceService) serveImages(w http.ResponseWriter, request *http.Reque
 		writeError(w, failure("NOT_FOUND", "Unknown image route"))
 		return
 	}
-	key := imageReceiptPath(caller, parts[0])
+	directory, err := imageResourceDirectory(runtime, caller)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	key := imageReceiptPath(directory, parts[0])
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if cancel {
@@ -144,8 +172,27 @@ func validImageCommand(command string) bool {
 	return len(command) > 0 && len(command) <= 128 && !strings.ContainsAny(command, "/\\") && strings.TrimSpace(command) == command
 }
 
-func imageReceiptPath(caller *activation, command string) string {
-	return filepath.Join(resourceDirectory(caller), "requests", stableID(command)+".json")
+// Installed Project plugins share image commands and assets across pages and
+// conversations. Execution still belongs to the initiating runtime/consumer.
+// Games, Story tools and previews retain their isolated resource scopes.
+func imageResourceDirectory(runtime *Runtime, caller *activation) (string, error) {
+	scope := caller.context.Scope
+	if caller.release.Ref.Package.Kind != Plugin || caller.context.Environment != "installed" || (scope.Kind != "project" && scope.Kind != "session") {
+		return caller.dataDir + "-resources", nil
+	}
+	_, layout, err := runtime.manager.registry.Resolve(scope.ProjectID, true)
+	if err != nil {
+		return "", err
+	}
+	relative := "extensions/" + caller.release.Manifest.ID + "/images"
+	if err := portablepath.CheckPath(layout.StoreRoot, relative); err != nil {
+		return "", err
+	}
+	return filepath.Join(layout.StoreRoot, filepath.FromSlash(relative)), nil
+}
+
+func imageReceiptPath(directory, command string) string {
+	return filepath.Join(directory, "requests", stableID(command)+".json")
 }
 
 // imageReceipt is called with the service mutex held. A running record without
@@ -179,21 +226,28 @@ func (s *ResourceService) startImage(requestContext context.Context, runtime *Ru
 	if !validImageCommand(input.CommandID) || strings.TrimSpace(input.Prompt) == "" || len(input.Prompt) > 64<<10 {
 		return ImageResult{}, failure("INVALID_ARGUMENT", "Image command is required and prompt must contain 1 to 65536 bytes")
 	}
-	found := false
-	for _, slot := range caller.release.Manifest.ModelSlots {
-		if slot.ID == input.ModelSlot && slot.Kind == "image" {
-			found = true
-			break
+	if (input.ModelID == "") == (input.ModelSlot == "") {
+		return ImageResult{}, failure("INVALID_ARGUMENT", "Select exactly one modelId or modelSlot")
+	}
+	profileID := input.ModelID
+	if input.ModelSlot != "" {
+		if !slices.ContainsFunc(caller.release.Manifest.ModelSlots, func(slot ModelSlot) bool { return slot.ID == input.ModelSlot && slot.Kind == "image" }) {
+			return ImageResult{}, failure("PERMISSION_DENIED", "A declared image model slot is required")
+		}
+		modelKey := caller.release.Manifest.ID + "/" + input.ModelSlot
+		if caller.release.Ref.Package.Kind == Game {
+			modelKey = "local:" + input.ModelSlot
+		}
+		profileID = runtime.models[modelKey]
+	} else {
+		models, err := s.host.ImageModels(requestContext, caller.context.Scope.ProjectID)
+		if err != nil {
+			return ImageResult{}, err
+		}
+		if !slices.ContainsFunc(models, func(model ImageModel) bool { return model.ID == profileID }) {
+			return ImageResult{}, failure("NOT_CONFIGURED", "Selected image model is unavailable; choose another model")
 		}
 	}
-	if !found {
-		return ImageResult{}, failure("PERMISSION_DENIED", "A declared image model slot is required")
-	}
-	modelKey := caller.release.Manifest.ID + "/" + input.ModelSlot
-	if caller.release.Ref.Package.Kind == Game {
-		modelKey = "local:" + input.ModelSlot
-	}
-	profileID := runtime.models[modelKey]
 	if profileID == "" {
 		return ImageResult{}, failure("NOT_CONFIGURED", "Select an image model for %s", input.ModelSlot)
 	}
@@ -246,7 +300,11 @@ func (s *ResourceService) startImage(requestContext context.Context, runtime *Ru
 		return ImageResult{}, err
 	}
 	hash := stableID(string(encoded))
-	key := imageReceiptPath(caller, input.CommandID)
+	directory, err := imageResourceDirectory(runtime, caller)
+	if err != nil {
+		return ImageResult{}, err
+	}
+	key := imageReceiptPath(directory, input.CommandID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	previous, err := s.imageReceipt(key)
@@ -264,7 +322,7 @@ func (s *ResourceService) startImage(requestContext context.Context, runtime *Ru
 	}
 	ctx, cancel := context.WithCancel(runtime.executionContext(requestContext))
 	operation := &imageOperation{runtime: runtime, ctx: ctx, cancel: cancel, done: make(chan struct{}), receipt: imageReceipt{
-		Version: 1, InputHash: hash, Result: ImageResult{CommandID: input.CommandID, Status: "running", Images: []GeneratedImage{}},
+		Version: 1, InputHash: hash, Result: ImageResult{CommandID: input.CommandID, ModelID: profileID, Status: "running", Images: []GeneratedImage{}},
 	}}
 	if err := writeJSON(key, operation.receipt); err != nil {
 		cancel()
@@ -280,7 +338,7 @@ func (s *ResourceService) startImage(requestContext context.Context, runtime *Ru
 		}
 		var saved *GeneratedImage
 		if err == nil {
-			saved, err = saveGeneratedImage(ctx, caller, input.CommandID, image)
+			saved, err = saveGeneratedImage(ctx, directory, input.CommandID, image)
 		}
 		s.finishImage(key, operation, saved, err)
 	})
@@ -288,14 +346,14 @@ func (s *ResourceService) startImage(requestContext context.Context, runtime *Ru
 	return operation.receipt.Result, nil
 }
 
-func saveGeneratedImage(ctx context.Context, caller *activation, command string, image ImageBytes) (*GeneratedImage, error) {
+func saveGeneratedImage(ctx context.Context, directory, command string, image ImageBytes) (*GeneratedImage, error) {
 	mimeType, err := rasterType(image.Data)
 	if err != nil {
 		return nil, err
 	}
 	ext := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}[mimeType]
 	name := stableID(command) + "." + ext
-	file := filepath.Join(resourceDirectory(caller), "assets", name)
+	file := filepath.Join(directory, "assets", name)
 	if _, err := revisionfile.ReplaceIfRevision(ctx, file, revisionfile.MissingRevision, image.Data, revisionfile.Options{FileMode: 0600, DirectoryMode: 0700}); err != nil {
 		return nil, err
 	}

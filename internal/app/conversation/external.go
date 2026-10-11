@@ -97,6 +97,10 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 	if text == "" {
 		return external.StartRequest{}, fmt.Errorf("external turn has no assembled user input")
 	}
+	definitions, err := assembly.PrepareTools(ctx)
+	if err != nil {
+		return external.StartRequest{}, err
+	}
 	return external.StartRequest{
 		ProjectID: runtime.ProjectID, AttachmentRoot: runtime.ProjectStore, Session: runtime.Session, CommandID: request.CommandID,
 		Fingerprint: agentexecution.RequestSemanticFingerprint(request),
@@ -105,7 +109,7 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 		Metadata: session.MessageMetadata{MessageID: request.CommandID + "-input", AgentKind: runtime.AgentKind,
 			ContextOnly:    request.InputVisibility == agentrun.InputModelOnly,
 			DisplayContent: request.DisplayMessage, UserReferences: agentchat.UserMessageReferences(request)},
-		Definitions: assembly.Tools, ReviewThreadID: options.ReviewThreadID, Emit: emit,
+		Definitions: definitions, ReviewThreadID: options.ReviewThreadID, Emit: emit,
 		ToolPolicy: toolruntime.OrchestratorConfig{AgentKind: runtime.AgentKind, PolicyKind: runtime.AgentKind,
 			Workspace: runtime.Workspace, ToolSettings: assembly.ToolSettings, EnforceToolSettings: true,
 			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.Config)},

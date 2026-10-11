@@ -41,11 +41,7 @@ func (r *Runtime) capabilities(caller *activation) Capabilities {
 			state.Implemented = r.manager.agents != nil
 			state.Applicable = project
 			state.Configured = result.Models["builtin/assistant"]
-			for _, page := range caller.release.Manifest.contributions().Pages {
-				if page.Agent != nil {
-					state.Configured = state.Configured || result.Models[caller.release.Manifest.ID+"/"+page.Agent.ModelSlot]
-				}
-			}
+
 			for _, definition := range caller.release.Manifest.privateAgents() {
 				if r.manager.agents == nil {
 					break
@@ -61,17 +57,12 @@ func (r *Runtime) capabilities(caller *activation) Capabilities {
 			}
 			if permission == "images.generate" {
 				state.Configured = false
-				for _, slot := range caller.release.Manifest.ModelSlots {
-					if slot.Kind != "image" {
-						continue
-					}
-					key := caller.release.Manifest.ID + "/" + slot.ID
-					if caller.release.Ref.Package.Kind == Game {
-						key = "local:" + slot.ID
-					}
-					state.Configured = state.Configured || result.Models[key]
+				if state.Implemented && project {
+					models, err := r.manager.resources.host.ImageModels(r.ctx, caller.context.Scope.ProjectID)
+					state.Configured = err == nil && len(models) > 0
 				}
 			}
+
 		case "project.content.read", "project.content.write":
 			state.Applicable = project && len(caller.release.Manifest.ProjectContent) > 0
 			if r.manager.resources != nil {

@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"encoding/json"
+
 	agentattachment "denova/internal/agents/attachment"
 	"denova/internal/agents/prompts"
 	agentreview "denova/internal/agents/review"
@@ -32,6 +34,8 @@ type ChatRequest struct {
 	LoreReferences    []string                 `json:"lore_references"`
 	StyleScenes       []string                 `json:"style_scenes"`
 	Selections        []TextSelectionRef       `json:"selections"`
+	PageContext       *PageContext             `json:"page_context,omitempty"`
+	PageInstructions  string                   `json:"-"`
 	IDEContext        prompts.IDEContextRef    `json:"ide_context,omitempty"`
 	ReviewFeedback    agentreview.Refs         `json:"review_feedback,omitempty"`
 	PlanMode          bool                     `json:"plan_mode"`
@@ -73,6 +77,7 @@ type CallerInput struct {
 	LoreReferences       []string              `json:"lore_references,omitempty"`
 	StyleScenes          []string              `json:"style_scenes,omitempty"`
 	Selections           []TextSelectionRef    `json:"selections,omitempty"`
+	PageContext          *PageContext          `json:"page_context,omitempty"`
 	IDEContext           prompts.IDEContextRef `json:"ide_context,omitempty"`
 	ReviewFeedback       agentreview.Refs      `json:"review_feedback,omitempty"`
 	PlanMode             bool                  `json:"plan_mode"`
@@ -95,6 +100,7 @@ func CaptureChatRequestCallerInput(req ChatRequest) ChatRequest {
 		AttachmentIDs:        cloneStrings(req.AttachmentIDs),
 		References:           cloneStrings(req.References), LoreReferences: cloneStrings(req.LoreReferences),
 		StyleScenes: cloneStrings(req.StyleScenes), Selections: cloneTextSelectionRefs(req.Selections),
+		PageContext:    clonePageContext(req.PageContext),
 		IDEContext:     prompts.IDEContextRef{CurrentFile: req.IDEContext.CurrentFile, OpenFiles: cloneStrings(req.IDEContext.OpenFiles)},
 		ReviewFeedback: req.ReviewFeedback.Clone(),
 		PlanMode:       req.PlanMode, WritingSkill: req.WritingSkill,
@@ -125,6 +131,7 @@ func (input CallerInput) Request() ChatRequest {
 		ResumeInterruptionID: input.ResumeInterruptionID, AttachmentIDs: cloneStrings(input.AttachmentIDs),
 		References: cloneStrings(input.References), LoreReferences: cloneStrings(input.LoreReferences),
 		StyleScenes: cloneStrings(input.StyleScenes), Selections: cloneTextSelectionRefs(input.Selections),
+		PageContext:    clonePageContext(input.PageContext),
 		IDEContext:     prompts.IDEContextRef{CurrentFile: input.IDEContext.CurrentFile, OpenFiles: cloneStrings(input.IDEContext.OpenFiles)},
 		ReviewFeedback: input.ReviewFeedback.Clone(), PlanMode: input.PlanMode,
 		WritingSkill: input.WritingSkill, ImagePresetID: input.ImagePresetID, TellerID: input.TellerID, Locale: input.Locale,
@@ -149,4 +156,21 @@ type TextSelectionRef struct {
 	StartLine int    `json:"start_line"`
 	EndLine   int    `json:"end_line"`
 	Content   string `json:"content"`
+}
+
+// PageContext is a user-visible page snapshot captured with the submitted turn.
+// Only the host resolves instructions; Data is untrusted, bounded user context.
+type PageContext struct {
+	PluginID string          `json:"plugin_id"`
+	PageID   string          `json:"page_id"`
+	Data     json.RawMessage `json:"data"`
+}
+
+func clonePageContext(value *PageContext) *PageContext {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	copy.Data = append(json.RawMessage(nil), value.Data...)
+	return &copy
 }

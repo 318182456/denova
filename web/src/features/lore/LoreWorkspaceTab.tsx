@@ -43,6 +43,8 @@ interface LoreWorkspaceTabProps {
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onOpenLibrary?: () => void
   onReferenceItem?: (id: string) => void
+  /** Hosts track the visible resource without copying editor drafts into Agent context. */
+  onActiveItemChange?: (id: string | null) => void
 }
 
 /** Writing-side projection of the lore library: quick editing, review and Agent handoff. */
@@ -55,6 +57,7 @@ export function LoreWorkspaceTab({
   onEditorFlushHandlerChange,
   onOpenLibrary,
   onReferenceItem,
+  onActiveItemChange,
 }: LoreWorkspaceTabProps) {
   const { t } = useTranslation()
   const { sections: categorySections } = useLoreCategories(projectId, refreshSignal)
@@ -84,6 +87,8 @@ export function LoreWorkspaceTab({
     refreshSignal,
     onFlushHandlerChange: handleItemFlush,
   })
+  const visibleItemId = creating || libraryDestination ? null : lore.activeId || null
+  useEffect(() => { onActiveItemChange?.(visibleItemId) }, [onActiveItemChange, visibleItemId])
   const navigationTargetID = navigationIntent
     ? documentReview.comments.find(
         (comment) => comment.id === navigationIntent.commentID,

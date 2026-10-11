@@ -1,6 +1,9 @@
 package platform
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"slices"
+)
 
 // PluginPage is the installed navigation projection. Opening still enforces
 // the selected Project's plugin enablement, grants, settings and model binding.
@@ -56,4 +59,45 @@ func (m *Manager) PluginPages() ([]PluginPage, error) {
 		pages = append(pages, entries...)
 	}
 	return pages, nil
+}
+
+// PageInstructions resolves installed guidance in the same Project scope used
+// for plugin tools. Page snapshots never grant capabilities or select models.
+func (m *Manager) PageInstructions(projectID, pluginID, pageID string) (string, error) {
+	if _, _, err := m.registry.Resolve(projectID, true); err != nil {
+		return "", err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	config, err := m.ProjectConfiguration(projectID)
+	if err != nil {
+		return "", err
+	}
+	if slices.Contains(config.Extensions.DisabledPlugins, pluginID) {
+		return "", failure("PERMISSION_DENIED", "Plugin is disabled in this Project")
+	}
+	items, err := m.List(Plugin)
+	if err != nil {
+		return "", err
+	}
+	var selected Installed
+	for _, item := range items {
+		if item.ID == pluginID {
+			selected = item
+			break
+		}
+	}
+	release, installed, err := m.release(ReleaseRef{Package: PackageRef{Kind: Plugin, ID: pluginID}, ReleaseID: selected.CurrentRelease})
+	if err != nil {
+		return "", err
+	}
+	if !installed.Enabled || installed.Removed {
+		return "", failure("PERMISSION_DENIED", "Plugin is unavailable")
+	}
+	for _, page := range release.Manifest.Contributes.Pages {
+		if page.ID == pageID && page.Agent != nil {
+			return page.Agent.Instructions, nil
+		}
+	}
+	return "", failure("NOT_FOUND", "Plugin page assistant is unavailable")
 }

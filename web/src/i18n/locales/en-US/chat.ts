@@ -683,7 +683,6 @@ const chat = {
   'chat.command.status.hint': 'Current progress',
   'chat.command.help.desc': 'Help',
   'chat.command.help.hint': 'Command guide',
-  'chat.command.skill.hint': 'Load Skill',
   'chat.commands.title': 'Quick Commands',
   'chat.commands.description': 'Choose a system action or available Skill',
   'chat.commands.skillsDescription': 'Choose a Skill available to this Agent',

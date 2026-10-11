@@ -3,6 +3,25 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewToRenderMessage, buildAgentMessageViews, shareAgentMessageViews } from './agent-message-view'
 
 describe('agentViewToRenderMessage', () => {
+  it.each(['pending', 'answered', 'cancelled'])('restores %s tool approvals whose journal payload omits questions', (status) => {
+    const ask: AgentUIMessage = {
+      id: 'approval', role: 'assistant', metadata: { run_id: 'run' },
+      parts: [{ type: 'data-agent-ask', data: {
+        schema: 'ask.pending.v1', id: 'approval', kind: 'tool_approval', tool_call_id: 'write-call', agent_kind: 'ide', status,
+        approval: { mode: 'write', tool_name: 'write', risk: 'high', rule_id: 'external_mutation' },
+      } }],
+    }
+    const tool: AgentUIMessage = {
+      id: 'tool', role: 'assistant', metadata: { run_id: 'run' },
+      parts: [{ type: 'dynamic-tool', toolName: 'write', toolCallId: 'write-call', state: 'input-available', input: { path: 'draft.md' } }],
+    }
+    const views = buildAgentMessageViews([tool, ask])
+    expect(views.map(view => view.kind)).toEqual(['tool'])
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({ ask: { id: 'approval', kind: 'tool_approval', status, questions: [] } })
+    const [orphan] = buildAgentMessageViews([ask])
+    expect(agentViewToRenderMessage(orphan)).toMatchObject({ role: 'ask', ask: { id: 'approval', kind: 'tool_approval', status, questions: [] } })
+  })
+
   const chapter = 'Chapter body. '.repeat(500)
   const history: AgentUIMessage[] = [{
     id: 'write-reply', role: 'assistant', metadata: { run_id: 'run-a' },

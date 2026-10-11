@@ -47,9 +47,9 @@ func TestPluginPageProjectContentAndImageEditLifecycle(t *testing.T) {
 	candidate := pluginPanelCandidate(t, m, project, "test.comic")
 	manifest := candidate.Manifest
 	manifest.ProjectContent = []string{"comic"}
-	manifest.Contributes.Pages = []PageContribution{{ID: "studio", TitleKey: "board", ViewID: "main", Agent: &AgentDefinition{Instructions: "Create comics.", ModelSlot: "writer", Tools: []string{"probe"}}}}
-	manifest.ModelSlots = []ModelSlot{{ID: "writer", TitleKey: "board", Kind: "text", Required: true}, {ID: "art", TitleKey: "board", Kind: "image", Required: true}}
-	manifest.Permissions.Required = []string{"tools.invoke", "agents.run", "assets.read", "images.generate", "project.content.read", "project.content.write"}
+	manifest.Contributes.Pages = []PageContribution{{ID: "studio", TitleKey: "board", ViewID: "main", Agent: &PageAgent{Instructions: "Create comics."}}}
+	manifest.ModelSlots = nil
+	manifest.Permissions.Required = []string{"tools.invoke", "assets.read", "images.generate", "project.content.read", "project.content.write"}
 	candidate.files[Plugin.manifestFile()], _ = json.Marshal(manifest)
 	candidate, err := m.freeze(Plugin, candidate.files)
 	if err != nil {
@@ -60,17 +60,12 @@ func TestPluginPageProjectContentAndImageEditLifecycle(t *testing.T) {
 	defer files.Close()
 	host := &pageContentTestHost{resourceTestHost: &resourceTestHost{project: project, profile: "test-image", image: resourcePNG(t), requests: make(chan ImageRequest, 2)}, files: files, manager: m}
 	m.ConfigureResources(host)
-	config, err := m.ProjectConfiguration(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	config.Extensions.Models = map[string]string{manifest.ID + "/writer": "test-text", manifest.ID + "/art": "test-image"}
-	if _, err = m.SaveProjectConfiguration(t.Context(), project, ProjectConfigurationInput{ExpectedRevision: config.Revision, Extensions: config.Extensions}); err != nil {
-		t.Fatal(err)
-	}
 	pages, err := m.PluginPages()
 	if err != nil || len(pages) != 1 || pages[0].ID != "studio" || !pages[0].Agent {
 		t.Fatalf("pages: %+v %v", pages, err)
+	}
+	if instructions, err := m.PageInstructions(project, manifest.ID, "studio"); err != nil || instructions != "Create comics." {
+		t.Fatalf("host page instructions: %q %v", instructions, err)
 	}
 	opened, err := m.OpenPluginAction(t.Context(), OpenPluginAction{PluginID: manifest.ID, ReleaseID: release.Ref.ReleaseID, ProjectID: project, Context: ContextGeneral, Kind: "page", ActionID: "studio", ConsumerID: uuid.NewString(), OpenOptions: OpenOptions{ParentOrigin: "http://127.0.0.1:15173"}})
 	if err != nil {
@@ -102,10 +97,19 @@ func TestPluginPageProjectContentAndImageEditLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := AssetRef{Kind: "project", Path: "comic/assets/pages/page/source.png"}
-	input := ImageRequest{CommandID: "edit-page", ModelSlot: "art", Prompt: "Change the dialogue.", Source: &source, References: []AssetRef{{Kind: "project", Path: "assets/portrait.png"}}, Selection: &imagegen.ImageRegion{X: .1, Y: .2, Width: .5, Height: .5}}
+	input := ImageRequest{CommandID: "edit-page", ModelID: "test-image", Prompt: "Change the dialogue.", Source: &source, References: []AssetRef{{Kind: "project", Path: "assets/portrait.png"}}, Selection: &imagegen.ImageRegion{X: .1, Y: .2, Width: .5, Height: .5}}
+	var models []ImageModel
+	if err := json.Unmarshal(call("GET", "/images/models", nil), &models); err != nil || len(models) != 1 || models[0].ID != "test-image" {
+		t.Fatalf("image catalog: %+v %v", models, err)
+	}
+	invalid := input
+	invalid.ModelID = "deleted-profile"
+	if status, _ := testRequest(t, opened.Connection, "POST", "/images/generations", "", invalid); status < 400 || host.calls.Load() != 0 {
+		t.Fatal("unavailable model reached provider")
+	}
 	call("POST", "/images/generations", input)
 	result := awaitImage(t, opened.Connection, input.CommandID)
-	if result.Status != "completed" {
+	if result.Status != "completed" || result.ModelID != "test-image" {
 		t.Fatalf("generation: %+v", result)
 	}
 	forwarded := <-host.requests
@@ -135,5 +139,16 @@ func TestPluginPageProjectContentAndImageEditLifecycle(t *testing.T) {
 	}
 	if len(m.RuntimeSnapshots()) != 0 {
 		t.Fatal("closed page retained content authority")
+	}
+	config, err := m.ProjectConfiguration(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Extensions.DisabledPlugins = []string{manifest.ID}
+	if _, err := m.SaveProjectConfiguration(t.Context(), project, ProjectConfigurationInput{ExpectedRevision: config.Revision, Extensions: config.Extensions}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.PageInstructions(project, manifest.ID, "studio"); err == nil {
+		t.Fatal("disabled plugin still supplied page instructions")
 	}
 }

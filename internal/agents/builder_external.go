@@ -27,6 +27,21 @@ type ExternalAssembly struct {
 	Tools        []agenttool.ToolDefinition
 	Context      agentcontext.ContextSource
 	ToolSettings config.ResolvedAgentToolSettings
+	pluginTools  agenttool.Toolset
+}
+
+// PrepareTools binds plugin process lifetimes to the execution context, rather
+// than the short-lived HTTP context used to assemble admission capabilities.
+func (assembly ExternalAssembly) PrepareTools(ctx context.Context) ([]agenttool.ToolDefinition, error) {
+	definitions := append([]agenttool.ToolDefinition(nil), assembly.Tools...)
+	if assembly.pluginTools != nil {
+		plugins, err := assembly.pluginTools.PrepareTools(ctx, agenttool.ToolRequest{})
+		if err != nil {
+			return nil, fmt.Errorf("prepare external plugin tools: %w", err)
+		}
+		definitions = append(definitions, plugins...)
+	}
+	return definitions, producttools.Validate(ctx, definitions)
 }
 
 func BuildExternalConversationAssembly(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, kind string, host AgentHostCapabilities) (ExternalAssembly, error) {
@@ -103,7 +118,7 @@ func buildExternalAssembly(ctx context.Context, cfg *config.Config, state *book.
 	if err != nil {
 		return ExternalAssembly{}, fmt.Errorf("compose external product context: %w", err)
 	}
-	return ExternalAssembly{Composition: assembly.SystemPrompt, Tools: definitions, Context: source, ToolSettings: settings}, nil
+	return ExternalAssembly{Composition: assembly.SystemPrompt, Tools: definitions, Context: source, ToolSettings: settings, pluginTools: host.PluginTools}, nil
 }
 
 // ExternalConversationToolSettings is shared by execution and the read-only

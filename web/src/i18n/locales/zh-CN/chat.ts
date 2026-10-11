@@ -683,7 +683,6 @@ const chat = {
   'chat.command.status.hint': '当前进度',
   'chat.command.help.desc': '帮助信息',
   'chat.command.help.hint': '命令说明',
-  'chat.command.skill.hint': '加载 Skill',
   'chat.commands.title': '快速命令',
   'chat.commands.description': '选择系统操作或可用 Skill',
   'chat.commands.skillsDescription': '选择一个可用于当前 Agent 的 Skill',

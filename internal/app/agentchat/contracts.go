@@ -27,6 +27,7 @@ const RuntimeMode = "agent_chat"
 // by one Project runtime. Project identity and session state stay in Service.
 type Host interface {
 	BaseRuntime() (config.Config, *agentexecution.Runtime)
+	PageInstructions(context.Context, string, string, string) (string, error)
 	AgentEngines() *agentruntime.Engines
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string

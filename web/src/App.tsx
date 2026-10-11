@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { checkForUpdate, fetchProjectSettings, fetchSettings, refreshProjectSettings, refreshSettings } from '@/features/settings/api'
@@ -64,6 +65,7 @@ const CONTENT_MODE_STORAGE_KEY = 'nova:content-mode'
 const MAX_OPEN_TABS_FALLBACK = 5
 const AUTO_SAVE_ENABLED_FALLBACK = true
 const AUTO_SAVE_DELAY_FALLBACK_MS = 1500
+const EMPTY_LORE_ITEMS: LoreItem[] = []
 type SidebarView = 'outline' | 'files' | 'search'
 type CreationRoute = 'ide' | 'interactive'
 
@@ -103,7 +105,6 @@ function App() {
   const [characterCardPreviewing, setCharacterCardPreviewing] = useState(false)
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
-  const [loreItems, setLoreItems] = useState<LoreItem[]>([])
   const [writingAgentConversation, setWritingAgentConversation] = useState<AgentChatConversationState>({
     sessionId: '',
     messages: [],
@@ -141,6 +142,13 @@ function App() {
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks,
   } = useWorkspace()
+  // A late response stays with its Project instead of replacing another library.
+  const loreQuery = useQuery({
+    queryKey: ['lore-items', projectId],
+    queryFn: () => getProjectLoreItems(projectId),
+    enabled: Boolean(projectId),
+  })
+  const loreItems = loreQuery.data ?? EMPTY_LORE_ITEMS
   const settingsWorkspaceRef = useRef<string | null>(null)
 
   const notifyVersionChange = useCallback(() => {
@@ -255,28 +263,17 @@ function App() {
     togglePlanMode()
   }, [togglePlanMode])
 
-  const refreshLoreItems = useCallback(async () => {
-    if (!projectId) {
-      setLoreItems([])
-      return
-    }
-    try {
-      setLoreItems(await getProjectLoreItems(projectId))
-    } catch (e) {
-      console.warn('[App.tsx] failed to load lore items', e)
-      setLoreItems([])
-    }
-  }, [projectId])
-
   useEffect(() => {
-    void refreshLoreItems()
     const onLoreUpdated = (event: Event) => {
       const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
-      if (detail?.projectId === projectId) void refreshLoreItems()
+      if (detail?.projectId === projectId) void loreQuery.refetch()
     }
     window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
-  }, [refreshLoreItems])
+  }, [loreQuery.refetch, projectId])
+  useEffect(() => {
+    if (loreQuery.error) console.warn('[App.tsx] failed to load lore items', { projectId, error: loreQuery.error })
+  }, [loreQuery.error, projectId])
 
   const chapterStats = useMemo<Record<string, ChapterSummary>>(
     () => Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter])),

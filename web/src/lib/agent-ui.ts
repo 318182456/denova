@@ -1,7 +1,7 @@
 import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI, responseAPIError, parseUIMessageStream } from './api-client/client'
-import type { ToolPresentation, UserMessageReference } from './api-client/types'
+import type { AgentPageContext, ToolPresentation, UserMessageReference } from './api-client/types'
 import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from './chat-attachments'
 
 export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'execution_summary' | 'proposed_plan' | 'system' | 'error'
@@ -70,6 +70,7 @@ export interface AgentChatRequestMetadata {
 }
 
 interface AgentChatRequestBody {
+  page_context?: AgentPageContext
   command_id?: string
   resume_interruption_id?: string
   references?: string[]
@@ -221,6 +222,7 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
     style_scenes: body.style_scenes || [],
     selections: body.selections || [],
     ide_context: body.ide_context,
+    page_context: body.page_context,
     plan_mode: body.plan_mode || false,
     writing_skill: body.writing_skill || undefined,
     image_preset_id: body.image_preset_id || undefined,
