@@ -1,6 +1,6 @@
 # Denova 插件与游戏平台 HTTP API
 
-状态：API v1，v0.6.0 工作区实现，尚未发布。更新：2026-10-01。当前实现以 [OpenAPI 生成代码](../internal/platform/openapi.go) 和隔离运行实例的 GET /api/platform/v1/openapi.json 为准。
+状态：API v1，v0.6.0 工作区实现，尚未发布。更新：2026-10-10。当前实现以 [OpenAPI 生成代码](../internal/platform/openapi.go) 和隔离运行实例的 GET /api/platform/v1/openapi.json 为准。
 
 [插件开发手册](plugin-developer-guide.md) · [游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md)。
 
@@ -71,6 +71,21 @@ SDK 与类型在 `internal/platform/assets/sdk/client.mjs`、`client.d.mts`，�
 
 浏览器读取图片需要 bearer header，不能将 token 拼入 URL。可使用 `fetch` 获取 Blob，再用 `URL.createObjectURL(blob)` 显示；切换页面或替换图片时调用 `URL.revokeObjectURL`。**只保存资产引用，不保存运行端口、baseUrl、blob URL 或宿主路径。** 相同 `generated` 引用在其他实例或其他包的凭证下不可见。
 
+## Project 作品文件与一级页面
+
+可信管理端 `GET /api/platform/manage/plugin-pages` 返回启用安装的 `{ id, pluginId, releaseId, title, agent }[]`。`POST /api/platform/manage/plugin-actions/open` 使用 `kind: "page"` 与对应 `actionId`，仍检查 Project 启用、模型与权限。页面 Agent 通过既有 `/agents/sessions` 使用 `definition: "page:<id>"`；run 输入可额外附带至多 32 KiB 的 JSON `context`，轮询结果包括普通 `interactions` 提问。模型和会话凭证由宿主使用，iframe 不保存它们。
+
+清单 `projectContent` 声明顶层目录，例如 `comic`；以下接口只接受该目录中的可移植相对路径，不能访问其他目录或 Project。
+
+| 方法与路径 | 权限 | 输入或结果 |
+| --- | --- | --- |
+| GET /project-content/file?path=comic/comic.json | project.content.read | `{ content, revision }`；不存在返回 NOT_FOUND，文本最多 512 KiB |
+| PUT /project-content/file | project.content.write | `{ path, content, expectedRevision }` → `{ revision }`；首次写入使用 `missing`，后续使用准确修订 |
+| POST /project-content/assets?path=comic/assets/ref.png | project.content.write | 原始 raster 字节 → `{ asset, mimeType, sizeBytes }`，最多 32 MiB |
+| POST /project-content/adopt | project.content.write + assets.read | `{ path, asset }`，采用授权图片为新的不可变作品文件 |
+
+读取作品图片使用 `GET /assets/content?kind=project&path=comic/...`，同时需要 `assets.read` 和 `project.content.read`。作品路径不包含绝对路径、端口或 blob URL；保存使用既有 Project 文件修改与版本服务。其他插件声明相同目录并被授权时可以访问；此声明是目录权限边界，不是插件私有数据空间。
+
 ## 图像生成
 
 需要 `images.generate`，展示结果另需 `assets.read`。清单声明 `kind: "image"` 的 modelSlot，用户为其选择图像模型。消费者只指定本包 slot ID；API 不接受模型凭证、provider URL 或任意 profile ID。
@@ -104,6 +119,10 @@ SDK 与类型在 `internal/platform/assets/sdk/client.mjs`、`client.d.mts`，�
   }]
 }
 ```
+
+请求还可携带 `source: AssetRef`、`references: AssetRef[]`（最多 12 个）、`selection: { x, y, width, height }`、`mask: AssetRef`。原图排第一，参考图保持声明顺序，坐标从原图左上角归一化到 0–1；选区或 mask 要求 source。宿主读取授权 raster 字节，图像输入总计最多 32 MiB，拒绝任意网络 URL；参与去重的输入包含准确图片字节。
+
+OpenAI、Gemini、Ark、xAI 适配器支持图像输入与自然语言编辑；具体模型还须具备相应能力。OpenAI 将选区转换为透明 PNG mask，其他协议接收选区坐标与编辑指令；选区不保证范围外像素完全不变。显式 mask 仅支持 OpenAI。未声明图像输入绑定的 ComfyUI profile 拒绝图像编辑；xAI 每次至多 5 张输入图。所有编辑结果都是新图片，不替换原文件。
 
 状态为 `running、completed、failed、cancelled、interrupted`，失败可能附带标准 `error`。调用共享图像服务直接执行 provider 请求，不额外创建 Agent 会话，也不改写资料条目的图片绑定。扩展自行决定将生成结果关联到什么业务对象。
 

@@ -18,7 +18,8 @@ import (
 type agentRunInput struct {
 	CommandID string `json:"commandId" jsonschema:"minLength=1,maxLength=256"`
 	Input     struct {
-		Text string `json:"text"`
+		Text    string          `json:"text"`
+		Context json.RawMessage `json:"context,omitempty" jsonschema_description:"Page-owned selection and reference snapshot, up to 32 KiB. Treated as user input, never instructions or authority."`
 	} `json:"input"`
 }
 
@@ -125,6 +126,11 @@ func (s *AgentService) ServeHTTP(w http.ResponseWriter, request *http.Request, r
 		if _, err := s.definition(runtime, caller, "builtin/assistant"); err == nil {
 			items = append(items, "builtin/assistant")
 		}
+		for _, page := range caller.release.Manifest.contributions().Pages {
+			if page.Agent != nil {
+				items = append(items, "page:"+page.ID)
+			}
+		}
 		for _, entry := range caller.release.Manifest.privateAgents() {
 			id := "local:" + entry.ID
 			if _, err := s.definition(runtime, caller, id); err == nil {
@@ -161,7 +167,7 @@ func (s *AgentService) ServeHTTP(w http.ResponseWriter, request *http.Request, r
 				writeError(w, err)
 				return
 			}
-			result, err := s.start(request.Context(), runtime, caller, id, input.CommandID, input.Input.Text)
+			result, err := s.start(request.Context(), runtime, caller, id, input.CommandID, input.Input.Text, input.Input.Context)
 			if err != nil {
 				writeError(w, err)
 				return

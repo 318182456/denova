@@ -2,7 +2,9 @@ import { create } from 'zustand'
 
 export type RightPanel = 'ai' | null
 type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceRoute = 'ide' | 'interactive' | 'market' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+export type PluginPageRoute = `plugin:${string}/${string}`
+export function isPluginPageRoute(value: unknown): value is PluginPageRoute { return typeof value === 'string' && /^plugin:[a-z][a-z0-9.-]*\/[a-z][a-z0-9.-]*$/.test(value) }
+export type WorkspaceRoute = PluginPageRoute | 'ide' | 'interactive' | 'market' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
 /** Historical internal name retained while the persisted key stays stable. */
 export type WorkspaceMode = WorkspaceRoute
 
@@ -43,7 +45,7 @@ function readInitialRightPanel(): RightPanel {
 }
 
 function isWorkspaceMode(value: unknown): value is WorkspaceMode {
-  return value === 'ide' || value === 'interactive' || SHARED_WORKSPACE_MODES.some(mode => mode === value)
+  return isPluginPageRoute(value) || value === 'ide' || value === 'interactive' || SHARED_WORKSPACE_MODES.some(mode => mode === value)
 }
 
 function isRightPanel(value: unknown): value is RightPanel {

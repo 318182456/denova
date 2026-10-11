@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	imagegen "denova/internal/image/generation"
 	"denova/internal/revisionfile"
 )
 
@@ -19,14 +20,20 @@ import (
 // Optional output controls pass unchanged to native generation; omitted or
 // empty values retain the selected profile's defaults and provider validation.
 type ImageRequest struct {
-	CommandID    string `json:"commandId"`
-	ModelSlot    string `json:"modelSlot"`
-	Prompt       string `json:"prompt" jsonschema_description:"English image prompt; 1..65536 UTF-8 bytes."`
-	Size         string `json:"size,omitempty"`
-	AspectRatio  string `json:"aspectRatio,omitempty"`
-	Resolution   string `json:"resolution,omitempty" jsonschema_description:"Native provider resolution. Omitted or empty uses the selected image profile default."`
-	Quality      string `json:"quality,omitempty"`
-	OutputFormat string `json:"outputFormat,omitempty" jsonschema_description:"Native output format: png, jpeg/jpg or webp. Omitted or empty uses the selected image profile default."`
+	Source       *AssetRef             `json:"source,omitempty"`
+	References   []AssetRef            `json:"references,omitempty"`
+	Mask         *AssetRef             `json:"mask,omitempty"`
+	Selection    *imagegen.ImageRegion `json:"selection,omitempty"`
+	Inputs       []imagegen.InputImage `json:"-"`
+	InputMask    *imagegen.InputImage  `json:"-"`
+	CommandID    string                `json:"commandId"`
+	ModelSlot    string                `json:"modelSlot"`
+	Prompt       string                `json:"prompt" jsonschema_description:"English image prompt; 1..65536 UTF-8 bytes."`
+	Size         string                `json:"size,omitempty"`
+	AspectRatio  string                `json:"aspectRatio,omitempty"`
+	Resolution   string                `json:"resolution,omitempty" jsonschema_description:"Native provider resolution. Omitted or empty uses the selected image profile default."`
+	Quality      string                `json:"quality,omitempty"`
+	OutputFormat string                `json:"outputFormat,omitempty" jsonschema_description:"Native output format: png, jpeg/jpg or webp. Omitted or empty uses the selected image profile default."`
 }
 
 type ImageBytes struct {
@@ -190,7 +197,51 @@ func (s *ResourceService) startImage(requestContext context.Context, runtime *Ru
 	if profileID == "" {
 		return ImageResult{}, failure("NOT_CONFIGURED", "Select an image model for %s", input.ModelSlot)
 	}
-	encoded, err := json.Marshal([]any{input, profileID})
+	if len(input.References) > 12 || ((input.Mask != nil || input.Selection != nil) && input.Source == nil) {
+		return ImageResult{}, failure("INVALID_ARGUMENT", "Use at most 12 references; region edits require a source image")
+	}
+	if region := input.Selection; region != nil && !imagegen.ValidRegion(*region) {
+		return ImageResult{}, failure("INVALID_ARGUMENT", "Selection must be inside the source image")
+	}
+	assets := append([]AssetRef{}, input.References...)
+	if input.Source != nil {
+		assets = append([]AssetRef{*input.Source}, assets...)
+	}
+	total := 0
+	for _, asset := range assets {
+		data, err := s.readImageAsset(requestContext, runtime, caller, asset)
+		if err != nil {
+			return ImageResult{}, err
+		}
+		mime, err := rasterType(data)
+		if err != nil {
+			return ImageResult{}, err
+		}
+		total += len(data)
+		if total > MaxAssetBytes {
+			return ImageResult{}, failure("LIMIT_EXCEEDED", "Combined image inputs exceed 32 MiB")
+		}
+		input.Inputs = append(input.Inputs, imagegen.InputImage{Data: data, MIMEType: mime})
+	}
+	if input.Mask != nil {
+		data, err := s.readImageAsset(requestContext, runtime, caller, *input.Mask)
+		if err != nil {
+			return ImageResult{}, err
+		}
+		mime, err := rasterType(data)
+		if err != nil {
+			return ImageResult{}, err
+		}
+		if total+len(data) > MaxAssetBytes {
+			return ImageResult{}, failure("LIMIT_EXCEEDED", "Combined image inputs exceed 32 MiB")
+		}
+		input.InputMask = &imagegen.InputImage{Data: data, MIMEType: mime}
+	}
+	hashInput := []any{input, profileID}
+	if len(input.Inputs) > 0 {
+		hashInput = append(hashInput, input.Inputs, input.InputMask)
+	}
+	encoded, err := json.Marshal(hashInput)
 	if err != nil {
 		return ImageResult{}, err
 	}
@@ -273,7 +324,12 @@ func (s *ResourceService) finishImage(key string, operation *imageOperation, ima
 		// Provider diagnostics may contain endpoint details. Keep them in host
 		// logs and return only the public localizable failure envelope.
 		slog.Warn("platform_image_generation_failed", "command", result.CommandID, "error", runErr)
-		_, result.Error = ErrorResponse(failure("RUNTIME_FAILED", "Image generation did not complete"))
+		publicError := failure("RUNTIME_FAILED", "Image generation did not complete")
+		var known *Error
+		if errors.As(runErr, &known) && known.Code == "UNSUPPORTED" {
+			publicError = failure("UNSUPPORTED", "Selected image model does not support these image inputs")
+		}
+		_, result.Error = ErrorResponse(publicError)
 	}
 	if err := writeJSON(key, operation.receipt); err != nil {
 		slog.Error("platform_image_receipt_commit_failed", "command", result.CommandID, "error", err)

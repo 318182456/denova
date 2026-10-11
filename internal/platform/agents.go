@@ -69,11 +69,12 @@ type RunRef struct {
 	RunID string   `json:"runId"`
 }
 type RunResult struct {
-	Run        RunRef `json:"run"`
-	Status     string `json:"status" jsonschema:"enum=accepted,enum=running,enum=waiting,enum=completed,enum=failed,enum=aborted,enum=incomplete"`
-	Text       string `json:"text"`
-	Error      *Error `json:"error,omitempty"`
-	Completion *struct {
+	Interactions []agentinteraction.InteractionRequest `json:"interactions,omitempty"`
+	Run          RunRef                                `json:"run"`
+	Status       string                                `json:"status" jsonschema:"enum=accepted,enum=running,enum=waiting,enum=completed,enum=failed,enum=aborted,enum=incomplete"`
+	Text         string                                `json:"text"`
+	Error        *Error                                `json:"error,omitempty"`
+	Completion   *struct {
 		Agent    AgentRef `json:"agent"`
 		RecordID string   `json:"recordId"`
 	} `json:"completion,omitempty"`
@@ -152,6 +153,17 @@ func (s *AgentService) definition(runtime *Runtime, caller *activation, id strin
 		config.ModelProfile = runtime.models["builtin/assistant"]
 		return config, nil
 	}
+	if caller.release.Ref.Package.Kind == Plugin && strings.HasPrefix(id, "page:") {
+		for _, page := range caller.release.Manifest.contributions().Pages {
+			if page.ID == strings.TrimPrefix(id, "page:") && page.Agent != nil {
+				config.Content = *page.Agent
+				config.Provider = caller.release.Ref
+				config.ModelProfile = runtime.models[caller.release.Manifest.ID+"/"+page.Agent.ModelSlot]
+				return config, nil
+			}
+		}
+		return config, failure("NOT_FOUND", "Page Agent is unavailable")
+	}
 	if caller.release.Ref.Package.Kind != Game || !strings.HasPrefix(id, "local:") {
 		return config, failure("PERMISSION_DENIED", "Only the calling game's private Agent definitions are available")
 	}
@@ -197,7 +209,11 @@ func (s *AgentService) ensure(ctx context.Context, runtime *Runtime, caller *act
 	if err != nil {
 		return AgentSession{}, false, failure("NOT_CONFIGURED", "Resolve model profile %s: %v", config.ModelProfile, err)
 	}
-	id := "platform-" + stableID(string(caller.release.Ref.Package.Kind), caller.release.Manifest.ID, config.Scope.Kind, config.Scope.InstanceID, config.Scope.ProjectID, config.Scope.SessionID, request.Key)
+	if caller.release.Ref.Package.Kind == Plugin && strings.HasPrefix(request.Definition, "page:") {
+		identity, _ := json.Marshal(config.ModelIdentity)
+		config.Key += "/" + stableID(string(identity))
+	}
+	id := "platform-" + stableID(string(caller.release.Ref.Package.Kind), caller.release.Manifest.ID, config.Scope.Kind, config.Scope.InstanceID, config.Scope.ProjectID, config.Scope.SessionID, config.Key)
 	product, err := s.product(request.ProjectID, id, true)
 	if err != nil {
 		return AgentSession{}, false, err
@@ -246,9 +262,15 @@ func (s *AgentService) authorizedSession(ctx context.Context, caller *activation
 	return product, config, nil
 }
 
-func (s *AgentService) start(ctx context.Context, runtime *Runtime, caller *activation, id, commandID, text string) (RunResult, error) {
+func (s *AgentService) start(ctx context.Context, runtime *Runtime, caller *activation, id, commandID, text string, pageContext ...json.RawMessage) (RunResult, error) {
 	if commandID == "" || len(commandID) > 256 || strings.TrimSpace(text) == "" || len(text) > 256<<10 {
 		return RunResult{}, failure("INVALID_ARGUMENT", "commandId and bounded input text are required")
+	}
+	if len(pageContext) > 0 && len(pageContext[0]) > 0 && string(pageContext[0]) != "null" {
+		if len(pageContext[0]) > 32<<10 || !json.Valid(pageContext[0]) {
+			return RunResult{}, failure("LIMIT_EXCEEDED", "Page context must be valid JSON up to 32 KiB")
+		}
+
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -258,6 +280,11 @@ func (s *AgentService) start(ctx context.Context, runtime *Runtime, caller *acti
 	}
 	requestKey := stableID(commandID)
 	inputHash := stableID(text)
+	var fragments []agentschema.ContextFragment
+	if len(pageContext) > 0 && len(pageContext[0]) > 0 && string(pageContext[0]) != "null" {
+		inputHash = stableID(text, string(pageContext[0]))
+		fragments = []agentschema.ContextFragment{{Source: "platform_page", Purpose: "User-provided current page, selected region and references", Resource: frozen.Definition, Stability: agentschema.ContextTurn, Placement: agentschema.ContextFinalUserPrefix, Rendering: agentschema.ContextRenderAttributed, Content: string(pageContext[0]), HardLimit: 32 << 10}}
+	}
 	existing, _, err := product.PlatformRecord(ctx, "request/"+requestKey)
 	if err != nil {
 		return RunResult{}, err
@@ -341,7 +368,7 @@ func (s *AgentService) start(ctx context.Context, runtime *Runtime, caller *acti
 	}
 	execution := &agentExecution{runtime: runtime, owner: owner, session: session, product: product, receipt: receipt, revision: revision, done: make(chan struct{}), generation: randomToken()[:16]}
 	s.live[id] = execution
-	run, err := session.Run(ownerContext, agent.Input{Text: text, IdempotencyKey: commandID})
+	run, err := session.Run(ownerContext, agent.Input{Text: text, Context: fragments, IdempotencyKey: commandID})
 	if err != nil {
 		execution.finish("failed", err)
 		return execution.receipt.Result, nil
@@ -367,7 +394,9 @@ func (s *AgentService) resultLocked(receipt agentReceipt) RunResult {
 		current.mu.Lock()
 		defer current.mu.Unlock()
 		if current.receipt.CommandID == receipt.CommandID {
-			return current.receipt.Result
+			result := current.receipt.Result
+			result.Interactions = slices.Clone(current.interactions)
+			return result
 		}
 	}
 	if receipt.Result.Status == "accepted" || receipt.Result.Status == "running" || receipt.Result.Status == "waiting" {

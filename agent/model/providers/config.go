@@ -34,6 +34,7 @@ const (
 	ProtocolOpenAIChatCompletions ProtocolID = "openai-chat-completions"
 	ProtocolOpenAIResponses       ProtocolID = "openai-responses"
 	ProtocolAnthropicMessages     ProtocolID = "anthropic-messages"
+	ProtocolGoogleGenerativeAI    ProtocolID = "google-generative-ai"
 
 	SessionKeyLocationNone   SessionKeyLocation = "none"
 	SessionKeyLocationHeader SessionKeyLocation = "header"

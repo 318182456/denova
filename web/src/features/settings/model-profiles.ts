@@ -10,11 +10,13 @@ export const MODEL_PROVIDER_OPENAI_COMPATIBLE = 'openai-compatible'
 export const MODEL_PROTOCOL_CHAT_COMPLETIONS = 'openai-chat-completions'
 export const MODEL_PROTOCOL_RESPONSES = 'openai-responses'
 export const MODEL_PROTOCOL_ANTHROPIC_MESSAGES = 'anthropic-messages'
+export const MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI = 'google-generative-ai'
 
 export const FALLBACK_MODEL_PROTOCOLS = [
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
   MODEL_PROTOCOL_RESPONSES,
   MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
+  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
 ]
 
 export function modelEndpointID(endpoint?: ModelEndpointSettings): string {

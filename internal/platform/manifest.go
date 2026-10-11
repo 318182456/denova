@@ -198,8 +198,8 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 	permissions := map[string]bool{}
 	slots := map[string]bool{}
 	for _, slot := range m.ModelSlots {
-		if kind == Plugin && slot.Kind != "image" {
-			return m, failure("INVALID_ARGUMENT", "Plugin model slots support images; text uses builtin/assistant")
+		if kind == Plugin && slot.Kind == "text" && !slices.ContainsFunc(m.contributions().Pages, func(page PageContribution) bool { return page.Agent != nil && page.Agent.ModelSlot == slot.ID }) {
+			return m, failure("INVALID_ARGUMENT", "Plugin text model slots must belong to a declared page Agent")
 		}
 		if err := validateID(slot.ID); err != nil {
 			return m, err
@@ -354,6 +354,39 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 			var schema map[string]any
 			_ = json.Unmarshal(definition.InputSchema, &schema)
 			if err := localizeFormSchema(schema, localeKeys, "", toolInputFormSchema); err != nil {
+				return m, err
+			}
+		}
+	}
+	for _, root := range m.ProjectContent {
+		if kind != Plugin || portablepath.Validate(root) != nil || strings.Contains(root, "/") || strings.HasPrefix(root, ".") {
+			return m, failure("INVALID_ARGUMENT", "Project content roots must be portable top-level plugin directories")
+		}
+	}
+	for _, page := range c.Pages {
+		if page.Agent == nil {
+			continue
+		}
+		def := page.Agent
+		if strings.TrimSpace(def.Instructions) == "" || len(def.Instructions) > 256<<10 || !slices.ContainsFunc(m.ModelSlots, func(slot ModelSlot) bool { return slot.ID == def.ModelSlot && slot.Kind == "text" }) {
+			return m, failure("INVALID_ARGUMENT", "Page %s requires bounded instructions and a declared text model slot", page.ID)
+		}
+		if !slices.Contains(m.Permissions.Required, "agents.run") {
+			return m, failure("INVALID_ARGUMENT", "Page Agent requires agents.run")
+		}
+		for _, ref := range def.Tools {
+			if ref == "builtin/assistant" {
+				return m, failure("INVALID_ARGUMENT", "Page tools require a plugin tool reference")
+			}
+			if err := checkRef(ref, tools); err != nil {
+				return m, err
+			}
+		}
+		for _, ref := range def.Toolsets {
+			if ref == "builtin/assistant" {
+				return m, failure("INVALID_ARGUMENT", "Page toolsets require a plugin toolset reference")
+			}
+			if err := checkRef(ref, sets); err != nil {
 				return m, err
 			}
 		}

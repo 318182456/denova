@@ -1,10 +1,10 @@
 # Denova 插件开发手册
 
-更新：2026-10-01，v0.6.0 工作区实现。接口以当前代码和运行实例的 OpenAPI 为准。
+更新：2026-10-10，v0.6.0 工作区实现。接口以当前代码和运行实例的 OpenAPI 为准。
 
 配套：[扩展能力开发手册](extension-development.md) · [游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
 
-资源中心的「插件与游戏」管理已安装的插件与游戏；工作台承接源码开发。插件可以组合 Agent 工具、用户命令和独立面板；游戏交付有独立存档生命周期的作品。Skills 与公开 Agents 继续由各自页面管理。插件不能访问当前正文、选区、编辑器内部或任意宿主组件。
+资源中心的「插件与游戏」管理已安装的插件与游戏；工作台承接源码开发。插件可以组合 Agent 工具、用户命令、独立面板和 Project 一级页面；游戏交付有独立存档生命周期的作品。Skills 与公开 Agents 继续由各自页面管理。插件不能访问写作正文、写作选区、编辑器内部或任意宿主组件；一级页面可以提供自己页面的受限上下文。
 
 ## 开发骨架与参考实现
 
@@ -42,7 +42,7 @@
 
 ## 项目配置与内容
 
-项目配置沿用 Project Store 的 `config.toml`，仅增加 `[extensions]` 下的 `disabled_plugins` 和 `[extensions.models]`。新项目默认不额外停用已全局启用的插件，模型绑定默认为空。模型保存的是用户 profile ID，不含密钥：`builtin/assistant` 提供文本 Agent，`<pluginId>/<slotId>` 提供声明的图像槽。插件不声明文本 modelSlot。必需槽未配置时阻止启动，可选槽缺失时保留其他功能；面板用 `/capabilities` 区分未授权、范围不适用和未配置。
+项目配置沿用 Project Store 的 `config.toml`，仅增加 `[extensions]` 下的 `disabled_plugins` 和 `[extensions.models]`。新项目默认不额外停用已全局启用的插件，模型绑定默认为空。模型保存的是用户 profile ID，不含密钥：`builtin/assistant` 提供文本 Agent，`<pluginId>/<slotId>` 提供声明的图像槽。一级页面的私有 Agent 可声明自己的文本 modelSlot，不注册为公开 Agent。必需槽未配置时阻止启动，可选槽缺失时保留其他功能；面板用 `/capabilities` 区分未授权、范围不适用和未配置。
 
 Project 界面修改模型、发行设置或依赖后，已有运行继续使用冻结值；新增消费者遇到变化返回 `RUNTIME_RESTART_REQUIRED`，关闭旧面板后再打开。其他插件的无关模型绑定不影响此运行。全局停用、项目停用、卸载或撤销权限会停止受影响的运行及其依赖图，不影响其他 Project 的项目级设置。
 
@@ -59,6 +59,20 @@ Project 界面修改模型、发行设置或依赖后，已有运行继续使用
 5. 工作台普通 Agent 会自动关联 extension-development Skill、当前所选源码位置和最近构建/测试反馈。反馈仅附在后续消息中，最多保留 16,384 字符，超出时保留末尾并标记省略；完整构建输出仍在终端中。切换扩展来源不会混用反馈。
 6. 工作台主操作为「试运行」和「发布到本机」。发布只确认名称、说明和版本等基本信息，保存源码编辑器后检查并安装，启用声明的必需能力；模型、测试参数和逐项授权不进入发布表单。可选能力在扩展设置中管理。需要构建的项目通过「更多开发操作 → 构建」在可见终端执行；关闭构建窗口停止该终端。检查验证文件、清单、schema 和引用，不执行代码。发布完成后打开已安装扩展，详情页可导出其准确冻结版本；本机设置、测试存档和未发布源码不会进入安装包。对外分发由用户自行处理。
 7. 试运行使用开发 Project 及独立测试数据。后续源码修改需要重新检查并开启新预览；同版本号的源码变化也可安装。已安装快照和真实存档不会随源码编辑改变。模型选择属于运行实例，扩展通用设置由资源中心的「插件与游戏」统一管理。
+
+## Project 一级页面
+
+插件可声明 `contributes.pages: [{ id, titleKey, viewId, agent? }]`。安装启用后加入一级导航，点击绑定当前 Project；停用、卸载后移除。页面使用既有 view、消费者与生命周期，切换写作或游戏时保留，切换 Project 时释放。只选中当前目的地，不新增全局创作模式。
+
+可选 `agent` 使用 `{ instructions, modelSlot, tools?, toolsets? }`，instructions 使用英文且最多 256 KiB。modelSlot 必须是本包的 text 槽；工具使用本包 ID 或声明的跨插件引用。须授予 `agents.run`。当前由宿主 Native runtime 执行，右侧宿主 Agent 负责模型、凭证、消息、提问与取消；不公开为用户 Agent profile。页面 Agent 的恢复事实仍在 Project Store 的 canonical Product Session JSONL，不写到作品目录。
+
+页面调用 `client.setContext(value)` 提供至多 32 KiB 的当前页、选区与参考资料。宿主仅接受当前 frame/origin 的消息，在用户发言时作为有来源的 turn context 注入，视为用户数据；稳定提示词前缀不受影响。Agent 操作完成后宿主发送 `denova:refresh`，页面重读作品。会话按 Project、页面、准确发行和本插件模型绑定隔离。
+
+页面可调用 `client.setPresentation({ title, contextLabel, referenceCount, suggestions, actions })` 同步宿主标题和创作输入框。`suggestions` 为 `{ label, prompt }[]`，点击只填入输入框，仍由用户发送；`actions` 为 `{ id, label }[]`，点击向原页面发送 `denova:page-action`，在事件 `detail.id` 中返回动作 ID，可用于打开插件自己的参考资料选择器。展示消息最多 8 KiB，标题/标签/动作 ID 最多 200 字符，最多 4 个建议（各 2000 字符）与 4 个动作；不携带权限，也不替代模型上下文。页面自行提供当前语言的文案。
+
+作品可声明 `projectContent: ["comic"]`，并申请 `project.content.read/write`，使用 `/project-content/*` 保存到当前 Project ContentRoot 的 `comic/`。JSON、图片历史与上传参考图都属于作品；路径相对且可移动，不另建 Project 类型。写入沿用 Project 文件修订检查、变更锁与自动版本服务；图片仅可新增，相同字节重放可接受，已有不同内容拒绝覆盖。资料库继续使用 `/library/*`，按 stable item ID 引用，共享角色、场景与画风。旧 `/assets/document` 仍承载插件私有共享内容；其专属 ZIP 导出不包含 Project 的 `comic/`，作品按 Project 文件与版本流程管理。
+
+完整示例见 [denova-index 漫画工坊](https://github.com/alfredxw/denova-index/tree/main/examples/comic-studio)。
 
 ## 从 GitHub 安装与更新
 
@@ -112,7 +126,7 @@ ID 为 example.text-tools 的参考示例公开六个工具：count-characters�
 
 - distribution.files 是文件或目录白名单；未列出的依赖、入口或定义会使检查失败。
 - runtime.backend 支持 protocol: denova-runtime-v1 与 launch.kind: runtime、runtime: node、entry、args。
-- 插件 modelSlots 只支持 image；文本调用复用 builtin/assistant。titleKey 必须存在于中英 locale 文件，宿主只公开绑定状态，不公开 provider 配置。游戏仍可以声明 text/image 私有模型槽。
+- 插件 modelSlots 支持 image，以及被一级页面私有 Agent 使用的 text 槽；其他文本调用复用 builtin/assistant。titleKey 必须存在于中英 locale 文件，宿主只公开绑定状态，不公开 provider 配置。游戏仍可以声明 text/image 私有模型槽。
 - settings 引用分发内的 JSON Schema 与 defaults TOML，可选 uiSchema 提供声明式布局；字段必须有中英文标题。详见[扩展设置标准](extension-settings.md)。
 - requires 声明插件 ID、语义版本范围和所需贡献。运行时使用准确发行，不按加载顺序替换。
 - 按实际调用声明 agents.run、tools.invoke、pluginData 等权限，纯前端插件不必声明不用的能力；消费者直接调用或游戏 NPC 使用 `effect: write/propose` 的工具还需显式授予 `tools.write`。尚未实现的能力会明确拒绝。

@@ -2,10 +2,11 @@ import { memo, Suspense, useDeferredValue, useEffect, useMemo, useState } from '
 import type { ReactNode } from 'react'
 import { LoadingState } from '@/components/common/LoadingState'
 import { MobileWorkspaceHeaderScope } from '@/components/layout/mobile-workspace-header'
-import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
+import { isPluginPageRoute, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { WorkbenchPresentedLayout } from './WorkbenchShell'
 
 export type WorkbenchRouteId =
+  | 'plugin'
   | 'market'
   | 'settings'
   | 'skills'
@@ -21,6 +22,7 @@ export type WorkbenchRouteId =
   | 'ide-writing'
 
 const PRESENTED_LAYOUT_BY_ROUTE = {
+  plugin: 'full',
   market: 'full',
   settings: 'full',
   skills: 'full',
@@ -98,6 +100,7 @@ export function selectWorkbenchRoute({
   settingsOpen,
 }: WorkbenchRouteSelection): WorkbenchRouteId {
   if (settingsOpen) return 'settings'
+  if (isPluginPageRoute(mode)) return 'plugin'
   switch (mode) {
     case 'market':
     case 'skills':

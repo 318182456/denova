@@ -77,6 +77,25 @@ it('keeps story controls inside an optional overlay while the game remains mount
 })
 
 describe('game exit handshake', () => {
+  it('protects host Agent work even when the plugin frame itself is idle', async () => {
+    const onExit = vi.fn()
+    const onStop = vi.fn().mockResolvedValue(undefined)
+    const props = { runtime: runtime('installed'), visible: true, onExit, onStop, variant: 'plugin' as const }
+    const view = render(<GamePlayer {...props} externalBusy />)
+    const frame = screen.getByTitle('platform.plugins.frame')
+    fireEvent.click(screen.getByRole('button', { name: 'platform.plugins.panelMenu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'platform.plugins.closePanel' }))
+    expect(screen.getByRole('dialog', { name: 'platform.plugins.closePanel' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }))
+    expect(screen.getByTitle('platform.plugins.frame')).toBe(frame)
+    expect(onStop).not.toHaveBeenCalled()
+    view.rerender(<GamePlayer {...props} externalBusy={false} />)
+    fireEvent.click(screen.getByRole('button', { name: 'platform.plugins.panelMenu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'platform.plugins.closePanel' }))
+    await waitFor(() => expect(onExit).toHaveBeenCalledTimes(1))
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
+
   it.each(['game', 'plugin'] as const)('disposes a clean %s frame before revoking its runtime', async variant => {
     const onExit = vi.fn()
     vi.mocked(management).mockImplementation(async () => {

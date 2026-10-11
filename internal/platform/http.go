@@ -173,7 +173,7 @@ func (r *Runtime) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		r.serveCreateStory(w, request, caller)
 	case route == "/story" || strings.HasPrefix(route, "/story/"):
 		r.serveStory(w, request, caller, route)
-	case strings.HasPrefix(route, "/library/") || strings.HasPrefix(route, "/assets/") || strings.HasPrefix(route, "/images/"):
+	case strings.HasPrefix(route, "/project-content/") || strings.HasPrefix(route, "/library/") || strings.HasPrefix(route, "/assets/") || strings.HasPrefix(route, "/images/"):
 		if r.manager.resources == nil {
 			writeError(w, failure("NOT_CONFIGURED", "Resource service is unavailable"))
 			return

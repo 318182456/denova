@@ -212,6 +212,7 @@ const settings = {
   'settings.model.profileProtocolChatCompletions': 'Chat Completions',
   'settings.model.profileProtocolResponses': 'Responses API',
   'settings.model.profileProtocolAnthropicMessages': 'Anthropic Messages',
+  'settings.model.profileProtocolGoogleGenerativeAI': 'Gemini native API',
   'settings.model.sessionKeyMappingLabel': 'SessionKey mapping',
   'settings.model.sessionKeyMappingProviderDefault': 'Use provider default',
   'settings.model.sessionKeyMappingDisabled': 'Disabled',

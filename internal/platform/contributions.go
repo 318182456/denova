@@ -40,6 +40,15 @@ type PanelContribution struct {
 	ViewID   string                `json:"viewId"`
 }
 
+// PageContribution adds a Project-bound first-level destination. Its optional
+// Agent is private to this page, not installed as a user Agent profile.
+type PageContribution struct {
+	ID       string           `json:"id"`
+	TitleKey string           `json:"titleKey"`
+	ViewID   string           `json:"viewId"`
+	Agent    *AgentDefinition `json:"agent,omitempty"`
+}
+
 func validContexts(values []ContributionContext, required bool) error {
 	if required && len(values) == 0 {
 		return failure("INVALID_ARGUMENT", "Contribution contexts must not be empty")
@@ -80,7 +89,7 @@ func compatibleManifest(manifest Manifest) error {
 
 func validateUIContributions(kind Kind, manifest Manifest, views map[string]bool, locales map[string]map[string]json.RawMessage, addID func(string) error, checkTool func(string) error) error {
 	c := manifest.contributions()
-	if kind == Game && (len(c.Panels) != 0 || len(c.Commands) != 0) {
+	if kind == Game && (len(c.Panels) != 0 || len(c.Commands) != 0 || len(c.Pages) != 0) {
 		return failure("INVALID_ARGUMENT", "Game views belong to instances, not plugin contributions")
 	}
 	validate := func(id, title string, contexts []ContributionContext) error {
@@ -94,6 +103,14 @@ func validateUIContributions(kind Kind, manifest Manifest, views map[string]bool
 			}
 		}
 		return validContexts(contexts, true)
+	}
+	for _, page := range c.Pages {
+		if err := validate(page.ID, page.TitleKey, []ContributionContext{ContextGeneral}); err != nil {
+			return err
+		}
+		if !views[page.ViewID] {
+			return failure("INVALID_ARGUMENT", "Page %s references an unknown view", page.ID)
+		}
 	}
 	panels := map[string]PanelContribution{}
 	for _, panel := range c.Panels {

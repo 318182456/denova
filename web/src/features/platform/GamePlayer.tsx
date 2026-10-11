@@ -8,10 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { management, platformError, type Instance, type RuntimeSnapshot } from './api'
+import { parsePagePresentation, type PagePresentation } from './page-presentation'
 
 /** Host close controls must use the same save guard and runtime disposal as the view. */
 export interface GamePlayerHandle {
   requestExit: () => Promise<void>
+  refresh: () => void
+  isBusy: () => boolean
+  pageAction: (id: string) => void
+  openMenu: () => void
 }
 
 /** Only the selected cross-origin frame receives this instance's credential. */
@@ -25,6 +30,10 @@ export function GamePlayer({
   menuContent,
   variant = 'game',
   onStop,
+  onContext,
+  onPresentation,
+  showMenu = true,
+  externalBusy = false,
 }: {
   ref?: Ref<GamePlayerHandle>
   runtime: RuntimeSnapshot
@@ -36,6 +45,11 @@ export function GamePlayer({
   menuContent?: ReactNode
   variant?: 'game' | 'plugin'
   onStop?: () => Promise<void>
+  onContext?: (context: unknown) => void
+  onPresentation?: (presentation: PagePresentation) => void
+  showMenu?: boolean
+  /** Host-owned page Agent work participates in the same close guard. */
+  externalBusy?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
@@ -51,7 +65,7 @@ export function GamePlayer({
   const exitReply = useRef<{ id: string; finish: (ok: boolean) => void } | null>(null)
   const exit = useCallback(async (force = false) => {
     if (exiting.current) return
-    if (variant === 'plugin' && !force && (viewState.current.busy || viewState.current.dirty)) { setMenuOpen(false); setConfirmClose(true); return }
+    if (variant === 'plugin' && !force && (externalBusy || viewState.current.busy || viewState.current.dirty)) { setMenuOpen(false); setConfirmClose(true); return }
     exiting.current = true
     setBusy(true)
     setMenuOpen(false)
@@ -75,8 +89,8 @@ export function GamePlayer({
       onExit()
     } catch (error) { setFrameMounted(true); setError(platformError(error)) }
     finally { exiting.current = false; setBusy(false) }
-  }, [runtime.id, runtime.viewUrl, onExit, onStop, variant, t])
-  useImperativeHandle(ref, () => ({ requestExit: () => exit() }), [exit])
+  }, [runtime.id, runtime.viewUrl, onExit, onStop, variant, externalBusy, t])
+  useImperativeHandle(ref, () => ({ requestExit: () => exit(), isBusy: () => externalBusy || viewState.current.busy || viewState.current.dirty, refresh: () => frame.current?.contentWindow?.postMessage({ type: 'denova:refresh' }, new URL(runtime.viewUrl!).origin), openMenu: () => setMenuOpen(true), pageAction: id => frame.current?.contentWindow?.postMessage({ type: 'denova:page-action', id }, new URL(runtime.viewUrl!).origin) }), [exit, runtime.viewUrl, externalBusy])
   useEffect(() => {
     if (!runtime.viewUrl) return
     const origin = new URL(runtime.viewUrl).origin
@@ -85,6 +99,18 @@ export function GamePlayer({
         event.source !== frame.current?.contentWindow ||
         event.origin !== origin
       ) return
+      if (event.data?.type === 'denova:page-presentation' && onPresentation) {
+        const value = parsePagePresentation(event.data.presentation)
+        if (value) onPresentation(value)
+        return
+      }
+      if (event.data?.type === 'denova:page-context' && onContext) {
+        try {
+          if (new TextEncoder().encode(JSON.stringify(event.data.context)).byteLength > 32768) setError(t('platform.errors.LIMIT_EXCEEDED'))
+          else onContext(event.data.context)
+        } catch { setError(t('platform.errors.LIMIT_EXCEEDED')) }
+        return
+      }
       if (event.data?.type === 'denova:state' && variant === 'plugin') {
         viewState.current = { busy: event.data.busy === true, dirty: event.data.dirty === true }
         return
@@ -143,7 +169,7 @@ export function GamePlayer({
       origin,
     )
     return () => window.removeEventListener('message', receive)
-  }, [runtime, i18n.language, resolvedTheme, visible, onOpenInstance, t, exit, variant])
+  }, [runtime, i18n.language, resolvedTheme, visible, onOpenInstance, onContext, onPresentation, t, exit, variant])
   useEffect(() => () => { exitReply.current?.finish(false) }, [])
   useEffect(() => {
     if (!runtime.viewUrl) return
@@ -167,7 +193,7 @@ export function GamePlayer({
   }, [runtime.id, t, visible, variant])
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background" data-game-surface>
-      <Button className="absolute top-3 left-3 z-10 bg-background/85 shadow-sm backdrop-blur-sm" size="icon" variant="outline" aria-label={t(variant === 'plugin' ? 'platform.plugins.panelMenu' : 'platform.storyMenu')} disabled={busy} onClick={() => setMenuOpen(true)}><Ellipsis /></Button>
+      {showMenu && <Button className="absolute top-3 left-3 z-10 bg-background/85 shadow-sm backdrop-blur-sm" size="icon" variant="outline" aria-label={t(variant === 'plugin' ? 'platform.plugins.panelMenu' : 'platform.storyMenu')} disabled={busy} onClick={() => setMenuOpen(true)}><Ellipsis /></Button>}
       {error && <InlineErrorNotice className="absolute top-16 right-3 left-3 z-10" message={error} />}
       {frameMounted && <iframe
         ref={frame}

@@ -24,6 +24,7 @@ type ProjectPlugin struct {
 	Enabled   bool               `json:"enabled"`
 	Problem   *Error             `json:"problem,omitempty"`
 	Models    []ModelRequirement `json:"models"`
+	Pages     []PluginPage       `json:"pages"`
 	Actions   []PluginAction     `json:"actions"`
 }
 
@@ -60,6 +61,10 @@ func (m *Manager) ProjectPlugins(projectID string, scene ContributionContext, lo
 				entry.Models, problem = m.modelRequirements(release, pins)
 			}
 			// Entry declarations remain visible when configuration needs repair.
+			entry.Pages, err = m.pluginPages(release)
+			if problem == nil {
+				problem = err
+			}
 			entry.Actions, err = m.pluginActions(release, pins, scene, locale)
 			if problem == nil {
 				problem = err
@@ -210,6 +215,12 @@ func (m *Manager) OpenPluginAction(ctx context.Context, input OpenPluginAction) 
 	}
 	panelID, found := "", false
 	switch input.Kind {
+	case "page":
+		for _, page := range release.Manifest.contributions().Pages {
+			if page.ID == input.ActionID {
+				found = true
+			}
+		}
 	case "panel":
 		panelID = input.ActionID
 	case "command":
@@ -225,6 +236,13 @@ func (m *Manager) OpenPluginAction(ctx context.Context, input OpenPluginAction) 
 		return RuntimeSnapshot{}, failure("INVALID_ARGUMENT", "Unknown plugin action kind")
 	}
 	viewID := ""
+	if input.Kind == "page" {
+		for _, page := range release.Manifest.contributions().Pages {
+			if page.ID == input.ActionID {
+				viewID = page.ViewID
+			}
+		}
+	}
 	if panelID != "" {
 		found = false
 		for _, panel := range release.Manifest.contributions().Panels {

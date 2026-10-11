@@ -16,6 +16,8 @@ import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
+import { usePluginPages } from '@/features/platform/PluginPageWorkspace'
+import { localized } from '@/features/platform/api'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { BookRecord, WorkspaceSummary } from '@/lib/api'
 import { useWorkspaceStore, type WorkspaceMode } from '@/stores/workspace-store'
@@ -103,8 +105,9 @@ export function WorkbenchShell({
   onQuickSwitchBook,
   onDismissNotice,
 }: WorkbenchShellProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const isMobile = useIsMobile()
+  const pluginPages = usePluginPages()
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemID[]>>(readStoredActivityOrders)
   const [hiddenActivityIDs, setHiddenActivityIDs] = useState<ActivityItemID[]>(readStoredHiddenActivityIDs)
@@ -214,6 +217,10 @@ export function WorkbenchShell({
   }
 
   const creationActivityItems: ActivityItem[] = [
+    ...(pluginPages.data ?? []).map(page => {
+      const id = `plugin:${page.pluginId}/${page.id}` as const
+      return { id, label: localized(page.title, i18n.language), onClick: () => openRoute(id), active: mode === id && !settingsOpen, icon: <BookOpen className="h-4 w-4" /> }
+    }),
     {
       id: 'writing',
       label: t('workbench.activity.writing'),
@@ -302,7 +309,7 @@ export function WorkbenchShell({
       ...creationActivityItems,
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
-    [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, developerMode, ideModeActive, interactiveModeActive, loreActive, mode, presetsActive, settingsOpen, skillsActive, t, trajectoryActive, versionsActive],
+    [pluginPages.data, i18n.language, activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, developerMode, ideModeActive, interactiveModeActive, loreActive, mode, presetsActive, settingsOpen, skillsActive, t, trajectoryActive, versionsActive],
   )
   const effectiveHiddenActivityIDs = useMemo(() => {
     const hasVisibleItem = allActivityItems.some((item) => !hiddenActivityIDs.includes(item.id))

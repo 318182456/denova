@@ -12,13 +12,14 @@ import (
 	agentmodel "github.com/alfredxw/denova/agent/model"
 	"github.com/alfredxw/denova/agent/model/providers"
 	"github.com/alfredxw/denova/agent/model/providers/protocols/anthropicmessages"
+	"github.com/alfredxw/denova/agent/model/providers/protocols/googlegenerativeai"
 	"github.com/alfredxw/denova/agent/model/providers/protocols/openaichatcompletions"
 	"github.com/alfredxw/denova/agent/model/providers/protocols/openairesponses"
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestAdaptersMakeOneHTTPAttemptAndPreserveRetryHints(t *testing.T) {
-	for _, adapter := range []providers.ProtocolAdapter{anthropicmessages.NewAdapter(), openaichatcompletions.NewAdapter(), openairesponses.NewAdapter()} {
+	for _, adapter := range []providers.ProtocolAdapter{anthropicmessages.NewAdapter(), openaichatcompletions.NewAdapter(), openairesponses.NewAdapter(), googlegenerativeai.NewAdapter()} {
 		t.Run(string(adapter.ID()), func(t *testing.T) {
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

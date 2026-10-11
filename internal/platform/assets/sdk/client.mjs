@@ -16,6 +16,8 @@ export function connect({ prepareExit } = {}) {
           }).catch(() => parent.postMessage({ type: 'denova:exit-ready', requestId: message.data.requestId, ok: false }, parentOrigin));
           return;
         }
+        if (message.data?.type === 'denova:refresh') { window.dispatchEvent(new Event('denova:refresh')); return; }
+        if (message.data?.type === 'denova:page-action' && typeof message.data.id === 'string') { window.dispatchEvent(new CustomEvent('denova:page-action', { detail: { id: message.data.id } })); return; }
         if (message.data?.type === 'denova:visibility') {
           context.visible = message.data.visible === true;
           window.dispatchEvent(new Event('denova:visibility'));
@@ -26,7 +28,13 @@ export function connect({ prepareExit } = {}) {
         context.theme = message.data.theme === 'light' ? 'light' : 'dark';
         window.dispatchEvent(new Event('denova:appearance'));
       });
-      resolve({ context, setState({ busy = false, dirty = false } = {}) {
+      resolve({ context, setContext(value) {
+        if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 32768) throw new Error('Page context exceeds 32 KiB');
+        parent.postMessage({ type: 'denova:page-context', context: value }, parentOrigin);
+      }, setPresentation(presentation) {
+        if (new TextEncoder().encode(JSON.stringify(presentation)).byteLength > 8192) throw new Error('Page presentation exceeds 8 KiB');
+        parent.postMessage({ type: 'denova:page-presentation', presentation }, parentOrigin);
+      }, setState({ busy = false, dirty = false } = {}) {
         parent.postMessage({ type: 'denova:state', busy: !!busy, dirty: !!dirty }, parentOrigin);
       }, exit() {
         parent.postMessage({ type: 'denova:exit' }, parentOrigin);

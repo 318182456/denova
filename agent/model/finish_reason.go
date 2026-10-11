@@ -30,9 +30,10 @@ func ClassifyModelFinishReason(reason string) ModelFinishReasonClass {
 		return ModelFinishReasonOutputLimit
 	case "model_context_window_exceeded", "context_window_exceeded", "context_length_exceeded":
 		return ModelFinishReasonContextLimit
-	case "content_filter":
+	case "content_filter", "safety", "recitation", "blocklist", "prohibited_content", "spii", "language",
+		"image_safety", "image_prohibited_content", "image_recitation":
 		return ModelFinishReasonContentFilter
-	case "incomplete":
+	case "incomplete", "malformed_function_call", "unexpected_tool_call", "too_many_tool_calls", "image_other", "no_image":
 		return ModelFinishReasonIncomplete
 	default:
 		return ModelFinishReasonOther

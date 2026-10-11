@@ -69,6 +69,11 @@ func (m *Manager) ConfigureResources(host ResourceHost) {
 func (s *ResourceService) ServeHTTP(w http.ResponseWriter, request *http.Request, runtime *Runtime, caller *activation, route string) {
 	permission := ""
 	switch {
+	case strings.HasPrefix(route, "/project-content/"):
+		permission = "project.content.read"
+		if request.Method != http.MethodGet {
+			permission = "project.content.write"
+		}
 	case strings.HasPrefix(route, "/library/"):
 		permission = "library.read"
 		if request.Method != http.MethodGet {
@@ -98,13 +103,15 @@ func (s *ResourceService) ServeHTTP(w http.ResponseWriter, request *http.Request
 		return
 	}
 	switch permission {
+	case "project.content.read", "project.content.write":
+		s.serveProjectContent(w, request, runtime, caller, route)
 	case "library.read":
 		s.serveLibrary(w, request, caller, route)
 	case "library.write":
 		s.serveLibraryWrite(w, request, caller, route)
 	case "assets.read", "assets.write":
 		if route == "/assets/content" && request.URL.Query().Get("kind") != "shared" {
-			s.serveAsset(w, request, caller, route)
+			s.serveAsset(w, request, runtime, caller, route)
 		} else {
 			s.serveSharedContent(w, request, runtime, caller, route)
 		}
@@ -181,7 +188,7 @@ func (s *ResourceService) serveLibrary(w http.ResponseWriter, request *http.Requ
 	writeResponse(w, 200, result)
 }
 
-func (s *ResourceService) serveAsset(w http.ResponseWriter, request *http.Request, caller *activation, route string) {
+func (s *ResourceService) serveAsset(w http.ResponseWriter, request *http.Request, runtime *Runtime, caller *activation, route string) {
 	if request.Method != http.MethodGet || route != "/assets/content" {
 		writeError(w, failure("NOT_FOUND", "Unknown asset route"))
 		return
@@ -191,20 +198,7 @@ func (s *ResourceService) serveAsset(w http.ResponseWriter, request *http.Reques
 		writeError(w, failure("INVALID_ARGUMENT", "Asset path must be a portable relative path"))
 		return
 	}
-	var data []byte
-	var err error
-	switch request.URL.Query().Get("kind") {
-	case "project":
-		if !strings.HasPrefix(name, "assets/") {
-			writeError(w, failure("PERMISSION_DENIED", "Project asset paths must be inside assets/"))
-			return
-		}
-		data, err = s.host.ReadAsset(request.Context(), caller.context.Scope.ProjectID, name)
-	case "generated":
-		data, err = ReadRasterAsset(filepath.Join(resourceDirectory(caller), "assets"), name)
-	default:
-		err = failure("INVALID_ARGUMENT", "Asset kind must be project or generated")
-	}
+	data, err := s.readImageAsset(request.Context(), runtime, caller, AssetRef{Kind: request.URL.Query().Get("kind"), Path: name})
 	if err != nil {
 		writeError(w, err)
 		return

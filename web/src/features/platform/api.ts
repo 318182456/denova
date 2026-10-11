@@ -9,7 +9,9 @@ export type ReleaseRef = {
   package: { kind: PackageKind; id: string }
   releaseId: string
 }
+export interface PageContribution { id: string; titleKey: string; viewId: string; agent?: { instructions: string; modelSlot: string; tools?: string[]; toolsets?: string[] } }
 export interface Contributions {
+  pages?: PageContribution[]
   tools?: { id: string; definition: string; agentContexts?: ContributionContext[] }[]
   toolsets?: { id: string; tools: string[] }[]
   commands?: { id: string; titleKey: string; contexts: ContributionContext[]; target: { kind: 'tool' | 'panel'; id: string } }[]
@@ -25,6 +27,7 @@ export interface Manifest {
   description?: LocalizedText
   runtime?: { backend?: unknown }
   settings?: { schema: string; defaults: string; uiSchema?: string }
+  projectContent?: string[]
   modelSlots?: {
     id: string
     titleKey: string
@@ -159,6 +162,7 @@ export interface PluginAction {
   form?: NonNullable<ConfigurationDocument['form']>
 }
 export interface ProjectPlugin {
+  pages: PluginPage[]
   id: string
   releaseId: string
   name: LocalizedText
@@ -226,3 +230,5 @@ export function localized(text: LocalizedText | undefined, language: string) {
 export async function releasePluginConsumer(runtime: RuntimeSnapshot) {
   if (runtime.connection.consumerId) await requestJSON(managementBase + `/runtimes/${runtime.id}/consumers/${runtime.connection.consumerId}`, { method: 'DELETE', keepalive: true })
 }
+
+export interface PluginPage { id: string; pluginId: string; releaseId: string; title: LocalizedText; agent: boolean }

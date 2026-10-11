@@ -149,7 +149,7 @@ func (m *Manager) modelRequirements(release Release, pins []DependencyPin) ([]Mo
 	result := []ModelRequirement{}
 	assistant, requiredAssistant := false, false
 	for _, current := range releases {
-		if current.Ref.Package.Kind == Plugin {
+		if current.Ref.Package.Kind == Plugin && !slices.ContainsFunc(current.Manifest.contributions().Pages, func(page PageContribution) bool { return page.Agent != nil }) {
 			required := slices.Contains(current.Manifest.Permissions.Required, "agents.run")
 			assistant = assistant || required || slices.Contains(current.Manifest.Permissions.Optional, "agents.run")
 			requiredAssistant = requiredAssistant || required

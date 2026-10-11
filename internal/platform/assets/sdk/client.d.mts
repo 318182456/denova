@@ -14,6 +14,11 @@ export interface Capabilities {
 }
 export interface Client {
   context: Context;
+  setContext(value: unknown): void;
+  /** Display-only metadata. Suggestions fill the composer; actions emit
+   * denova:page-action with detail.id inside this frame. Limits: 4 actions,
+   * 4 suggestions, labels/title <= 200 chars, prompts <= 2000 chars, 8 KiB total. */
+  setPresentation(value: { title?: string; contextLabel?: string; referenceCount?: number; suggestions?: { label: string; prompt: string }[]; actions?: { id: string; label: string }[] }): void;
   setState(state: { busy?: boolean; dirty?: boolean }): void;
   exit(): void;
   openInstance(instanceId: string): void;

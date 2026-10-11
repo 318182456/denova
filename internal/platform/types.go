@@ -102,6 +102,7 @@ type Contributions struct {
 	Toolsets []Toolset             `json:"toolsets,omitempty"`
 	Commands []CommandContribution `json:"commands,omitempty"`
 	Panels   []PanelContribution   `json:"panels,omitempty"`
+	Pages    []PageContribution    `json:"pages,omitempty"`
 }
 
 // GameDefinitions are private game content, never installed as user Agent profiles.
@@ -166,10 +167,13 @@ type Manifest struct {
 	Runtime *struct {
 		Backend *Backend `json:"backend,omitempty"`
 	} `json:"runtime,omitempty"`
-	Views       []View                    `json:"views,omitempty"`
-	ModelSlots  []ModelSlot               `json:"modelSlots,omitempty"`
-	Settings    *ConfigurationDeclaration `json:"settings,omitempty"`
-	Permissions struct {
+	// ProjectContent declares top-level content directories this plugin may access.
+	// Permission grants still govern reads and writes; paths never select a Project.
+	ProjectContent []string                  `json:"projectContent,omitempty"`
+	Views          []View                    `json:"views,omitempty"`
+	ModelSlots     []ModelSlot               `json:"modelSlots,omitempty"`
+	Settings       *ConfigurationDeclaration `json:"settings,omitempty"`
+	Permissions    struct {
 		Required []string `json:"required"`
 		Optional []string `json:"optional"`
 	} `json:"permissions"`

@@ -13,6 +13,10 @@ import (
 // extension receives only its scoped connection after explicit activation.
 func handlePlatformPluginActions(ctx context.Context, c *hertzapp.RequestContext, manager *platform.Manager, parts []string, decode func(any) bool, respond func(any, error)) bool {
 	method := string(c.Method())
+	if len(parts) == 1 && parts[0] == "plugin-pages" && method == "GET" {
+		respond(manager.PluginPages())
+		return true
+	}
 	if len(parts) == 5 && parts[0] == "projects" && parts[2] == "plugins" && parts[4] == "content" {
 		if method == "GET" {
 			var output bytes.Buffer

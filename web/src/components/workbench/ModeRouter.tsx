@@ -1,3 +1,4 @@
+import { PluginPageWorkspace } from '@/features/platform/PluginPageWorkspace'
 import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookCreationProvider } from './book-creation'
 import { PluginWorkspaceProvider } from '@/features/platform/PluginWorkspace'
@@ -785,6 +786,9 @@ export function ModeRouter(props: ModeRouterProps) {
         </WorkbenchRouteLayer>
       )}
 
+      {routeHost.isMounted('plugin') && <WorkbenchRouteLayer visible={presentedMainRoute === 'plugin'} loadingLabel={t('router.loading')}>
+        <PluginPageWorkspace projectId={projectId} route={mode} visible={presentedMainRoute === 'plugin'} onChooseProject={() => onSetMode('books')} />
+      </WorkbenchRouteLayer>}
       <SharedWorkbenchRoutes
         route={presentedMainRoute}
         isMounted={routeHost.isMounted}

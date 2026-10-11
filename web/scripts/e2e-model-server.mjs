@@ -1,11 +1,13 @@
 import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { readFileSync } from 'node:fs'
 import { runtimeRoot } from './e2e-paths.mjs'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
 import { loreCompletion, loreIndexCompletion, loreQueryCompletion } from './e2e-lore-fixture.mjs'
 import { extensionImage, extensionOpening, extensionScene } from './e2e-extension-fixture.mjs'
 import { responsesRequest, responsesControl, captureNativeRequest, runtimeCompletion, writeCompletionFrame, finishCompletion } from './e2e-responses-fixture.mjs'
+import { geminiRequest, geminiControl, writeGeminiFrame, finishGemini, writeGeminiGenerated } from './e2e-gemini-fixture.mjs'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
@@ -255,8 +257,8 @@ function writeChatCompletion(response, frames) {
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   })
-  for (const frame of frames) writeCompletionFrame(response, frame)
-  finishCompletion(response)
+  for (const frame of frames) if (!writeGeminiFrame(response, frame)) writeCompletionFrame(response, frame)
+  if (!finishGemini(response)) finishCompletion(response)
 }
 
 async function writeGatedMultiAgentCompletion(response, child) {
@@ -288,6 +290,7 @@ function delay(milliseconds) {
 }
 
 function writeGeneratedCompletion(response, content) {
+  if (writeGeminiGenerated(response, content, writeJSON)) return
   writeJSON(response, 200, {
     id: 'denova-e2e-response',
     object: 'chat.completion',
@@ -307,6 +310,11 @@ function writeModelError(response, message) {
 const server = createServer(async (request, response) => {
   const requestURL = new URL(request.url || '/', 'http://127.0.0.1')
   if (request.method === 'GET' && responsesControl(requestURL, response, writeJSON)) return
+  if (request.method === 'GET' && geminiControl(requestURL, response, writeJSON)) return
+  if (request.method === 'GET' && requestURL.pathname === '/v1beta/models') {
+    writeJSON(response, 200, { models: [{ name: 'models/gemini-e2e', displayName: 'Gemini E2E', supportedGenerationMethods: ['generateContent'] }] })
+    return
+  }
   if (request.method === 'GET' && compactionControl(requestURL, response, writeJSON)) return
   if (request.method === 'GET' && request.url === '/health') {
     writeJSON(response, 200, { status: 'ok' })
@@ -345,13 +353,19 @@ const server = createServer(async (request, response) => {
     writeJSON(response, 200, { allowed: true })
     return
   }
-  if (request.method === 'POST' && request.url === '/v1/images/generations') {
+  if (request.method === 'POST' && ['/v1/images/generations', '/v1/images/edits'].includes(request.url)) {
     const body = await readJSONBody(request)
     recordRequest('E2E_EXTENSION_IMAGE')
-    writeJSON(response, 200, { data: [{ b64_json: extensionImage, revised_prompt: body.prompt }] })
+    const image = body.prompt?.includes('E2E_COMIC_PAGE') ? readFileSync(new URL('../tests/fixtures/comic-page.png', import.meta.url)).toString('base64') : extensionImage
+    if (request.url === '/v1/images/edits') {
+      recordRequest('E2E_COMIC_EDIT')
+      if (body.images?.length !== 3 || !body.mask?.image_url) { writeJSON(response, 400, { error: 'Comic edit requires source, two references and mask' }); return }
+    }
+    writeJSON(response, 200, { data: [{ b64_json: image, revised_prompt: body.prompt }] })
     return
   }
-  if (request.method !== 'POST' || !['/v1/chat/completions', '/v1/responses'].includes(request.url)) {
+  const nativeGemini = /^\/v1beta\/models\/[^/]+:(?:streamGenerateContent|generateContent)$/.test(requestURL.pathname)
+  if (request.method !== 'POST' || (!nativeGemini && !['/v1/chat/completions', '/v1/responses'].includes(request.url))) {
     writeJSON(response, 404, { error: 'not found' })
     return
   }
@@ -359,7 +373,8 @@ const server = createServer(async (request, response) => {
   let body
   try {
     body = await readJSONBody(request)
-    if (request.url === '/v1/responses') body = responsesRequest(body, response)
+    if (nativeGemini) body = geminiRequest(body, response, requestURL.pathname.endsWith(':streamGenerateContent'))
+    else if (request.url === '/v1/responses') body = responsesRequest(body, response)
     else captureNativeRequest(body)
   } catch (error) {
     writeJSON(response, 400, { error: `invalid request body: ${error.message}` })
@@ -498,6 +513,26 @@ const server = createServer(async (request, response) => {
     writeChatCompletion(response, body.input
       ? toolCompletionFrames('read', JSON.stringify({ path: 'CREATOR.md' }), callID)
       : chatCompletionFrames())
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_COMIC_PAGE')) {
+    const tool = body.tools?.find(item => item.function?.name?.endsWith('_render'))?.function?.name
+    const lastUser = body.messages.findLastIndex(message => message.role === 'user')
+    const results = toolResultMessages({ messages: body.messages.slice(lastUser) }, tool)
+    if (tool && !results.length) {
+      const content = body.messages[lastUser].content
+      const text = typeof content === 'string' ? content : content.map(part => part.text ?? '').join('\n')
+      const context = JSON.parse(text.match(/\{"pageId":[^\n]+\}/)[0])
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify({ pageId: context.pageId, commandId: crypto.randomUUID(), prompt: text.slice(text.indexOf('E2E_COMIC_PAGE')), ...(context.sourceId ? { sourceId: context.sourceId, selection: context.selection, references: context.references } : {}) }), 'call-comic-render'))
+    } else writeChatCompletion(response, textCompletionFrames('漫画候选已生成，请查看画布并采用。'))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_COMIC_AGENT')) {
+    const tool = body.tools?.find(item => item.function?.name?.endsWith('_inspect'))?.function?.name
+    if (tool && toolResultMessages(body, tool).length === 0) {
+      const match = JSON.stringify(body.messages).match(/\\"pageId\\"\s*:\s*\\"([^\\"]+)\\"/)
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify(match ? { pageId: match[1] } : {}), 'call-comic-inspect'))
+    } else writeChatCompletion(response, textCompletionFrames('漫画页面已读取。'))
     return
   }
   if (requestIncludesMarker(body, 'E2E_PLUGIN_CHAIN')) {

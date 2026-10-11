@@ -18,6 +18,9 @@ func TestClassifyModelFinishReason(t *testing.T) {
 		{reason: "max-output-tokens", wantClass: ModelFinishReasonOutputLimit, wantTerminal: agentschema.ModelOutputTruncatedReason, incomplete: true},
 		{reason: "model_context_window_exceeded", wantClass: ModelFinishReasonContextLimit, wantTerminal: agentschema.ModelContextWindowExceededReason, incomplete: true},
 		{reason: "content_filter", wantClass: ModelFinishReasonContentFilter, wantTerminal: agentschema.ModelOutputFilteredReason, incomplete: true},
+		{reason: "MAX_TOKENS", wantClass: ModelFinishReasonOutputLimit, wantTerminal: agentschema.ModelOutputTruncatedReason, incomplete: true},
+		{reason: "SAFETY", wantClass: ModelFinishReasonContentFilter, wantTerminal: agentschema.ModelOutputFilteredReason, incomplete: true},
+		{reason: "MALFORMED_FUNCTION_CALL", wantClass: ModelFinishReasonIncomplete, wantTerminal: agentschema.ModelOutputIncompleteReason, incomplete: true},
 		{reason: "incomplete", wantClass: ModelFinishReasonIncomplete, wantTerminal: agentschema.ModelOutputIncompleteReason, incomplete: true},
 	}
 	for _, test := range tests {

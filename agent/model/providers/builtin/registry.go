@@ -9,6 +9,7 @@ import (
 
 	"github.com/alfredxw/denova/agent/model/providers"
 	"github.com/alfredxw/denova/agent/model/providers/protocols/anthropicmessages"
+	"github.com/alfredxw/denova/agent/model/providers/protocols/googlegenerativeai"
 	"github.com/alfredxw/denova/agent/model/providers/protocols/openaichatcompletions"
 	"github.com/alfredxw/denova/agent/model/providers/protocols/openairesponses"
 )
@@ -20,6 +21,7 @@ func NewRegistry() (*providers.Registry, error) {
 		openaichatcompletions.NewAdapter(),
 		openairesponses.NewAdapter(),
 		anthropicmessages.NewAdapter(),
+		googlegenerativeai.NewAdapter(),
 	} {
 		if err := registry.RegisterProtocol(adapter); err != nil {
 			return nil, fmt.Errorf("build provider registry: %w", err)
@@ -184,6 +186,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 			DefaultProtocol: providers.ProtocolOpenAIChatCompletions,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
 				providers.ProtocolOpenAIChatCompletions: {BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai", ProtocolOptions: openAIChat},
+				providers.ProtocolGoogleGenerativeAI:    {BaseURL: "https://generativelanguage.googleapis.com"},
 			},
 		},
 		{

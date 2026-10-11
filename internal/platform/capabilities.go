@@ -2,7 +2,7 @@ package platform
 
 import "slices"
 
-var supportedPermissions = []string{"agents.run", "tools.invoke", "tools.write", "gameData", "pluginData", "library.read", "library.write", "assets.read", "assets.write", "images.generate", "stories.read", "stories.write", "settings.write"}
+var supportedPermissions = []string{"agents.run", "tools.invoke", "tools.write", "gameData", "pluginData", "library.read", "library.write", "assets.read", "assets.write", "images.generate", "stories.read", "stories.write", "settings.write", "project.content.read", "project.content.write"}
 
 // CapabilityState describes independent admission conditions. Discovery does not
 // grant authority; every operation checks its own permission and bound scope.
@@ -41,6 +41,11 @@ func (r *Runtime) capabilities(caller *activation) Capabilities {
 			state.Implemented = r.manager.agents != nil
 			state.Applicable = project
 			state.Configured = result.Models["builtin/assistant"]
+			for _, page := range caller.release.Manifest.contributions().Pages {
+				if page.Agent != nil {
+					state.Configured = state.Configured || result.Models[caller.release.Manifest.ID+"/"+page.Agent.ModelSlot]
+				}
+			}
 			for _, definition := range caller.release.Manifest.privateAgents() {
 				if r.manager.agents == nil {
 					break
@@ -66,6 +71,13 @@ func (r *Runtime) capabilities(caller *activation) Capabilities {
 					}
 					state.Configured = state.Configured || result.Models[key]
 				}
+			}
+		case "project.content.read", "project.content.write":
+			state.Applicable = project && len(caller.release.Manifest.ProjectContent) > 0
+			if r.manager.resources != nil {
+				_, state.Implemented = r.manager.resources.host.(ProjectContentHost)
+			} else {
+				state.Implemented = false
 			}
 		case "stories.read", "stories.write":
 			state.Implemented = r.manager.stories != nil

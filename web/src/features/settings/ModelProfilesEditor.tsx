@@ -17,6 +17,7 @@ import {
   FALLBACK_MODEL_PROTOCOLS,
   MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
+  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
   MODEL_PROTOCOL_RESPONSES,
   MODEL_PROVIDER_OPENAI_COMPATIBLE,
   modelEndpointID,
@@ -455,6 +456,7 @@ function modelProtocolLabel(protocol: string, t: (key: string) => string) {
     case MODEL_PROTOCOL_CHAT_COMPLETIONS: return t('settings.model.profileProtocolChatCompletions')
     case MODEL_PROTOCOL_RESPONSES: return t('settings.model.profileProtocolResponses')
     case MODEL_PROTOCOL_ANTHROPIC_MESSAGES: return t('settings.model.profileProtocolAnthropicMessages')
+    case MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI: return t('settings.model.profileProtocolGoogleGenerativeAI')
     default: return protocol
   }
 }
