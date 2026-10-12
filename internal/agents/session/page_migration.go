@@ -82,7 +82,7 @@ func migratePageConversation(path string) error {
 		}
 		defer os.Remove(temp.Name())
 		_, copyErr := io.Copy(temp, source)
-		if err := errors.Join(copyErr, temp.Sync(), temp.Close()); err != nil {
+		if err := errors.Join(copyErr, source.Close(), temp.Sync(), temp.Close()); err != nil {
 			return err
 		}
 		if err := os.Rename(temp.Name(), backup); err != nil {
