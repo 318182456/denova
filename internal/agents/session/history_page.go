@@ -2,12 +2,15 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"denova/internal/agents/conversationjournal"
 
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
+
+var errHistoryWindowComplete = errors.New("history window complete")
 
 // HistoryPage is a bounded chronological slice of the UI transcript. Before
 // is a stable logical position: the next request supplies NextBefore.
@@ -48,21 +51,10 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 	if requestedStart == end {
 		return HistoryPage{Entries: []HistoryEntry{}, NextBefore: requestedStart, HasMore: requestedStart > 0, Total: total}, nil
 	}
-	anchor := historyAnchor{Before: 0, Cursor: 1}
-	for _, candidate := range s.projection.HistoryAnchors {
-		if candidate.Before > requestedStart {
-			break
-		}
-		anchor = candidate
-	}
-	through := s.journal.Head().Cursor
-	lookahead := end + sessionHistoryAnchorEvery
-	for _, candidate := range s.projection.HistoryAnchors {
-		if candidate.Before >= lookahead && candidate.Cursor > anchor.Cursor {
-			through = candidate.Cursor - 1
-			break
-		}
-	}
+	anchors := s.projection.HistoryAnchors
+	anchorIndex := requestedStart / sessionHistoryAnchorEvery
+	anchor := anchors[anchorIndex]
+	anchorEnd := (end-1)/sessionHistoryAnchorEvery + 1
 	temporary := &Session{
 		ID: s.ID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		title: s.title, journalIncarnation: s.journalIncarnation,
@@ -70,12 +62,28 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 		messages:               make([]*agentschema.Message, 0), records: make([]historyRecord, 0),
 	}
 	projection := historyPageProjection{
-		rows: temporary, index: newSessionJournalProjection(s.ID, s.journalIncarnation),
+		rows: temporary, position: anchorIndex * sessionHistoryAnchorEvery, hidden: make(map[hiddenHistoryRecord]bool),
 		start: requestedStart, end: end, maxRows: max(limit, 2*sessionHistoryAnchorEvery),
 	}
-	projection.index.HistoryCount = anchor.Before
-	if err := s.journal.VisitRange(ctx, conversationjournal.Range{After: anchor.Cursor - 1, Through: through}, projection.apply); err != nil {
+	for _, block := range anchors[anchorIndex:anchorEnd] {
+		for _, hidden := range block.Hidden {
+			projection.hidden[hidden] = true
+		}
+	}
+	err := s.journal.VisitFrom(ctx, anchor.Location, s.journal.Head().Cursor, func(record conversationjournal.Record) error {
+		if err := projection.apply(record); err != nil {
+			return err
+		}
+		if projection.position >= end {
+			return errHistoryWindowComplete
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, errHistoryWindowComplete) {
 		return HistoryPage{}, fmt.Errorf("project session history range: %w", err)
+	}
+	if err := s.patchHistoryPage(ctx, &projection); err != nil {
+		return HistoryPage{}, fmt.Errorf("patch session history page: %w", err)
 	}
 	pageEntries := temporary.History()
 	start := end

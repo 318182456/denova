@@ -2,8 +2,6 @@ package conversationjournal
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +14,7 @@ import (
 	"denova/internal/localfs"
 )
 
-type indexBody struct {
+type indexFile struct {
 	Version             int             `json:"version"`
 	Identity            Identity        `json:"identity"`
 	VerifiedBytes       int64           `json:"verified_bytes"`
@@ -31,11 +29,6 @@ type indexBody struct {
 	Projection          json.RawMessage `json:"projection"`
 }
 
-type indexFile struct {
-	indexBody
-	Checksum string `json:"checksum"`
-}
-
 func sidecarPath(journalPath string) string {
 	if strings.EqualFold(filepath.Ext(journalPath), ".jsonl") {
 		return strings.TrimSuffix(journalPath, filepath.Ext(journalPath)) + ".idx.json"
@@ -44,31 +37,6 @@ func sidecarPath(journalPath string) string {
 }
 
 func currentSidecarPath(path string) string { return sidecarPath(path) + ".current" }
-
-func encodeIndex(body indexBody) ([]byte, error) {
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	digest := sha256.Sum256(bodyJSON)
-	return json.Marshal(indexFile{indexBody: body, Checksum: hex.EncodeToString(digest[:])})
-}
-
-func decodeIndex(data []byte) (indexBody, error) {
-	var decoded indexFile
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return indexBody{}, err
-	}
-	bodyJSON, err := json.Marshal(decoded.indexBody)
-	if err != nil {
-		return indexBody{}, err
-	}
-	digest := sha256.Sum256(bodyJSON)
-	if decoded.Version != indexVersion || decoded.Checksum != hex.EncodeToString(digest[:]) {
-		return indexBody{}, fmt.Errorf("conversation journal index version or checksum mismatch")
-	}
-	return decoded.indexBody, nil
-}
 
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -122,9 +90,12 @@ func (journal *Journal) restoreIndexLocked() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	body, err := decodeIndex(data)
-	if err != nil {
+	var body indexFile
+	if err := json.Unmarshal(data, &body); err != nil {
 		return false, err
+	}
+	if body.Version != indexVersion {
+		return false, fmt.Errorf("conversation journal index version mismatch")
 	}
 	if body.Identity != journal.identity {
 		return false, fmt.Errorf("conversation journal index identity mismatch")
@@ -182,7 +153,7 @@ func (journal *Journal) persistIndexLocked() error {
 	} else if journal.head.Cursor > 0 {
 		return fmt.Errorf("conversation journal index is missing its tail locator")
 	}
-	body := indexBody{
+	body := indexFile{
 		Version: indexVersion, Identity: journal.identity,
 		VerifiedBytes: journal.validOffset, Cursor: journal.head.Cursor,
 		TransactionCount: journal.head.TransactionCount, Tail: tail,
@@ -196,7 +167,7 @@ func (journal *Journal) persistIndexLocked() error {
 	if journal.currentOnly {
 		body.Sparse = journal.currentReadAnchors()
 	}
-	data, err := encodeIndex(body)
+	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
@@ -212,7 +183,7 @@ func (journal *Journal) persistIndexLocked() error {
 				return err
 			}
 			body.Projection, body.Sparse = current, journal.currentReadAnchors()
-			data, err := encodeIndex(body)
+			data, err := json.Marshal(body)
 			if err != nil {
 				return err
 			}

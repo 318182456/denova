@@ -50,7 +50,7 @@ export function RuntimeSetup({
   const form = useQuery({ queryKey: ['platform', 'setup', configurationEndpoint, i18n.language], queryFn: () => management<RuntimeSetupDocument>(configurationEndpoint! + (configurationEndpoint!.includes('?') ? '&' : '?') + 'locale=' + (i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US')), enabled: !!configurationEndpoint, staleTime: 'static', refetchOnWindowFocus: false })
   const projects = useQuery({
     queryKey: ['platform', 'projects'],
-    queryFn: getAgentChatProjects,
+    queryFn: () => getAgentChatProjects(),
     enabled: !projectLocked,
   })
   const settings = useQuery({

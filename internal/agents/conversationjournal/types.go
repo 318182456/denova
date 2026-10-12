@@ -60,11 +60,10 @@ type Guard struct {
 // Offset and Length are implementation details intentionally kept inside the
 // storage and domain adapters; HTTP cursors must remain opaque.
 type Location struct {
-	Cursor               Cursor `json:"cursor"`
-	Offset               int64  `json:"offset"`
-	Length               int    `json:"length"`
-	RecordIndex          int    `json:"record_index,omitempty"`
-	PreviousRecordSHA256 string `json:"previous_record_sha256,omitempty"`
+	Cursor      Cursor `json:"cursor"`
+	Offset      int64  `json:"offset"`
+	Length      int    `json:"length"`
+	RecordIndex int    `json:"record_index,omitempty"`
 }
 
 // Record is the immutable payload delivered to a domain Reducer.
@@ -99,6 +98,7 @@ type ReplayStats struct {
 	TailBytesRead      int64 `json:"tail_bytes_read"`
 	TailRecordsRead    int64 `json:"tail_records_read"`
 	LastRangeBytesRead int64 `json:"last_range_bytes_read"`
+	RangeBytesRead     int64 `json:"range_bytes_read"`
 }
 
 // Reducer is the internal adapter seam between physical journal mechanics and

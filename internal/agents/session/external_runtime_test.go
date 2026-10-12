@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"denova/config"
@@ -181,6 +182,19 @@ func TestExternalJournalAcceptanceToolsRestartAndAtomicCompletion(t *testing.T) 
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+	page, err := sess.ReadHistoryPage(ctx, -1, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answered := false
+	for _, entry := range page.Entries {
+		if entry.Ask != nil && entry.Ask.ID == "ask-tool-1" {
+			answered = entry.Ask.Status == AskAnswered && strings.Contains(entry.Result, "Restrained")
+		}
+	}
+	if !answered {
+		t.Fatal("history paging lost the external question result after clear")
 	}
 }
 

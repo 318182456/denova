@@ -15,8 +15,8 @@ import (
 	projectdomain "denova/internal/project"
 )
 
-// ProjectSessionsLimit bounds metadata work when the complete user library is
-// shown. A running conversation is always retained outside the recent window.
+// ProjectSessionsLimit bounds the returned recent-session window. Running
+// conversations are always retained outside that window.
 const ProjectSessionsLimit = 50
 
 func (service *Service) CreateDirectoryProject(request projectdomain.CreateDirectoryRequest) (projectdomain.Record, error) {
@@ -62,7 +62,7 @@ func (service *Service) ReorderProjects(ids []string) error {
 	return service.registry.Reorder(ids)
 }
 
-func (service *Service) Projects() []Project {
+func (service *Service) Projects(projectID string) []Project {
 	if service == nil || service.registry == nil {
 		return nil
 	}
@@ -83,6 +83,9 @@ func (service *Service) Projects() []Project {
 	runningBindings := service.runningBindingKeys()
 	projects := make([]Project, 0, len(records))
 	for _, record := range records {
+		if projectID != "" && record.ID != projectID {
+			continue
+		}
 		project := Project{
 			ID: record.ID, Type: record.Type, Path: record.WorkspacePath,
 			Name: record.Name, Status: record.Status,
@@ -225,7 +228,6 @@ func (service *Service) readProjectSessions(projectID, sessionsDir string) ([]se
 			visible = append(visible, meta)
 		}
 	}
-	sort.SliceStable(visible, func(i, j int) bool { return visible[i].UpdatedAt.After(visible[j].UpdatedAt) })
 	return visible, nil
 }
 

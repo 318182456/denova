@@ -80,7 +80,6 @@ func (journal *Journal) append(ctx context.Context, guard Guard, upgrade string,
 		return Commit{}, errors.Join(ErrCommitUnknown, fmt.Errorf("append conversation journal: %w", appendErr))
 	}
 	location.Cursor = nextCursor
-	location.PreviousRecordSHA256 = journal.head.RecordSHA256
 	if err := journal.applyLineLocked(line, location.Offset, location.Length, nextOffset, true); err != nil {
 		journal.projectionInvalid = true
 		return Commit{}, errors.Join(ErrCommitUnknown, fmt.Errorf("conversation transaction committed but projection failed: %w", err))

@@ -21,19 +21,11 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 28
+	sessionProjectionVersion      = 29
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
 )
-
-// historyAnchor maps a stable visible-history position to the physical
-// transaction containing the next row. Anchors contain no user content and
-// make backwards paging independent from the total journal size.
-type historyAnchor struct {
-	Before int                        `json:"before"`
-	Cursor conversationjournal.Cursor `json:"cursor"`
-}
 
 type messageLocator struct {
 	Index       int                        `json:"index"`
@@ -105,6 +97,7 @@ type sessionJournalProjection struct {
 	RecentCursors              []conversationjournal.Cursor                   `json:"recent_cursors,omitempty"`
 	MessageLocators            []messageLocator                               `json:"message_locators,omitempty"`
 	MessageTransactionLocators []messageLocator                               `json:"message_transaction_locators,omitempty"`
+	DisplayPatches             map[string][]conversationjournal.Location      `json:"display_patches,omitempty"`
 	HistoryAnchors             []historyAnchor                                `json:"history_anchors,omitempty"`
 	RecentCommits              []domainCommitLocator                          `json:"recent_commits,omitempty"`
 	RecentContextBatches       []contextBatchLocator                          `json:"recent_context_batches,omitempty"`
@@ -212,9 +205,19 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 				return err
 			}
 			if external.Kind == externaljournal.ToolStarted {
-				projection.rememberHistoryRow(record.Location.Cursor, false)
+				projection.rememberHistoryRow(record.Location)
 			}
 			if external.Kind == externaljournal.ToolFinished {
+				var finished externaljournal.FinishedTool
+				if err := json.Unmarshal(external.Data, &finished); err != nil {
+					return err
+				}
+				displayID := finished.ExecutionID
+				if projection.External.Operations[external.OperationID].Tools[finished.ExecutionID].Name == "ask" {
+					// QuestionRequest owns the same stable Ask display identity.
+					displayID = "ask-" + displayID
+				}
+				projection.rememberDisplayPatch("external-tool:"+displayID, record.Location)
 				if projection.CanonicalPendingUser {
 					projection.CanonicalCount++
 					projection.CanonicalPendingUser = false
@@ -227,7 +230,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 					return err
 				}
 				if event != nil {
-					projection.rememberHistoryRow(record.Location.Cursor, false)
+					projection.rememberHistoryRow(record.Location)
 				}
 			}
 			projection.advanceUpdatedAt(external.CreatedAt)
@@ -266,7 +269,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 			return err
 		}
 		projection.clearAssistantDigests()
-		projection.rememberHistoryRow(record.Location.Cursor, true)
+		projection.rememberHistoryRow(record.Location)
 		projection.ClearAfter = projection.MessageCount
 		projection.ClearCursor = record.Location.Cursor
 		projection.CanonicalCount = 0
@@ -285,8 +288,8 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		if strings.TrimSpace(display.Role) == "" {
 			return fmt.Errorf("display record role is empty")
 		}
+		projection.rememberHistoryRow(record.Location)
 		projection.rememberAssistantDisplay(display)
-		projection.rememberHistoryRow(record.Location.Cursor, false)
 		projection.advanceUpdatedAt(display.CreatedAt)
 		return nil
 	case historyTypeSessionPatch, historyTypeRuntimePatch:
@@ -354,6 +357,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		if err := json.Unmarshal(record.Payload, &patch); err != nil {
 			return err
 		}
+		projection.rememberDisplayPatch(patch.TargetRecordID, record.Location)
 		projection.appendAssistantDisplayPatch(patch)
 		projection.advanceUpdatedAt(patch.CreatedAt)
 		return nil
@@ -496,7 +500,10 @@ func (projection *sessionJournalProjection) applyMessage(record conversationjour
 			visible = !projection.consumeCompleteAssistantRun(metadata.RunID, message.Message.Content)
 		}
 		if visible {
-			projection.rememberHistoryRow(record.Location.Cursor, safeBoundary)
+			projection.rememberHistoryRow(record.Location)
+		} else {
+			anchor := &projection.HistoryAnchors[len(projection.HistoryAnchors)-1]
+			anchor.Hidden = append(anchor.Hidden, hiddenHistoryRecord{Cursor: record.Location.Cursor, Index: record.Location.RecordIndex})
 		}
 	}
 	if projection.Title == defaultSessionTitle && message.Message.Role == agentschema.User && strings.TrimSpace(message.Message.Content) != "" {
@@ -522,7 +529,7 @@ func (projection *sessionJournalProjection) applyLegacyMessage(record conversati
 	if safeBoundary {
 		projection.clearAssistantDigests()
 	}
-	projection.rememberHistoryRow(record.Location.Cursor, safeBoundary)
+	projection.rememberHistoryRow(record.Location)
 	if projection.Title == defaultSessionTitle && message.Role == agentschema.User && strings.TrimSpace(message.Content) != "" {
 		projection.Title = deriveTitle(message.Content)
 	}
@@ -564,13 +571,6 @@ func (projection *sessionJournalProjection) rememberMessage(location conversatio
 	if overflow := len(projection.RecentCommits) - sessionRecentCommitLimit; overflow > 0 {
 		projection.RecentCommits = append([]domainCommitLocator(nil), projection.RecentCommits[overflow:]...)
 	}
-}
-
-func (projection *sessionJournalProjection) rememberHistoryRow(cursor conversationjournal.Cursor, safeBoundary bool) {
-	if len(projection.HistoryAnchors) == 0 || (safeBoundary && projection.HistoryCount-projection.HistoryAnchors[len(projection.HistoryAnchors)-1].Before >= sessionHistoryAnchorEvery) {
-		projection.HistoryAnchors = append(projection.HistoryAnchors, historyAnchor{Before: projection.HistoryCount, Cursor: cursor})
-	}
-	projection.HistoryCount++
 }
 
 func (projection *sessionJournalProjection) rememberAssistantDisplay(display displayRecord) {

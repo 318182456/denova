@@ -7,6 +7,7 @@ import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { measureLongestLineWidth, parseCssPixels, resolveCompactTextWidth } from '@/lib/text-input-measurement'
 import { workspaceFileName } from '@/lib/workspace-path'
+import { deleteSafariComposerText } from './composer-text-deletion'
 
 type ComposerTokenKind = 'skill' | 'file' | 'lore' | 'style'
 type ComposerTriggerKind = 'slash' | 'reference' | 'style'
@@ -387,10 +388,10 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
   }, [editor, maxRows, minRows, multilineMode, value])
   syncHeightRef.current = syncHeight
 
-  function handleDefaultKeyDown(event: KeyboardEvent) {
+  function handleDefaultKeyDown(event: KeyboardEvent): boolean {
     if (event.key === 'Backspace' && deleteAdjacentToken(editor, 'before')) return true
     if (event.key === 'Delete' && deleteAdjacentToken(editor, 'after')) return true
-    return false
+    return editor ? deleteSafariComposerText(editor.view, event) : false
   }
 
   function emitTrigger(target: Editor) {

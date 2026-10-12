@@ -246,7 +246,7 @@ describe('WritingAgentWorkspace', () => {
 
     expect(await screen.findByTestId('conversation:session-b')).toHaveTextContent('active')
     expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
-    expect(getAgentChatProjects).toHaveBeenCalledWith()
+    expect(getAgentChatProjects).toHaveBeenCalledWith('book-a')
     expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:book-a')).toBe('session-a')
     expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:configuration:book-a')).toBe('session-b')
   })

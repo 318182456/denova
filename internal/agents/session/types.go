@@ -361,7 +361,7 @@ type SessionMeta struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 	Active       bool      `json:"active"`
 	MessageCount int       `json:"message_count"`
-	// RuntimeConfig is projection metadata used to seed new conversations. The
-	// dedicated conversation-config API is the sole client mutation/read seam.
-	RuntimeConfig *conversationconfig.Snapshot `json:"-"`
+	// RuntimeConfig seeds new conversations and identifies their custom Agent.
+	// List metadata needs the selection, not the source Session's CAS revision.
+	RuntimeConfig *conversationconfig.Config `json:"-"`
 }

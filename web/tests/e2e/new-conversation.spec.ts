@@ -87,7 +87,10 @@ for (const mode of ['Writing', 'General'] as const) {
       expect(freshID).not.toBe(originalID)
       {
         // A refresh before durable acceptance must keep the pending draft mounted.
-        const snapshot = page.waitForResponse(response => new URL(response.url()).pathname === '/api/agent-chat/projects')
+        const snapshot = page.waitForResponse(response => {
+          const url = new URL(response.url())
+          return url.pathname === '/api/agent-chat/projects' && url.searchParams.get('project_id') === (writing ? project.projectId : null)
+        })
         await refreshProjectSnapshot()
         await (await snapshot).finished()
         await expect(composer).toBeVisible()
@@ -96,7 +99,8 @@ for (const mode of ['Writing', 'General'] as const) {
         const snapshotGate = new Promise<void>(resolve => { releaseProjectSnapshot = resolve })
         const oldProjects = await (await request.get('/api/agent-chat/projects')).json()
         let holdSnapshot = true
-        await page.route('**/api/agent-chat/projects', async route => {
+        await page.route(/\/api\/agent-chat\/projects(?:\?|$)/, async route => {
+          if (new URL(route.request().url()).searchParams.get('project_id') !== (writing ? project.projectId : null)) return route.continue()
           if (!holdSnapshot) return route.continue()
           holdSnapshot = false
           snapshotCaptured?.()

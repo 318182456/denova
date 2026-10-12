@@ -113,7 +113,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   }, [storeActiveSession])
 
   const refreshSessions = useCallback(async () => {
-    const projects = await getAgentChatProjects()
+    const projects = await getAgentChatProjects(props.projectId)
     const project = projects.find((candidate) => candidate.id === props.projectId)
     if (!project) throw new Error(`Writing Agent Project is unavailable: ${props.projectId}`)
     const persistedIDs = new Set(project.sessions.map((session) => session.id))

@@ -40,6 +40,7 @@ func (journal *Journal) ReadRange(ctx context.Context, selected Range) ([]Record
 		return cursor > selected.After && cursor <= through
 	}, through, limit, nil)
 	journal.stats.LastRangeBytesRead = bytesRead
+	journal.stats.RangeBytesRead += bytesRead
 	return result, err
 }
 
@@ -70,6 +71,7 @@ func (journal *Journal) VisitRange(ctx context.Context, selected Range, visit fu
 		return cursor > selected.After && cursor <= through
 	}, through, limit, visit)
 	journal.stats.LastRangeBytesRead = bytesRead
+	journal.stats.RangeBytesRead += bytesRead
 	return err
 }
 
@@ -103,6 +105,7 @@ func (journal *Journal) ReadTransactions(ctx context.Context, cursors []Cursor) 
 	}
 	result, bytesRead, err := journal.readFromAnchorLocked(ctx, first, func(cursor Cursor) bool { return wanted[cursor] }, last, len(wanted), nil)
 	journal.stats.LastRangeBytesRead = bytesRead
+	journal.stats.RangeBytesRead += bytesRead
 	if err != nil {
 		return nil, err
 	}
@@ -167,22 +170,12 @@ func (journal *Journal) readFromAnchorLocked(ctx context.Context, target Cursor,
 			anchor = candidate
 		}
 	}
-	startOffset := int64(0)
-	previousCursor := Cursor(0)
-	previousSHA := ""
-	if anchor.Cursor > 0 {
-		startOffset = anchor.Offset
-		previousCursor = anchor.Cursor - 1
-		previousSHA = anchor.PreviousRecordSHA256
-	}
-	return journal.readSelectedLocked(ctx, startOffset, previousCursor, previousSHA, selected, through, limit, visit)
+	return journal.readSelectedLocked(ctx, anchor, selected, through, limit, visit)
 }
 
 func (journal *Journal) readSelectedLocked(
 	ctx context.Context,
-	startOffset int64,
-	previousCursor Cursor,
-	previousSHA string,
+	start Location,
 	selected func(Cursor) bool,
 	through Cursor,
 	limit int,
@@ -193,11 +186,14 @@ func (journal *Journal) readSelectedLocked(
 		return nil, 0, err
 	}
 	defer file.Close()
-	if _, err := file.Seek(startOffset, io.SeekStart); err != nil {
+	if _, err := file.Seek(start.Offset, io.SeekStart); err != nil {
 		return nil, 0, err
 	}
 	reader := bufio.NewReaderSize(file, 64*1024)
-	readOffset := startOffset
+	readOffset := start.Offset
+	firstCursor := max(Cursor(1), start.Cursor)
+	previousCursor := firstCursor - 1
+	previousSHA := ""
 	transactions := 0
 	var bytesRead int64
 	result := make([]Record, 0)
@@ -247,13 +243,18 @@ func (journal *Journal) readSelectedLocked(
 		payloads := []json.RawMessage{trimmed}
 		legacy := true
 		if common {
-			if body.Identity != journal.identity || body.Cursor != cursor || body.PreviousRecordSHA256 != previousSHA {
+			if body.Identity != journal.identity || body.Cursor != cursor {
+				return nil, bytesRead, fmt.Errorf("conversation journal range identity or cursor is invalid at cursor %d", cursor)
+			}
+			// The journal was verified before this scan. Check the chain where
+			// its predecessor is available without storing hashes in locators.
+			if (cursor == 1 || cursor > firstCursor) && body.PreviousRecordSHA256 != previousSHA {
 				return nil, bytesRead, fmt.Errorf("conversation journal range chain is invalid at cursor %d", cursor)
 			}
 			payloads = body.Records
 			legacy = false
 		}
-		location := Location{Cursor: cursor, Offset: lineStart, Length: len(trimmed), PreviousRecordSHA256: previousSHA}
+		location := Location{Cursor: cursor, Offset: lineStart, Length: len(trimmed)}
 		for index, payload := range payloads {
 			record := Record{Location: location, Payload: payload, Legacy: legacy}
 			record.Location.RecordIndex = index

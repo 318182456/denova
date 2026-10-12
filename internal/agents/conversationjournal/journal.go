@@ -297,7 +297,6 @@ func (journal *Journal) applyLineLocked(line []byte, offset int64, length int, n
 	}
 	location := Location{
 		Cursor: nextCursor, Offset: offset, Length: length,
-		PreviousRecordSHA256: previousSHA,
 	}
 	for index, payload := range payloads {
 		record := Record{

@@ -257,7 +257,7 @@ test('mobile writing starts from an idea or opens a file directly', async ({ pag
   await page.setViewportSize({ width: 320, height: 568 })
   let releaseSessions!: () => void
   const sessionsReady = new Promise<void>((resolve) => { releaseSessions = resolve })
-  await page.route('**/api/agent-chat/projects', async (route) => { await sessionsReady; await route.continue() })
+  await page.route(/\/api\/agent-chat\/projects(?:\?|$)/, async (route) => { await sessionsReady; await route.continue() })
   await page.goto('/')
   const start = page.getByRole('button', { name: '一起构思', exact: true })
   await expect(start).toBeInViewport()

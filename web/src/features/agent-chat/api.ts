@@ -63,7 +63,7 @@ export interface HostDirectorySelection {
   canceled: boolean
 }
 
-let projectsReadInFlight: Promise<AgentChatProject[]> | null = null
+const projectsReadsInFlight = new Map<string, Promise<AgentChatProject[]>>()
 export const AGENT_CHAT_PROJECT_UPDATED_EVENT = 'nova:agent-chat-project-updated'
 
 export function notifyAgentChatProjectUpdated(projectId: string) {
@@ -71,10 +71,13 @@ export function notifyAgentChatProjectUpdated(projectId: string) {
   window.dispatchEvent(new CustomEvent(AGENT_CHAT_PROJECT_UPDATED_EVENT, { detail: { projectId: projectId.trim() } }))
 }
 
-/** Read every project with its conversations. This never switches the open workspace. */
-export function getAgentChatProjects(): Promise<AgentChatProject[]> {
-  if (projectsReadInFlight) return projectsReadInFlight
-  const request = requestJSON<{ projects?: AgentChatProject[] }>('/api/agent-chat/projects')
+/** Read all or one project's conversations without switching the open workspace. */
+export function getAgentChatProjects(projectId = ''): Promise<AgentChatProject[]> {
+  const id = projectId.trim()
+  const inFlight = projectsReadsInFlight.get(id)
+  if (inFlight) return inFlight
+  const suffix = id ? `?${new URLSearchParams({ project_id: id })}` : ''
+  const request = requestJSON<{ projects?: AgentChatProject[] }>(`/api/agent-chat/projects${suffix}`)
     .then((data) =>
       (data.projects ?? []).map((project) => ({
         ...project,
@@ -82,9 +85,9 @@ export function getAgentChatProjects(): Promise<AgentChatProject[]> {
       })),
     )
     .finally(() => {
-      projectsReadInFlight = null
+      projectsReadsInFlight.delete(id)
     })
-  projectsReadInFlight = request
+  projectsReadsInFlight.set(id, request)
   return request
 }
 

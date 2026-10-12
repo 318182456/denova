@@ -24,7 +24,7 @@ export function PluginLauncher({ target, onClose, onSelect }: {
   const [scene, setScene] = useState<ContributionContext>(target.context ?? 'general')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const projects = useQuery({ queryKey: ['platform', 'projects'], queryFn: getAgentChatProjects })
+  const projects = useQuery({ queryKey: ['platform', 'projects'], queryFn: () => getAgentChatProjects() })
   const configuration = useQuery({ queryKey: ['platform', 'project-config', projectId], queryFn: () => management<ProjectExtensionConfiguration>(`/projects/${projectId}/extensions`), enabled: !!projectId })
   const plugins = useQuery({ queryKey: ['platform', 'project-plugins', projectId, scene, i18n.language], queryFn: () => management<ProjectPlugin[]>(`/projects/${projectId}/plugins?context=${scene}&locale=${i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US'}`), enabled: !!projectId })
   const [models, setModels] = useState<Record<string, string>>({})

@@ -59,9 +59,9 @@ func requireAgentChatBindingFromQuery(c *app.RequestContext) (agentchatapp.Bindi
 	return requireAgentChatBinding(c, c.Query("session_id"))
 }
 
-// HandleAgentChatProjects lists every project and never switches the open book.
+// HandleAgentChatProjects lists all or one project's conversations without switching the open book.
 func (h *Handlers) HandleAgentChatProjects(_ context.Context, c *app.RequestContext) {
-	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChat().Projects()})
+	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChat().Projects(strings.TrimSpace(c.Query("project_id")))})
 }
 
 // HandleAgentChatActivity is the lightweight detached-task heartbeat. Project

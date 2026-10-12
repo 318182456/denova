@@ -58,7 +58,7 @@ func TestProjectsAndHistoryShareEveryProjectSession(t *testing.T) {
 		t.Fatal("adopted a Platform Agent as a Project conversation")
 	}
 
-	projects := service.Projects()
+	projects := service.Projects("")
 	assertProjectSessionIDs(t, projects, ordinary.ID, configured.ID)
 
 	history := service.History(HistoryQuery{Limit: 10})
@@ -71,6 +71,18 @@ func TestProjectsAndHistoryShareEveryProjectSession(t *testing.T) {
 	}
 	if !historyIDs[ordinary.ID] || !historyIDs[configured.ID] {
 		t.Fatalf("history session IDs = %#v", historyIDs)
+	}
+	unrelatedPath := filepath.Join(root, "unrelated")
+	if err := os.MkdirAll(unrelatedPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unrelated, err := registry.Add(unrelatedPath, projectdomain.TypeGeneral, "Unrelated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertProjectSessionIDs(t, service.Projects(record.ID), ordinary.ID, configured.ID)
+	if _, opened := service.stores[unrelated.ID]; opened {
+		t.Fatal("project-scoped listing opened an unrelated Session Store")
 	}
 }
 

@@ -54,6 +54,12 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 修复 Safari 中 Agent 输入框的退格和向前删除失效，完整保留 emoji、组合字符与撤销行为。
+- Fix Backspace and forward deletion in the Safari Agent composer, preserving complete emoji, combining characters and undo behavior.
+
+- 减少会话较多时的列表加载等待与超长 Agent 工具轮的历史分页开销，保留完整消息、后续补丁和会话恢复。
+- Reduce conversation-list loading delays in large libraries and history paging costs for long Agent tool runs, preserving complete messages, later patches and session recovery.
+
 - 减少 Agent 恢复时重复扫描历史子任务、写作、通用会话、游戏分支及 Native 子会话日志的等待；连接恢复支持自动退避重试和失败后的手动重试，保留已接受的运行。
 - Reduced Agent recovery delays from repeated scans of historical subtasks, Writing/General conversations, Game branches, and Native child-session journals. Connection recovery now retries with backoff and offers a manual retry while preserving accepted runs.
 
