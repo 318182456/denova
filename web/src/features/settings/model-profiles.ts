@@ -1,4 +1,4 @@
-import type { ModelEndpointSettings, ModelProfileSettings } from './types'
+import type { ModelEndpointSettings, ModelProfileSettings, Settings } from './types'
 
 export const DEFAULT_MODEL_PROFILE_ID = 'default'
 export const DEFAULT_MODEL_ENDPOINT_ID = 'default'
@@ -101,4 +101,12 @@ export function modelProfilesWithDefault(settings?: {
     return [defaultModelProfileFromSettings(settings), ...profiles]
   }
   return profiles
+}
+
+/** Pickers hide disabled models and connections without altering saved selections. */
+export function selectableModelProfiles(settings?: Settings): ModelProfileSettings[] {
+  const disabledEndpoints = new Set(modelEndpointsWithDefault(settings)
+    .filter((endpoint) => endpoint.enabled === false).map(modelEndpointID))
+  return modelProfilesWithDefault(settings).filter((profile) =>
+    profile.enabled !== false && !disabledEndpoints.has(profile.endpoint_id?.trim() || ''))
 }

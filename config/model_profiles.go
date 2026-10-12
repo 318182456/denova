@@ -14,8 +14,10 @@ const (
 )
 
 type ModelProfileSettings struct {
-	ID         string `toml:"id,omitempty" json:"id,omitempty"`
-	Name       string `toml:"name,omitempty" json:"name,omitempty"`
+	ID   string `toml:"id,omitempty" json:"id,omitempty"`
+	Name string `toml:"name,omitempty" json:"name,omitempty"`
+	// Enabled controls availability in model pickers; omitted values are enabled.
+	Enabled    *bool  `toml:"enabled,omitempty" json:"enabled,omitempty"`
 	EndpointID string `toml:"endpoint_id,omitempty" json:"endpoint_id,omitempty"`
 	Model      string `toml:"model,omitempty" json:"model,omitempty"`
 	// Provider, Protocol, APIKey, BaseURL and route options are decode-only
@@ -45,6 +47,7 @@ type ModelProfileSettings struct {
 type ModelEndpointSettings struct {
 	ID                string                       `toml:"id,omitempty" json:"id,omitempty"`
 	Name              string                       `toml:"name,omitempty" json:"name,omitempty"`
+	Enabled           *bool                        `toml:"enabled,omitempty" json:"enabled,omitempty"`
 	Provider          string                       `toml:"provider,omitempty" json:"provider,omitempty"`
 	Protocol          string                       `toml:"protocol,omitempty" json:"protocol,omitempty"`
 	APIKey            string                       `toml:"api_key,omitempty" json:"api_key,omitempty"`
@@ -437,6 +440,9 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 		out.ID = id
 	}
 	out.Name = strings.TrimSpace(child.Name)
+	if child.Enabled != nil {
+		out.Enabled = child.Enabled
+	}
 	if child.EndpointID != "" {
 		out.EndpointID = strings.TrimSpace(child.EndpointID)
 	}

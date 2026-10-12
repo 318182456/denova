@@ -9,7 +9,7 @@ import { runtimeProfileOptions } from '@/features/agent-runtime/api-profiles'
 import type { AgentEngineID } from '@/features/agent-runtime/types'
 import type { ConversationConfigChanges, ConversationConfigController } from '@/features/conversation-config/types'
 import { fetchModelCatalog, fetchProjectSettings, fetchSettings } from '@/features/settings/api'
-import { modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { selectableModelProfiles } from '@/features/settings/model-profiles'
 import { normalizeThinkingLevel } from '@/features/settings/thinking-levels'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
@@ -32,7 +32,7 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
   return Promise.all((['native', 'codex', 'claude'] as const).map(async (kind): Promise<RuntimeChoice> => {
     try {
       if (kind === 'native') {
-        const profiles = modelProfilesWithDefault(effective).filter(item => item.model?.trim())
+        const profiles = selectableModelProfiles(effective).filter(item => item.model?.trim())
         const current = profiles.find(item => item.id === snapshot?.profile_id)
         const profile = current
           ?? profiles.find(item => item.id === (effective.agent_models?.default?.profile_id || 'default'))

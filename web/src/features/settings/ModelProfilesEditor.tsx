@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { fetchModelCatalog } from './api'
 import { ApiKeyInput } from './ApiKeyInput'
@@ -25,7 +26,6 @@ import {
   modelProfileID,
   modelProfileLabel,
 } from './model-profiles'
-import { nextProfileIDAfterRemoval } from './profile-list'
 import { SettingsDisclosureCard } from './SettingsDisclosureCard'
 import { MODEL_ENDPOINT_FIELD_KEYS, MODEL_PROFILE_FIELD_KEYS, type SettingsFieldRequest } from './settings-sections'
 import type { ModelCatalog, ModelEndpointSettings, ModelInfo, ModelProfileSettings, ModelProviderPreset } from './types'
@@ -69,7 +69,7 @@ export function ModelProfilesEditor({
   const [catalog, setCatalog] = useState<ModelCatalog>(EMPTY_MODEL_CATALOG)
   const profileKeysRef = useRef<string[]>([])
   const profileKeys = useMemo(() => stableKeys(profileKeysRef, profiles.length, 'model-profile'), [profiles.length])
-  const profileOptions = modelProfileOptions(profiles, effectiveProfiles)
+  const profileOptions = modelProfileOptions(profiles, effectiveProfiles, endpoints, effectiveEndpoints)
   const selectedDefaultProfileID = defaultProfileID || effectiveDefaultProfileID || DEFAULT_MODEL_PROFILE_ID
   const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label
     || t('settings.model.noDefaultProfile')
@@ -137,7 +137,7 @@ export function ModelProfilesEditor({
   const removeProfile = (index: number) => {
     const removedID = modelProfileID(profiles[index])
     if (removedID && selectedDefaultProfileID === removedID) {
-      onDefaultProfileChange(nextProfileIDAfterRemoval(profiles, index, modelProfileID))
+      onDefaultProfileChange(profileOptions.find((profile) => !profile.disabled && profile.id !== removedID)?.id || '')
     }
     profileKeysRef.current.splice(index, 1)
     onProfilesChange(profiles.filter((_, current) => current !== index))
@@ -172,7 +172,7 @@ export function ModelProfilesEditor({
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
               <SelectGroup>
                 <SelectItem value={INHERIT_VALUE}>{t('common.defaultValue', { value: effectiveDefaultLabel })}</SelectItem>
-                {profileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
+                {profileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id} disabled={profile.disabled}>{profile.disabled ? t('settings.model.disabledOption', { name: profile.label }) : profile.label}</SelectItem>)}
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -202,17 +202,25 @@ export function ModelProfilesEditor({
               defaultOpen={!isEndpointComplete(endpoint, endpointProfiles.length)}
               revealRequest={endpointIndex === searchEndpointIndex ? fieldRequest : undefined}
               actions={(
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={endpointProfiles.length > 0}
-                  title={endpointProfiles.length > 0 ? t('settings.model.endpointDeleteBlocked') : t('settings.model.deleteEndpoint')}
-                  aria-label={t('settings.model.deleteEndpoint')}
-                  onClick={() => onEndpointsChange(endpoints.filter((_, current) => current !== endpointIndex))}
-                >
-                  <Trash2 />
-                </Button>
+                <div className="flex items-center gap-3 pl-2">
+                  <Switch
+                    checked={endpoint.enabled !== false}
+                    onCheckedChange={(enabled) => updateEndpoint(endpointIndex, { enabled })}
+                    aria-label={t('settings.model.endpointEnabled', { name: modelEndpointLabel(endpoint) || t('settings.model.endpointUntitled') })}
+                    title={t('settings.model.endpointEnabled', { name: modelEndpointLabel(endpoint) || t('settings.model.endpointUntitled') })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={endpointProfiles.length > 0}
+                    title={endpointProfiles.length > 0 ? t('settings.model.endpointDeleteBlocked') : t('settings.model.deleteEndpoint')}
+                    aria-label={t('settings.model.deleteEndpoint')}
+                    onClick={() => onEndpointsChange(endpoints.filter((_, current) => current !== endpointIndex))}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
               )}
             >
               <div className="px-3 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
@@ -273,7 +281,17 @@ export function ModelProfilesEditor({
                         subtitle={modelProfileSummary(profile, endpoint, profileTitle, t('settings.model.profileModelMissing'))}
                         defaultOpen={!profile.model?.trim()}
                         revealRequest={profile === searchProfile ? fieldRequest : undefined}
-                        actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.model.deleteProfile')}><Trash2 /></Button>}
+                        actions={(
+                          <div className="flex items-center gap-3 pl-2">
+                            <Switch
+                              checked={profile.enabled !== false}
+                              onCheckedChange={(enabled) => updateProfile(index, { enabled })}
+                              aria-label={t('settings.model.profileEnabled', { name: profileTitle })}
+                              title={t('settings.model.profileEnabled', { name: profileTitle })}
+                            />
+                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.model.deleteProfile')}><Trash2 /></Button>
+                          </div>
+                        )}
                       >
                         <div className="px-2.5 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
                           {t('settings.model.profileSettings')}
@@ -359,13 +377,15 @@ function sessionKeyMappingForLocation(location: string): ModelEndpointSettings['
   }
 }
 
-function modelProfileOptions(profiles: ModelProfileSettings[], effectiveProfiles: ModelProfileSettings[]): Array<{ id: string; label: string }> {
-  const options = new Map<string, string>()
+function modelProfileOptions(profiles: ModelProfileSettings[], effectiveProfiles: ModelProfileSettings[], endpoints: ModelEndpointSettings[], effectiveEndpoints: ModelEndpointSettings[]): Array<{ id: string; label: string; disabled: boolean }> {
+  const connections = new Map([...effectiveEndpoints, ...endpoints].map((endpoint) => [modelEndpointID(endpoint), endpoint]))
+  const options = new Map<string, { id: string; label: string; disabled: boolean }>()
   for (const profile of [...effectiveProfiles, ...profiles]) {
     const id = modelProfileID(profile)
-    if (id) options.set(id, modelProfileLabel(profile) || id)
+    if (id) options.set(id, { id, label: modelProfileLabel(profile) || id,
+      disabled: profile.enabled === false || connections.get(profile.endpoint_id?.trim() || '')?.enabled === false })
   }
-  return Array.from(options, ([id, label]) => ({ id, label }))
+  return Array.from(options.values())
 }
 
 function ProviderPicker({ label, providers, value, placeholder, onChange }: { label: string; providers: ModelProviderPreset[]; value: string; placeholder: string; onChange: (provider: string) => void }) {

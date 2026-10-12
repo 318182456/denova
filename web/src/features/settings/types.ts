@@ -138,6 +138,7 @@ export interface WebAccessSettings {
 export interface ModelProfileSettings {
   id?: string
   name?: string
+  enabled?: boolean
   endpoint_id?: string
   model?: string
   temperature?: number | null
@@ -160,6 +161,7 @@ export type AgentQuickPromptRegistry = Record<string, AgentQuickPromptSettings[]
 export interface ModelEndpointSettings {
   id?: string
   name?: string
+  enabled?: boolean
   provider?: string
   protocol?: string
   api_key?: string

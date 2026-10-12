@@ -14,7 +14,7 @@ import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigurationForm } from './ConfigurationForm'
 import { getAgentChatProjects } from '@/features/agent-chat/api'
 import { fetchSettings } from '@/features/settings/api'
-import { modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { selectableModelProfiles } from '@/features/settings/model-profiles'
 import { imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { management, platformError, type RuntimeSetupDocument, type Manifest } from './api'
 
@@ -58,7 +58,7 @@ export function RuntimeSetup({
     queryFn: fetchSettings,
   })
   const slots = modelRequirements ?? form.data?.models ?? []
-  const profiles = modelProfilesWithDefault(settings.data?.effective).filter(
+  const profiles = selectableModelProfiles(settings.data?.effective).filter(
     (profile): profile is typeof profile & { id: string } => !!profile.id,
   )
   const imageProfiles = imageAPIProfilesWithDefault(settings.data?.effective).filter(
