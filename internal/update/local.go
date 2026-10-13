@@ -30,7 +30,11 @@ var (
 // executing uploaded binaries. Version and platform come from the official
 // release filename; callers must supply the original archive without renaming.
 // The caller owns archive. Applying remains a separate explicit action.
-func (s *Service) InstallLocal(ctx context.Context, name string, archive io.Reader) (InstallResult, error) {
+func (s *Service) InstallLocal(ctx context.Context, name string, archive io.Reader) (result InstallResult, err error) {
+	if err = s.beginOperation("uploading"); err != nil {
+		return result, err
+	}
+	defer func() { s.endOperation(err) }()
 	if !updateOperation.TryLock() {
 		return InstallResult{}, ErrUpdateBusy
 	}

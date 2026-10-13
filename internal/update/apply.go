@@ -93,7 +93,9 @@ func (s ApplyScheduler) Schedule(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) Apply(ctx context.Context, shutdown func(), port int) (ApplyResult, error) {
+// Apply hands the observed staged transaction to the updater. expectedID must
+// match Status.ID; only an acknowledged handoff may trigger shutdown and exit.
+func (s *Service) Apply(ctx context.Context, shutdown func(), port int, expectedID string) (ApplyResult, error) {
 	if !updateOperation.TryLock() {
 		return ApplyResult{}, ErrUpdateBusy
 	}
@@ -120,7 +122,7 @@ func (s *Service) Apply(ctx context.Context, shutdown func(), port int) (ApplyRe
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	if manifest.State != PhaseStaged {
+	if manifest.State != PhaseStaged || manifest.ID != expectedID {
 		return ApplyResult{}, fmt.Errorf("no staged update to apply")
 	}
 	manifest.CurrentPID = os.Getpid()

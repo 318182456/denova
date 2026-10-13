@@ -34,7 +34,16 @@ func (h *Handlers) HandleUpdateInstall(ctx context.Context, c *app.RequestContex
 }
 
 func (h *Handlers) HandleUpdateApply(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.ApplyUpdate(ctx)
+	request := struct {
+		When string `json:"when"`
+	}{When: "now"}
+	if len(c.Request.Body()) != 0 {
+		if err := c.BindJSON(&request); err != nil {
+			writeErrorKey(c, consts.StatusBadRequest, "api.update.applyFailed")
+			return
+		}
+	}
+	result, err := h.app.ScheduleUpdateRestart(ctx, request.When)
 	if err != nil {
 		slog.ErrorContext(ctx, "[handlers/handler_update.go] update apply failed", "error", err)
 		writeErrorKey(c, consts.StatusBadGateway, "api.update.applyFailed", "detail", err.Error())

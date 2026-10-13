@@ -53,9 +53,15 @@ func main() {
 		_ = json.NewEncoder(w).Encode(status)
 	})
 	mux.HandleFunc("/apply", func(w http.ResponseWriter, r *http.Request) {
-		result, err := update.NewService().Apply(r.Context(), func() {
+		service := update.NewService()
+		status, err := service.Status()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		result, err := service.Apply(r.Context(), func() {
 			_ = os.WriteFile(filepath.Join(root, "closed"), []byte("closed before exit"), 0o600)
-		}, actualPort)
+		}, actualPort, status.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

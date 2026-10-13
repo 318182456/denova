@@ -55,6 +55,7 @@ const workbench = {
   'workbench.starNotice.dismiss': '不再显示 Star 提示',
   'workbench.starNotice.title': '喜欢 Denova？',
   'workbench.untitled': '未命名',
+  'workbench.updateNotice.ready': '版本 {{version}} 已准备好，重启更新',
   'workbench.updateNotice.available': '发现新版本 {{version}}',
   'workbench.updateNotice.dismiss': '关闭更新提示',
 } as const

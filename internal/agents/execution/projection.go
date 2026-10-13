@@ -16,6 +16,15 @@ import (
 // ErrRuntimeProjectionUnavailable means this Service has no live Agent owner.
 var ErrRuntimeProjectionUnavailable = errors.New("agent runtime projection is unavailable")
 
+// ActiveSessions includes delegated children that can outlive their product
+// Task. It is an observation; application admission must be fenced separately.
+func (s *Runtime) ActiveSessions(ctx context.Context) (int, error) {
+	if s == nil || s.public == nil {
+		return 0, nil
+	}
+	return s.public.agent.CountActiveSessions(ctx, agentsession.Selector{All: true})
+}
+
 // RuntimeStatusProjection returns a bounded point-in-time display projection.
 // It cannot carry durable messages and is never used as model context.
 func (s *Runtime) RuntimeStatusProjection(ctx context.Context, options agentrun.Options) (agentrun.RuntimeStatus, error) {

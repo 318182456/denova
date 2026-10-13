@@ -8,28 +8,39 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { applyUpdate, getUpdateStatus, checkForUpdate, installUpdateStream, uploadUpdate } from './api'
 import type { UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
-import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
+import { notifyUpdateCheckResult } from './update-events'
 import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 
-type UpdateOperation = 'idle' | 'checking' | 'installing' | 'uploading' | 'applying' | 'restarting'
+type UpdateOperation = 'idle' | 'checking' | 'installing' | 'uploading' | 'applying' | 'restarting' | 'waiting'
 
 // Keep update state in SettingsView so collapsing the section cannot discard
 // an upload in progress or its staged result.
-export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: boolean }) {
+export function useUpdateSettings() {
   const { t } = useTranslation()
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
   const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
   const [operation, setOperation] = useState<UpdateOperation>('checking')
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [backgroundError, setBackgroundError] = useState<string | null>(null)
+  const [activeWork, setActiveWork] = useState(false)
+  const requestActive = useRef(false)
+  const restartTarget = useRef<{ id: string; monitoring: boolean } | null>(null)
   const cancelReload = useRef<(() => void) | undefined>(undefined)
   const monitorRestart = useCallback((target: { id: string; version: string }) => {
+    if (restartTarget.current?.id === target.id) return
+    restartTarget.current = { id: target.id, monitoring: true }
     cancelReload.current?.()
+    setUpdateError(null)
     setOperation('restarting')
     cancelReload.current = scheduleFrontendReloadAfterUpdate(target, { onError: (reason, status) => {
+      // Keep this attempt's identity after timeout. Passive status polls may
+      // recover its state, but only an explicit retry starts a new deadline.
+      restartTarget.current = { id: target.id, monitoring: false }
       setOperation('idle')
       setUpdateInstallResult(null)
-      setUpdateError(t(reason === 'timeout' ? 'settings.updates.restartTimeout' : 'settings.updates.failed', { path: status?.log_path || '' }))
+      if (reason === 'timeout') setUpdateError(t('settings.updates.restartTimeout'))
+      else setBackgroundError(t('settings.updates.failed', { path: status?.log_path || '' }))
     } })
   }, [t])
 
@@ -37,20 +48,22 @@ export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: bool
   // request failures (the server may have staged or applied before disconnecting).
   const syncUpdateStatus = useCallback(async (signal?: AbortSignal) => {
     const status = await getUpdateStatus(AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]))
-    if (signal?.aborted) return
-    setOperation('idle')
+    if (signal?.aborted || (signal && (requestActive.current || restartTarget.current?.monitoring))) return
+    setActiveWork(Boolean(status.busy))
+    if (status.check) setUpdateStatus(status.check)
+    setOperation(status.restart_waiting ? 'waiting' : status.operation === 'downloading' ? 'installing' : status.operation || 'idle')
+    if (status.progress) setUpdateInstallProgress(status.progress)
+    setBackgroundError(status.phase === 'failed'
+      ? t('settings.updates.failed', { path: status.log_path || '' })
+      : status.operation_error ? t('settings.updates.backgroundFailed', { detail: status.operation_error }) : null)
     setUpdateInstallResult(null)
     switch (status.phase) {
-      case 'idle': case 'succeeded': break
+      case 'idle': case 'succeeded': case 'failed': break
       case 'staged':
         setUpdateInstallResult({ previous_version: status.current_version, installed_version: status.version!, installed: false, staged: true, apply_ready: true, restart_required: true, apply_log_path: status.log_path })
         break
-      case 'failed':
-        setUpdateError(t('settings.updates.failed', { path: status.log_path || '' }))
-        break
       case 'waiting': case 'backing_up': case 'applying': case 'starting': case 'rolling_back':
         if (status.id && status.version) {
-          setUpdateError(null)
           monitorRestart({ id: status.id, version: status.version })
         }
         break
@@ -68,32 +81,33 @@ export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: bool
 
   useEffect(() => {
     const controller = new AbortController()
-    void syncUpdateStatus(controller.signal).catch(e => { if (!controller.signal.aborted) { setOperation('idle'); setUpdateError((e as Error).message) } })
-    return () => { controller.abort(); cancelReload.current?.() }
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      if (!requestActive.current && !restartTarget.current?.monitoring) {
+        try { await syncUpdateStatus(controller.signal) }
+        catch (error) { if (!controller.signal.aborted) { setOperation('idle'); setBackgroundError((error as Error).message) } }
+      }
+      if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 2000)
+    }
+    void poll()
+    return () => { controller.abort(); clearTimeout(timer); cancelReload.current?.(); restartTarget.current = null }
   }, [syncUpdateStatus])
 
-  const runUpdateCheck = useCallback(async (source: 'auto' | 'manual' = 'manual') => {
+  const runUpdateCheck = useCallback(async () => {
+    requestActive.current = true
     setOperation('checking')
     setUpdateError(null)
+    setBackgroundError(null)
     try {
       const result = await checkForUpdate()
       setUpdateStatus(result)
       notifyUpdateCheckResult(result)
-    } catch (e) {
-      setUpdateError((e as Error).message)
-    } finally {
-      if (source === 'auto') markAutoUpdateChecked()
-      setOperation('idle')
-    }
+    } catch (e) { setUpdateError((e as Error).message) }
+    finally { requestActive.current = false; setOperation('idle') }
   }, [])
 
-  useEffect(() => {
-    if (!autoCheckEnabled || updateError || updateStatus || operation !== 'idle' || updateInstallResult) return
-    if (!shouldRunAutoUpdateCheck()) return
-    void runUpdateCheck('auto')
-  }, [autoCheckEnabled, updateError, operation, updateInstallResult, runUpdateCheck, updateStatus])
-
   const runUpdateInstall = useCallback(async () => {
+    requestActive.current = true
     setOperation('installing')
     setUpdateError(null)
     setUpdateInstallProgress(null)
@@ -122,19 +136,24 @@ export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: bool
       setOperation('idle')
     } catch (e) {
       await recoverUpdateError(e)
-    }
+    } finally { requestActive.current = false }
   }, [recoverUpdateError, t])
 
-  const runUpdateApply = useCallback(async () => {
+  const runUpdateApply = useCallback(async (when: 'now' | 'when_idle' | 'cancel' = 'now') => {
+    requestActive.current = true
+    cancelReload.current?.()
+    restartTarget.current = null
     setOperation('applying')
     setUpdateError(null)
+    setBackgroundError(null)
     try {
-      const result = await applyUpdate()
-      monitorRestart(result)
+      const result = await applyUpdate(when)
+      if (result.status === 'restarting') monitorRestart(result)
+      else await syncUpdateStatus()
     } catch (e) {
       await recoverUpdateError(e)
-    }
-  }, [monitorRestart, recoverUpdateError])
+    } finally { requestActive.current = false }
+  }, [monitorRestart, recoverUpdateError, syncUpdateStatus])
 
   const runLocalUpdate = async (file: File) => {
     setUpdateError(null)
@@ -142,6 +161,7 @@ export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: bool
       setUpdateError(t('settings.updates.tooLarge'))
       return
     }
+    requestActive.current = true
     setOperation('uploading')
     setUpdateInstallProgress(null)
     try {
@@ -149,23 +169,29 @@ export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: bool
       setOperation('idle')
     } catch (error) {
       await recoverUpdateError(error)
-    }
+    } finally { requestActive.current = false }
   }
 
   return {
+    activeWork,
     status: updateStatus,
     installResult: updateInstallResult,
     installProgress: updateInstallProgress,
     operation,
-    error: updateError,
+    error: updateError || backgroundError,
     onCheck: () => void runUpdateCheck(),
     onInstall: () => void runUpdateInstall(),
     onApply: () => void runUpdateApply(),
+    onWait: () => void runUpdateApply('when_idle'),
+    onCancelWait: () => void runUpdateApply('cancel'),
     onUpload: (file: File) => void runLocalUpdate(file),
   }
 }
 
 export function UpdatePanel({
+  activeWork,
+  onWait,
+  onCancelWait,
   status,
   installResult,
   installProgress,
@@ -186,12 +212,13 @@ export function UpdatePanel({
   const applying = operation === 'applying' || operation === 'restarting'
   const busy = operation !== 'idle'
   const installDisabled = busy || !status?.can_install || applyReady
-  const applyDisabled = busy || !applyReady
+  const waiting = operation === 'waiting'
+  const applyDisabled = (busy && !waiting) || !applyReady
   const progressPercent = clampPercent(installProgress?.percent ?? 0)
   const progressLabel = installProgress ? updatePhaseLabel(installProgress.phase, t) : ''
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-[var(--nova-text)]">{status ? updateStatusLabel(status, t) : t('settings.updates.notChecked')}</span>
@@ -240,6 +267,8 @@ export function UpdatePanel({
               {t('settings.updates.stagedVersion', { version: installResult.installed_version })} {t('settings.updates.stagedRestart')}
             </div>
           )}
+          {applyReady && activeWork && !waiting && <p className="text-[var(--nova-text-muted)]">{t('settings.updates.activeWork')}</p>}
+          {waiting && <p role="status" className="text-[var(--nova-text-muted)]">{t('settings.updates.waitingIdle')}</p>}
           {operation === 'restarting' && (
             <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
               {t('settings.updates.applyingRestart')}
@@ -277,6 +306,9 @@ export function UpdatePanel({
             {installing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             {installing ? t('settings.updates.installing') : t('settings.updates.install')}
           </button>
+          {applyReady && <Button variant="outline" size="sm" disabled={busy && !waiting} onClick={waiting ? onCancelWait : onWait}>
+            {t(waiting ? 'settings.updates.cancelWait' : 'settings.updates.whenIdle')}
+          </Button>}
           {applyReady && (
             <button
               type="button"

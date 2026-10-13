@@ -18,7 +18,7 @@ it('retains the install stream cause and correlation when returning to idle', as
     }) })
     controller.close()
   } }))
-  const { result } = renderHook(() => useUpdateSettings({ autoCheckEnabled: false }))
+  const { result } = renderHook(() => useUpdateSettings())
   await waitFor(() => expect(result.current.operation).toBe('idle'))
   act(() => result.current.onInstall())
   await waitFor(() => expect(result.current.error).toContain('download checksum mismatch'))
@@ -30,7 +30,7 @@ it('retains the install stream cause and correlation when returning to idle', as
 
 it('restores a staged update after remounting settings', async () => {
   vi.mocked(getUpdateStatus).mockResolvedValueOnce({ phase: 'staged', current_version: '0.5.1', version: '0.5.2', id: 'staged' })
-  const { result, unmount } = renderHook(() => useUpdateSettings({ autoCheckEnabled: false }))
+  const { result, unmount } = renderHook(() => useUpdateSettings())
   await waitFor(() => expect(result.current.installResult).toMatchObject({ installed_version: '0.5.2', apply_ready: true }))
   expect(result.current.operation).toBe('idle')
   unmount()
@@ -38,7 +38,7 @@ it('restores a staged update after remounting settings', async () => {
 
 it('reports a stream that ends before a result', async () => {
   vi.mocked(installUpdateStream).mockResolvedValueOnce(new ReadableStream({ start(controller) { controller.close() } }))
-  const { result } = renderHook(() => useUpdateSettings({ autoCheckEnabled: false }))
+  const { result } = renderHook(() => useUpdateSettings())
   await waitFor(() => expect(result.current.operation).toBe('idle'))
   act(() => result.current.onInstall())
   await waitFor(() => expect(result.current.error).toBeTruthy())
@@ -50,7 +50,7 @@ it('retains a retryable staged package after helper handoff fails', async () => 
   vi.mocked(getUpdateStatus).mockResolvedValueOnce(staged).mockResolvedValueOnce(staged)
   vi.mocked(applyUpdate).mockRejectedValueOnce(new Error('Helper could not start'))
     .mockResolvedValueOnce({ status: 'restarting', id: 'retry', version: '0.5.2' })
-  const { result, unmount } = renderHook(() => useUpdateSettings({ autoCheckEnabled: false }))
+  const { result, unmount } = renderHook(() => useUpdateSettings())
   await waitFor(() => expect(result.current.installResult?.apply_ready).toBe(true))
   await act(async () => result.current.onApply())
   await waitFor(() => expect(result.current.error).toBe('Helper could not start'))
@@ -66,7 +66,7 @@ it('monitors an accepted update when the apply response is lost', async () => {
   vi.mocked(getUpdateStatus).mockResolvedValueOnce({ phase: 'staged', current_version: '0.5.1', version: '0.5.2', id: 'accepted' })
     .mockResolvedValueOnce({ phase: 'waiting', current_version: '0.5.1', version: '0.5.2', id: 'accepted' })
   vi.mocked(applyUpdate).mockRejectedValueOnce(new Error('Connection closed'))
-  const { result, unmount } = renderHook(() => useUpdateSettings({ autoCheckEnabled: false }))
+  const { result, unmount } = renderHook(() => useUpdateSettings())
   await waitFor(() => expect(result.current.installResult?.apply_ready).toBe(true))
   act(() => result.current.onApply())
   await waitFor(() => expect(result.current.operation).toBe('restarting'))
@@ -79,9 +79,55 @@ it('restores the staged package if the install stream loses its result', async (
   vi.mocked(getUpdateStatus).mockResolvedValueOnce({ phase: 'idle', current_version: '0.5.1' })
     .mockResolvedValueOnce({ phase: 'staged', current_version: '0.5.1', version: '0.5.2', id: 'downloaded' })
   vi.mocked(installUpdateStream).mockResolvedValueOnce(new ReadableStream({ start(controller) { controller.close() } }))
-  const { result, unmount } = renderHook(() => useUpdateSettings({ autoCheckEnabled: false }))
+  const { result, unmount } = renderHook(() => useUpdateSettings())
   await waitFor(() => expect(result.current.operation).toBe('idle'))
   act(() => result.current.onInstall())
   await waitFor(() => expect(result.current.installResult).toMatchObject({ apply_ready: true, installed_version: '0.5.2' }))
   unmount()
+})
+
+it('keeps a restart timeout visible instead of restarting its deadline on each status poll', async () => {
+  vi.useFakeTimers()
+  vi.mocked(scheduleFrontendReloadAfterUpdate).mockClear()
+  vi.mocked(getUpdateStatus).mockResolvedValue({ phase: 'waiting', current_version: '0.5.1', version: '0.5.2', id: 'slow-update' })
+  const { result, unmount } = renderHook(() => useUpdateSettings())
+  try {
+    await act(async () => {})
+    expect(scheduleFrontendReloadAfterUpdate).toHaveBeenCalledOnce()
+    act(() => vi.mocked(scheduleFrontendReloadAfterUpdate).mock.calls[0][1].onError('timeout'))
+    const timeout = result.current.error
+    expect(timeout).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(result.current.error).toBe(timeout)
+    expect(scheduleFrontendReloadAfterUpdate).toHaveBeenCalledOnce()
+    vi.mocked(getUpdateStatus).mockResolvedValue({ phase: 'staged', current_version: '0.5.1', version: '0.5.2', id: 'slow-update' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    vi.mocked(applyUpdate).mockResolvedValueOnce({ status: 'restarting', version: '0.5.2', id: 'slow-update' })
+    await act(async () => result.current.onApply())
+    expect(scheduleFrontendReloadAfterUpdate).toHaveBeenCalledTimes(2)
+    expect(result.current.operation).toBe('restarting')
+    expect(result.current.error).toBeNull()
+  } finally {
+    unmount()
+    vi.useRealTimers()
+    vi.mocked(getUpdateStatus).mockResolvedValue({ phase: 'idle', current_version: '0.5.1' })
+  }
+})
+
+it('clears a transient polling failure once the staged update can be read again', async () => {
+  vi.useFakeTimers()
+  vi.mocked(getUpdateStatus).mockRejectedValueOnce(new Error('Backend unavailable'))
+    .mockResolvedValue({ phase: 'staged', current_version: '0.5.1', version: '0.5.2', id: 'recovered' })
+  const { result, unmount } = renderHook(() => useUpdateSettings())
+  try {
+    await act(async () => {})
+    expect(result.current.error).toBe('Backend unavailable')
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(result.current.installResult?.apply_ready).toBe(true)
+    expect(result.current.error).toBeNull()
+  } finally {
+    unmount()
+    vi.useRealTimers()
+    vi.mocked(getUpdateStatus).mockResolvedValue({ phase: 'idle', current_version: '0.5.1' })
+  }
 })

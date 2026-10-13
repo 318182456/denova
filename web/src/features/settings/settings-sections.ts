@@ -41,7 +41,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'access', group: 'system', titleKey: 'settings.section.access', icon: Wifi,
     fieldKeys: ['settings.access.allowLan', 'settings.access.username', 'settings.access.password'] },
   { id: 'updates', group: 'system', titleKey: 'settings.section.updates', icon: Upload,
-    fieldKeys: ['settings.updates.autoCheck', 'settings.updates.manual', 'settings.updates.check'] },
+    fieldKeys: ['settings.updates.autoCheck', 'settings.updates.autoDownload', 'settings.updates.manual', 'settings.updates.check'] },
   { id: 'advanced', group: 'system', titleKey: 'settings.section.advanced', icon: Settings2,
     fieldKeys: ['settings.agent.maxIteration', 'settings.agent.modelMaxRetries', 'settings.agent.idleTimeoutSeconds', 'settings.agent.toolResultLimitKB', 'settings.agent.toolParallelism', 'settings.agent.subAgentParallelism', 'settings.agent.scriptTimeoutSeconds', 'settings.agent.planModeDefault', 'settings.labs.developerMode'] },
 ] as const satisfies readonly SettingsSectionDefinition[]

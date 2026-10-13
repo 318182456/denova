@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- 更新支持后台定时检查、可选自动下载，以及等待活动任务完成后重启。
+- Updates add background checks, optional automatic downloads, and restart after active tasks finish.
+
 - 语言模型连接新增 Gemini 原生协议，支持工具调用、图片输入与会话恢复。
 - Language model connections add the native Gemini protocol with tool calls, image inputs and session recovery.
 

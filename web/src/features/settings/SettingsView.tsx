@@ -62,7 +62,7 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
   }, [])
 
   const effective = layered?.effective ?? {}
-  const updatePanel = useUpdateSettings({ autoCheckEnabled: Boolean(layered) && effective.update_check_enabled !== false })
+  const updatePanel = useUpdateSettings()
   const inherited = layered?.inherited?.user ?? {}
   const showDebugSettings = layered?.runtime?.dev_mode === true
 
@@ -428,6 +428,10 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
         <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
                  inherited={inherited.update_check_enabled}
                  onChange={(v) => setField('update_check_enabled', v)} />
+        <BoolTri label={t('settings.updates.autoDownload')} value={draft.update_download_enabled ?? null}
+                 inherited={inherited.update_download_enabled}
+                 onChange={(v) => setField('update_download_enabled', v)} />
+        <p className="text-xs text-[var(--nova-text-muted)]">{t('settings.updates.autoHint')}</p>
         <UpdatePanel {...updatePanel} />
       </>
     ),

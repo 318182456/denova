@@ -55,6 +55,7 @@ const workbench = {
   'workbench.starNotice.dismiss': 'Do not show the Star prompt again',
   'workbench.starNotice.title': 'Enjoying Denova?',
   'workbench.untitled': 'Untitled',
+  'workbench.updateNotice.ready': 'Version {{version}} is ready to restart',
   'workbench.updateNotice.available': 'New version {{version}}',
   'workbench.updateNotice.dismiss': 'Dismiss update notice',
 } as const

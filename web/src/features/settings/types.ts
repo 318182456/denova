@@ -61,6 +61,7 @@ export interface Settings {
   theme?: string
   motion_intensity?: string
   update_check_enabled?: boolean | null
+  update_download_enabled?: boolean | null
   max_iteration?: number | null
   model_max_retries?: number | null
   agent_idle_timeout_seconds?: number | null
@@ -673,6 +674,13 @@ export interface UpdateInstallProgress {
 }
 
 export interface UpdateStatus {
+  check?: UpdateCheckResult
+  checked_at?: string
+  operation?: 'checking' | 'downloading' | 'uploading'
+  progress?: UpdateInstallProgress
+  operation_error?: string
+  restart_waiting?: boolean
+  busy?: boolean
   current_version: string
   id?: string
   version?: string

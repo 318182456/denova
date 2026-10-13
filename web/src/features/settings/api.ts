@@ -130,8 +130,8 @@ export async function installUpdateStream(signal?: AbortSignal): Promise<Readabl
   return parseSSEStream(res.body)
 }
 
-export async function applyUpdate(): Promise<UpdateApplyResult> {
-  return requestJSON('/api/update/apply', { method: 'POST' })
+export async function applyUpdate(when: 'now' | 'when_idle' | 'cancel' = 'now'): Promise<UpdateApplyResult> {
+  return requestJSON('/api/update/apply', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ when }) })
 }
 
 export function fetchModelCatalog(signal?: AbortSignal): Promise<ModelCatalog> {

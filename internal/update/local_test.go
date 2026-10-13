@@ -129,7 +129,7 @@ func TestLocalUpdateRejectsConcurrentOperations(t *testing.T) {
 	if _, err := service.Install(context.Background()); !errors.Is(err, ErrUpdateBusy) {
 		t.Fatal(err)
 	}
-	if _, err := service.Apply(context.Background(), nil, 0); !errors.Is(err, ErrUpdateBusy) {
+	if _, err := service.Apply(context.Background(), nil, 0, ""); !errors.Is(err, ErrUpdateBusy) {
 		t.Fatal(err)
 	}
 }

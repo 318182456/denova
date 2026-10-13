@@ -17,7 +17,18 @@ func (s *Service) Install(ctx context.Context) (InstallResult, error) {
 	return s.InstallWithProgress(ctx, nil)
 }
 
-func (s *Service) InstallWithProgress(ctx context.Context, progress func(InstallProgress)) (InstallResult, error) {
+func (s *Service) InstallWithProgress(ctx context.Context, progress func(InstallProgress)) (result InstallResult, err error) {
+	if err = s.beginOperation("downloading"); err != nil {
+		return result, err
+	}
+	defer func() { s.endOperation(err) }()
+	listener := progress
+	progress = func(p InstallProgress) {
+		s.mu.Lock()
+		s.progress = &p
+		s.mu.Unlock()
+		reportInstallProgress(listener, p)
+	}
 	if !updateOperation.TryLock() {
 		return InstallResult{}, ErrUpdateBusy
 	}
@@ -27,7 +38,16 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 		return InstallResult{}, err
 	}
 	defer releaseLock()
-	installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), updateInstallTimeout)
+	// A local upload may have staged a package after the automatic worker's
+	// last observation. Preserve it under the same installation lock.
+	status, err := s.Status()
+	if err != nil {
+		return InstallResult{}, err
+	}
+	if status.Phase == PhaseStaged {
+		return InstallResult{}, ErrUpdateBusy
+	}
+	installCtx, cancel := context.WithTimeout(ctx, updateInstallTimeout)
 	defer cancel()
 
 	reportInstallProgress(progress, InstallProgress{Phase: "checking"})
@@ -36,6 +56,7 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 		return InstallResult{}, err
 	}
 	check := s.checkRelease(release)
+	s.rememberCheck(check)
 	if !check.UpdateAvailable {
 		return InstallResult{}, errors.New("no update is available")
 	}

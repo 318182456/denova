@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"denova/internal/buildinfo"
@@ -22,11 +23,19 @@ const (
 )
 
 type Service struct {
-	repository     string
-	currentVersion string
-	httpClient     *http.Client
-	executablePath string
-	githubAPIBase  string
+	mu              sync.Mutex
+	operation       string
+	progress        *InstallProgress
+	check           *CheckResult
+	checkedAt       time.Time
+	downloadAttempt time.Time
+	operationError  string
+	clientMu        sync.Mutex
+	repository      string
+	currentVersion  string
+	httpClient      *http.Client
+	executablePath  string
+	githubAPIBase   string
 }
 
 func NewService() *Service {
@@ -40,12 +49,21 @@ func NewService() *Service {
 	}
 }
 
-func (s *Service) Check(ctx context.Context) (CheckResult, error) {
+func (s *Service) Check(ctx context.Context) (result CheckResult, err error) {
+	if err = s.beginOperation("checking"); err != nil {
+		return result, err
+	}
+	defer func() { s.endOperation(err) }()
+	s.mu.Lock()
+	s.checkedAt = time.Now()
+	s.mu.Unlock()
 	release, err := s.latestRelease(ctx)
 	if err != nil {
 		return CheckResult{}, err
 	}
-	return s.checkRelease(release), nil
+	result = s.checkRelease(release)
+	s.rememberCheck(result)
+	return result, nil
 }
 
 func (s *Service) checkRelease(release githubRelease) CheckResult {
@@ -71,6 +89,8 @@ func (s *Service) checkRelease(release githubRelease) CheckResult {
 }
 
 func (s *Service) ensureHTTPClient() {
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
 	if s.httpClient != nil {
 		return
 	}

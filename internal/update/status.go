@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gofrs/flock"
 )
@@ -28,16 +29,27 @@ const (
 
 // Status is the stable UI boundary; internal filesystem transaction fields stay private.
 type Status struct {
-	CurrentVersion string `json:"current_version"`
-	ID             string `json:"id,omitempty"`
-	Version        string `json:"version,omitempty"`
-	Phase          Phase  `json:"phase"`
-	Error          string `json:"error,omitempty"`
-	LogPath        string `json:"log_path,omitempty"`
+	Check          *CheckResult     `json:"check,omitempty"`
+	CheckedAt      time.Time        `json:"checked_at,omitempty"`
+	Operation      string           `json:"operation,omitempty"`
+	Progress       *InstallProgress `json:"progress,omitempty"`
+	OperationError string           `json:"operation_error,omitempty"`
+	RestartWaiting bool             `json:"restart_waiting,omitempty"`
+	Busy           bool             `json:"busy,omitempty"`
+	CurrentVersion string           `json:"current_version"`
+	ID             string           `json:"id,omitempty"`
+	Version        string           `json:"version,omitempty"`
+	Phase          Phase            `json:"phase"`
+	Error          string           `json:"error,omitempty"`
+	LogPath        string           `json:"log_path,omitempty"`
 }
 
 func (s *Service) Status() (Status, error) {
 	status := Status{CurrentVersion: s.currentVersion, Phase: "idle"}
+	s.mu.Lock()
+	status.Check, status.CheckedAt = s.check, s.checkedAt
+	status.Operation, status.Progress, status.OperationError = s.operation, s.progress, s.operationError
+	s.mu.Unlock()
 	path, err := readPendingManifestRef(updateDataDir(filepath.Dir(s.executablePath)))
 	if errors.Is(err, os.ErrNotExist) {
 		return status, nil

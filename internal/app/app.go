@@ -41,6 +41,7 @@ import (
 	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
+	"denova/internal/update"
 	"denova/internal/workspace/filewatch"
 )
 
@@ -80,6 +81,12 @@ type App struct {
 	workspaceGeneration             uint64
 	closed                          bool
 	closeOnce                       sync.Once
+	updates                         *update.Service
+	updateRestartMu                 sync.Mutex
+	updateWaitID                    string
+	updateRestarting                bool
+	updateRestartError              string
+	updateRestartErrorID            string
 	activeTaskReplay                apptask.ReplayAdmission
 
 	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
@@ -265,6 +272,7 @@ func New(ctx context.Context, cfg *config.Config) (_ *App, err error) {
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
 		app.startResourceUpdates(ctx)
+		app.startSoftwareUpdates(ctx)
 		return app, nil
 	}
 
@@ -296,6 +304,7 @@ func New(ctx context.Context, cfg *config.Config) (_ *App, err error) {
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
 	app.startResourceUpdates(ctx)
+	app.startSoftwareUpdates(ctx)
 	return app, nil
 }
 
@@ -324,6 +333,7 @@ var ErrAgentContextChanged = appagentruntime.ErrContextChanged
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
+		a.updates = update.NewService()
 		a.agentEngines = agentruntime.NewEngines()
 		a.workspaceApp = &workspaceService{app: a}
 		a.chatApp = &ChatAppService{

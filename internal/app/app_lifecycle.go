@@ -72,7 +72,7 @@ func (operation *ProjectOperation) Release() {
 }
 
 func (a *App) initializeLifecycleLocked() error {
-	if a == nil || a.closed {
+	if a == nil || a.closed || a.updateRestarting {
 		return concurrency.ErrClosed
 	}
 	if a.rootScope == nil {

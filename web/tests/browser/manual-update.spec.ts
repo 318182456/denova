@@ -1,6 +1,21 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
+test('a completed background restart refreshes Game even if settings were never opened', async ({ page, request }) => {
+  await createAndOpenBook(request, 'Background Restart Browser Book')
+  let completed = false
+  await page.route('**/api/update/status', route => route.fulfill({ json: {
+    id: 'background-restart', phase: completed ? 'succeeded' : 'staged',
+    version: '0.5.2', current_version: completed ? '0.5.2' : '0.5.1',
+  } }))
+  await page.goto('/')
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+  await expect(page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(page).not.toHaveURL(/denova_reload=/)
+  completed = true
+  await expect(page).toHaveURL(/denova_reload=0\.5\.2-/, { timeout: 20_000 })
+})
+
 test('manual update stays tucked away and stages an upload before explicit restart', async ({ page, request, browserDiagnostics }, testInfo) => {
   test.setTimeout(90_000)
   browserDiagnostics.allow(/console\.error: Failed to load resource:.*(?:400|500)/)
@@ -102,6 +117,7 @@ test('manual update stays tucked away and stages an upload before explicit resta
       await page.getByRole('button', { name: labels.updates, exact: true }).click()
     }
     await page.getByRole('button', { name: labels.manual, exact: true }).click()
+    await page.getByRole('button', { name: labels.select, exact: true }).scrollIntoViewIfNeeded()
     await expect(page.getByRole('button', { name: labels.select, exact: true })).toBeInViewport()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`manual-update-${scenario.width}-${scenario.theme}.png`), animations: 'disabled' })
@@ -111,13 +127,15 @@ test('manual update stays tucked away and stages an upload before explicit resta
 test('automatic download still stages its streamed result after a failed attempt', async ({ page, request }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const book = await createAndOpenBook(request, 'Downloaded Update Browser Book')
-  await page.route('**/api/update/status', route => route.fulfill({ json: { phase: 'idle', current_version: '0.4.5' } }))
+  let downloaded = false
+  await page.route('**/api/update/status', route => route.fulfill({ json: { phase: downloaded ? 'staged' : 'idle', current_version: '0.4.5', version: '0.5.0' } }))
   await page.route('**/api/update/check', route => route.fulfill({ json: {
     current_version: '0.4.5', latest_version: '0.5.0', update_available: true, can_install: true, platform: 'windows-x64',
   } }))
   let installs = 0
   await page.route('**/api/update/install/stream', route => {
     installs++
+    downloaded = installs > 1
     const result = installs === 1
       ? 'event: error\ndata: {"message":"下载失败，请重试。"}\n\n'
       : 'event: update_result\ndata: {"installed_version":"0.5.0","apply_ready":true,"staged":true}\n\n'
@@ -148,4 +166,69 @@ test('release upload exceeds the former 72 MiB API limit and reaches localized v
   })
   expect(response.status()).toBe(400)
   expect(await response.json()).toMatchObject({ error: 'Select a stable release newer than the running version. Development builds cannot update manually.' })
+})
+
+test('background preparation survives navigation and idle restart can be canceled', async ({ page, request }, testInfo) => {
+  test.setTimeout(90_000)
+  await createAndOpenBook(request, 'Background Update Browser Book')
+  expect((await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'zh-CN', update_check_enabled: true, update_download_enabled: false } } })).ok()).toBe(true)
+  let phase = 'failed'
+  let operation = ''
+  let waiting = false
+  let checkRequests = 0
+  let statusRequests = 0
+  const commands: string[] = []
+  await page.route('**/api/update/check', route => { checkRequests++; return route.abort() })
+  await page.route('**/api/update/status', route => {
+    statusRequests++
+    return route.fulfill({ json: {
+      phase, operation, restart_waiting: waiting, busy: true,
+      current_version: '0.5.1', version: '0.5.2', id: 'prepared-in-background',
+      progress: { phase: phase === 'staged' ? 'staged' : 'downloading', percent: phase === 'staged' ? 100 : 50, downloaded_bytes: phase === 'staged' ? 1000 : 500, total_bytes: 1000 },
+      check: { current_version: '0.5.1', latest_version: '0.5.2', update_available: true, can_install: true, platform: 'darwin-arm64', release_url: '', published_at: '' },
+    } })
+  })
+  await page.route('**/api/update/apply', async route => {
+    const when = route.request().postDataJSON().when
+    commands.push(when)
+    waiting = when === 'when_idle'
+    await route.fulfill({ json: { id: 'prepared-in-background', version: '0.5.2', status: waiting ? 'waiting_for_idle' : 'canceled' } })
+  })
+  await page.goto('/')
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '软件更新', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('更新未完成')
+  phase = 'idle'
+  operation = 'downloading'
+  await expect(page.getByRole('button', { name: '安装中', exact: true })).toBeDisabled()
+  await expect(page.getByRole('alert')).toBeHidden()
+  await expect(page.getByText('50%', { exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: '自动下载更新', exact: true })).toBeVisible()
+  await page.getByRole('combobox', { name: '自动下载更新', exact: true }).click()
+  await page.getByRole('option', { name: '开启', exact: true }).click()
+  await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.update_download_enabled).toBe(true)
+  // Download completion is discovered without an install request from this page.
+  phase = 'staged'
+  operation = ''
+  await expect(page.getByText(/版本 0.5.2 已就绪/)).toBeVisible()
+  await page.getByRole('button', { name: '任务完成后重启', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: '正在等待活动任务' })).toBeVisible()
+  expect(commands).toEqual(['when_idle'])
+  // Reloading must restore the wait without starting the three-minute restart
+  // timeout: work may take arbitrarily long before the updater takes over.
+  await page.reload()
+  await page.getByRole('button', { name: '软件更新', exact: true }).click()
+  await expect(page.getByRole('button', { name: '取消等待', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '取消等待', exact: true }).click()
+  await expect(page.getByRole('button', { name: '任务完成后重启', exact: true })).toBeEnabled()
+  expect(commands).toEqual(['when_idle', 'cancel'])
+  expect(checkRequests).toBe(0)
+  expect(statusRequests).toBeGreaterThan(2)
+  for (const size of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size)
+    await page.getByRole('button', { name: '任务完成后重启', exact: true }).scrollIntoViewIfNeeded()
+    await expect(page.getByRole('button', { name: '任务完成后重启', exact: true })).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`background-update-${size.width}.png`), animations: 'disabled' })
+  }
 })

@@ -131,7 +131,7 @@ export function BoolTri({ label, value, inherited, onChange }: {
   return (
     <FieldRow label={label}>
       <Select value={selectValue} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? null : v === 'true')}>
-        <SelectTrigger size="sm" className="w-full">
+        <SelectTrigger size="sm" className="w-full" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">

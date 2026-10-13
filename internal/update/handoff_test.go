@@ -92,8 +92,12 @@ func TestApplyHandoffFailureRemainsRetryable(t *testing.T) {
 	if _, err := service.stageUpdate(source, "0.2.0"); err != nil {
 		t.Fatal(err)
 	}
+	status, err := service.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
-		if _, err := service.Apply(context.Background(), func() { t.Error("closed after failed handoff") }, 0); err == nil || strings.Contains(err.Error(), "no staged update") {
+		if _, err := service.Apply(context.Background(), func() { t.Error("closed after failed handoff") }, 0, status.ID); err == nil || strings.Contains(err.Error(), "no staged update") {
 			t.Fatalf("handoff was not attempted: %v", err)
 		}
 		status, err := service.Status()

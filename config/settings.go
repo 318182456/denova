@@ -89,6 +89,7 @@ type Settings struct {
 	Theme                  string `toml:"theme,omitempty" json:"theme,omitempty"`
 	MotionIntensity        string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
 	UpdateCheckEnabled     *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
+	UpdateDownloadEnabled  *bool  `toml:"update_download_enabled,omitempty" json:"update_download_enabled,omitempty"`
 
 	// Agent
 	MaxIteration              *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -208,6 +209,7 @@ func DefaultSettings() Settings {
 		Theme:                       "dark",
 		MotionIntensity:             "system",
 		UpdateCheckEnabled:          boolPtr(true),
+		UpdateDownloadEnabled:       boolPtr(false),
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
@@ -380,6 +382,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.UpdateCheckEnabled != nil {
 		out.UpdateCheckEnabled = child.UpdateCheckEnabled
+	}
+	if child.UpdateDownloadEnabled != nil {
+		out.UpdateDownloadEnabled = child.UpdateDownloadEnabled
 	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration

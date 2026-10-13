@@ -148,7 +148,7 @@ func TestValidateReleasePackageRequiresRipgrepLicenses(t *testing.T) {
 	}
 }
 
-func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
+func TestInstallStagesUpdateWithCallerOwnedLifetime(t *testing.T) {
 	platform := platformKey(runtime.GOOS, runtime.GOARCH)
 	assetName := "denova-v0.2.0-" + platform + ".tar.gz"
 	updaterName := updaterExecutableName()
@@ -230,7 +230,7 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	cancel()
 
 	var progress []InstallProgress
-	result, err := service.InstallWithProgress(ctx, func(event InstallProgress) {
+	result, err := service.InstallWithProgress(context.WithoutCancel(ctx), func(event InstallProgress) {
 		progress = append(progress, event)
 	})
 	if err != nil {
