@@ -68,11 +68,9 @@ for (const mode of ['Writing', 'General'] as const) {
       await page.getByRole('menuitem', { name: 'Native', exact: true }).click()
       expect((await switchResponse).request().postDataJSON().binding.session_id).toBe(first.id)
       if (retryRememberedSelection) {
-        // Switching engine branches can remount the model menu. Reopen it to
-        // verify the save error survives the settings cache refresh.
-        if (!(await page.getByRole('menuitem', { name: 'Native', exact: true }).count())) {
-          await page.getByRole('menuitem', { name: '运行时：Native', exact: true }).click()
-        }
+        // Wait for the switched engine before reopening its error submenu.
+        // Hover keeps an already open submenu open across the engine change.
+        await page.getByRole('menuitem', { name: '运行时：Native', exact: true }).hover()
         const saveError = page.getByRole('alert').filter({ hasText: 'Could not remember the runtime selection.' })
         await expect(saveError).toBeVisible()
         await expect(page.getByRole('menuitem', { name: 'Native', exact: true })).toBeEnabled()

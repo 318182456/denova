@@ -87,7 +87,7 @@ for (const theme of ['dark', 'light']) {
     await page.screenshot({ path: testInfo.outputPath(`index-${theme}-automatic.png`) })
     const characters = auto.filter({ hasText: '角色 · 按需' })
     const trigger = characters.locator('[data-slot="collapsible-trigger"]')
-    expect((await trigger.boundingBox())!.height).toBe((await characters.getByRole('group').boundingBox())!.height)
+    expect((await trigger.boundingBox())!.height).toBe((await characters.getByRole('radiogroup').boundingBox())!.height)
     // Exercise both transition directions with full and reduced motion.
     expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(theme === 'light')
     for (const expanded of [true, false]) {
@@ -185,7 +185,7 @@ for (const theme of ['dark', 'light']) {
     await expect(preview).toContainText('港口人物')
     await expect(preview).not.toContainText('摘要 港口人物')
     await expect(preview).not.toContainText('RESIDENT CANON BODY')
-    const defaultDetail = section.getByRole('group', { name: '组内默认注入', exact: true })
+    const defaultDetail = section.getByRole('radiogroup', { name: '组内默认注入', exact: true })
     await defaultDetail.getByRole('radio', { name: '名称', exact: true }).press('ArrowRight')
     await expect(defaultDetail.getByRole('radio', { name: '简介', exact: true })).toBeFocused()
     await defaultDetail.getByRole('radio', { name: '简介', exact: true }).press('Space')
