@@ -6,7 +6,7 @@ export type ResourceDestination =
   | { section: 'discover' }
   | { section: 'acquired'; installationID?: string }
   | { section: 'extensions'; extensionKey?: string }
-  | { section: 'updates' }
+  | { section: 'updates'; installationID?: string }
 
 export const useResourceNavigation = create<{ destination: ResourceDestination }>(() => ({
   destination: { section: typeof window !== 'undefined' && window.localStorage.getItem('nova:mode') === 'extensions' ? 'extensions' : 'discover' },

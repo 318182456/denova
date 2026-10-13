@@ -173,7 +173,7 @@ test('creates from Extensions and develops, previews and installs in one workben
   await install.getByRole('radio', { name: '本地扩展目录（开发）', exact: true }).click()
   await install.getByLabel('本地包目录').fill(directory)
   await install.getByRole('button', { name: '预览资源', exact: true }).click()
-  await install.getByRole('checkbox', { name: /调用已声明工具/ }).click()
+  await expect(install.getByRole('region', { name: '必需权限' })).toContainText('调用已声明工具')
   await install.getByRole('button', { name: '生成安装计划', exact: true }).click()
   await page.getByRole('dialog', { name: '确认安装计划', exact: true }).getByRole('button', { name: '安装扩展', exact: true }).click()
   await selectExtension(page, 'test.import-plugin')

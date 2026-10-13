@@ -23,7 +23,7 @@ const agentRuntime = {
   'agentRuntime.switchRuntime': "Switch runtime",
   'agentRuntime.switchWhenIdle': "Finish the current turn, queued tasks and pending interactions before switching.",
   'agentRuntime.switchAfterStoryCreated': "Create a story to switch runtimes between turns.",
-  'agentRuntime.switchConversationHint': "Continue this conversation with the new runtime from the next turn.",
+  'agentRuntime.switchConversationHint': "Applies from the next turn and becomes the runtime for new conversations.",
   'agentRuntime.modelChangeIdle': "Wait for this execution and any pending questions to finish before changing the model or effort.",
   'agentRuntime.configuration.savedOtherRuntimes': "Saved settings for other engines",
   'agentRuntime.configuration.switchToEdit': "These settings are retained and inactive. Switch to their engine to edit them.",

@@ -18,12 +18,17 @@ func RecentConversationSeed(store *interactive.Store, runtimeCfg *config.Config,
 			return conversationconfig.Config{}, err
 		}
 		if ok {
-			// Keep the existing Agent/permission inheritance, but resolve the
-			// model from the user's remembered selection across all Projects.
-			defaults := conversationconfig.Default(runtimeCfg, config.AgentKindInteractiveStory)
-			recent.ProfileID = defaults.ProfileID
-			recent.ThinkingLevel = defaults.ThinkingLevel
-			if err := conversationconfig.Validate(runtimeCfg, recent, config.AgentKindInteractiveStory); err == nil {
+			// Keep Agent/permission inheritance; runtime defaults belong to
+			// that Agent, while Native model choices belong to the user.
+			defaults, err := conversationconfig.DefaultWithCustomAgent(runtimeCfg, config.AgentKindInteractiveStory, recent.CustomAgentID)
+			if err == nil {
+				recent.Runtime = defaults.Runtime
+				nativeDefaults := conversationconfig.LegacyDefault(runtimeCfg, config.AgentKindInteractiveStory)
+				recent.ProfileID = nativeDefaults.ProfileID
+				recent.ThinkingLevel = nativeDefaults.ThinkingLevel
+				err = conversationconfig.Validate(runtimeCfg, recent, config.AgentKindInteractiveStory)
+			}
+			if err == nil {
 				return recent, nil
 			} else {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[conversation-config] recent Game selection is no longer usable profile_id=%s error=%v; using Settings default", recent.ProfileID, err))

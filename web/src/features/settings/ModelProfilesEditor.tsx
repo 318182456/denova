@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -389,28 +389,35 @@ function modelProfileOptions(profiles: ModelProfileSettings[], effectiveProfiles
 }
 
 function ProviderPicker({ label, providers, value, placeholder, onChange }: { label: string; providers: ModelProviderPreset[]; value: string; placeholder: string; onChange: (provider: string) => void }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const normalizedValue = value.trim()
+  const customLabel = t('settings.model.providerCustom')
   const selectedProvider = providers.find((provider) => provider.id === normalizedValue)
-  const options = normalizedValue !== '' && !selectedProvider
-    ? [{ id: normalizedValue, name: normalizedValue, default_protocol: '', endpoints: {} }, ...providers]
-    : providers
+  const customProvider = providers.find((provider) => provider.id === MODEL_PROVIDER_OPENAI_COMPATIBLE)
+  const options = providers.filter((provider) => provider.id !== MODEL_PROVIDER_OPENAI_COMPATIBLE)
+  if (normalizedValue !== '' && !selectedProvider) {
+    options.unshift({ id: normalizedValue, name: normalizedValue, default_protocol: '', endpoints: {} })
+  }
+  if (customProvider) options.unshift(customProvider)
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm" role="combobox" aria-label={label} aria-expanded={open} className="nova-field w-full min-w-0 justify-between px-2.5 text-xs font-normal text-[var(--nova-text)]">
-          <span className="min-w-0 flex-1 truncate text-left">{selectedProvider?.name || normalizedValue || placeholder}</span>
+          <span className="min-w-0 flex-1 truncate text-left">{normalizedValue === MODEL_PROVIDER_OPENAI_COMPATIBLE ? customLabel : selectedProvider?.name || normalizedValue || placeholder}</span>
           <ChevronDown className={cn('size-4 shrink-0 text-[var(--nova-text-faint)] transition-transform', open && 'rotate-180')} />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={4} collisionPadding={8} className="nova-panel w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1rem)] gap-0 border p-1 text-[var(--nova-text)]">
         <div role="listbox" aria-label={label} className="max-h-64 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
           {options.map((provider) => (
-            <button key={provider.id} type="button" role="option" aria-selected={provider.id === normalizedValue} className={cn('flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs', provider.id === normalizedValue ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]')} onClick={() => { setOpen(false); onChange(provider.id) }}>
-              <span className="min-w-0 flex-1 truncate">{provider.name}</span>
-              {provider.name !== provider.id && <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{provider.id}</span>}
-              {provider.id === normalizedValue && <Check className="size-3.5 shrink-0" />}
-            </button>
+            <Fragment key={provider.id}>
+              <button type="button" role="option" aria-selected={provider.id === normalizedValue} className={cn('flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs', provider.id === normalizedValue ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]')} onClick={() => { setOpen(false); onChange(provider.id) }}>
+                <span className="min-w-0 flex-1 truncate">{provider.id === MODEL_PROVIDER_OPENAI_COMPATIBLE ? customLabel : provider.name}</span>
+                {provider.id === normalizedValue && <Check className="size-3.5 shrink-0" />}
+              </button>
+              {provider.id === MODEL_PROVIDER_OPENAI_COMPATIBLE && options.length > 1 && <div role="separator" className="my-1 border-t border-[var(--nova-border)]" />}
+            </Fragment>
           ))}
         </div>
       </PopoverContent>

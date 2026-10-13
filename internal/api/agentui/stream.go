@@ -55,6 +55,25 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 	data := eventDataMap(ev.Data)
 	meta := providerMetadataFromData(data)
 	contentSource := contentSourceKey(data)
+	// Match the durable display recorder's segment boundaries. Notifications
+	// do not end prose, and an event without a source never closes other Agents.
+	switch ev.Type {
+	case "tool_call", "tool_result", "ask_pending", "ask_resolved", "proposed_plan", "subagent_settled":
+		if err := e.closeOpenContentFor(contentSource); err != nil {
+			return err
+		}
+	case "token_usage", "execution_summary":
+		if err := e.closeOpenContent(); err != nil {
+			return err
+		}
+	case "context_compaction":
+		status := readString(data, "status")
+		if data["runtime_managed"] == true && (status == "completed" || status == "failed") {
+			if err := e.closeOpenContent(); err != nil {
+				return err
+			}
+		}
+	}
 
 	switch ev.Type {
 	case "chunk":
@@ -68,21 +87,12 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		}
 		return e.writeReasoningDelta(readString(data, "content"), meta, readString(data, "display_segment_id"), contentSource)
 	case "tool_call":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeToolCall(data, meta)
 	case "tool_args_delta":
 		return e.writeToolArgsDelta(data)
 	case "tool_started":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeToolStarted(data, meta)
 	case "tool_result":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		if err := e.writeToolResult(data, meta); err != nil {
 			return err
 		}
@@ -91,19 +101,10 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		}
 		return nil
 	case "ask_pending", "ask_resolved":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeAsk, eventID(data, "ask"), data)
 	case "workspace_change":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeWorkspaceChange, eventID(data, "workspace-change"), data)
 	case "context_compaction":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeContextCompaction, eventID(data, "context-compaction"), data)
 	case "todo_updated":
 		// Native already supplies an inspectable Todo tool card. Provider plans
@@ -111,31 +112,16 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		if data["runtime_managed"] != true {
 			return nil
 		}
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeTodo, eventID(data, "todo"), data)
 	case "interactive_image":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeInteractiveImage, eventID(data, "interactive-image"), data)
 	case "proposed_plan":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeProposedPlan, eventID(data, "proposed-plan"), data)
 	case "rule_roll":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeRuleRoll, eventID(data, "rule-roll"), data)
 	case "token_usage":
 		return e.writeData(DataTypeTokenUsage, eventID(data, "token-usage"), data)
 	case "execution_summary":
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		return e.writeData(DataTypeExecutionSummary, eventID(data, "execution-summary"), data)
 	case "error":
 		if err := e.closeOpenContent(); err != nil {
@@ -166,9 +152,6 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 	case "done":
 		return e.Finish("stop")
 	default:
-		if err := e.closeOpenContentFor(contentSource); err != nil {
-			return err
-		}
 		payload := cloneMap(data)
 		payload["event"] = ev.Type
 		return e.writeData(DataTypeActivity, eventID(data, ev.Type), payload)
@@ -288,9 +271,6 @@ func (e *StreamEncoder) closeOpenContent() error {
 }
 
 func (e *StreamEncoder) closeOpenContentFor(source string) error {
-	if source == "default" {
-		return e.closeOpenContent()
-	}
 	if err := e.closeText(source); err != nil {
 		return err
 	}

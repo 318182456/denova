@@ -815,7 +815,7 @@ function AgentPanelComponent({
             value={agentSelectionConfig.snapshot?.custom_agent_id ?? ''}
             disabled={sessionControlsDisabled || agentSelectionConfig.loading}
             size="sm"
-            className="min-w-0 max-w-48 border-transparent bg-[var(--nova-surface-2)] py-0 text-[11px] *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate"
+            className="min-w-0 max-w-48 border-transparent bg-[var(--nova-surface-2)] py-0 *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate"
             onValueChange={(customAgentId) => {
               if (customAgentId === undefined) return
               if (customAgentId === (agentSelectionConfig.snapshot?.custom_agent_id ?? '')) return

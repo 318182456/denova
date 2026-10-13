@@ -226,9 +226,9 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil && patch.Runtime == nil && patch.Codex == nil && patch.Claude == nil {
 		return conversationconfig.Snapshot{}, errors.New("conversation config changes are empty")
 	}
-	if patch.ProfileID != nil || patch.ThinkingLevel != nil {
-		a.modelSelectionMu.Lock()
-		defer a.modelSelectionMu.Unlock()
+	if patch.ProfileID != nil || patch.ThinkingLevel != nil || patch.Runtime != nil {
+		a.conversationSelectionMu.Lock()
+		defer a.conversationSelectionMu.Unlock()
 	}
 	change := conversationconfig.Patch{
 		CustomAgentID: patch.CustomAgentID,
@@ -262,7 +262,7 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 	if err != nil {
 		return snapshot, err
 	}
-	return snapshot, a.rememberConversationModel(snapshot, change)
+	return snapshot, a.rememberConversationDefaults(binding, snapshot, change)
 }
 
 func (a *App) requireForegroundConversationProject(projectID string) error {

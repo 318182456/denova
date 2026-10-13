@@ -284,17 +284,15 @@ for (const theme of ['dark', 'light']) {
       .getByRole('button', { name: 'Add resources', exact: true })
       .click()
     await expect(confirmation).toBeHidden()
+    const installedDetail = market.getByTestId('market-installation-detail')
+    await expect(installedDetail.getByRole('heading', { name: `Market fixture ${theme}`, exact: true })).toBeVisible()
+    await installedDetail.getByRole('button', { name: 'More actions', exact: true }).click()
     await expect(
-      market.getByRole('heading', { name: 'Packages', exact: true }),
-    ).toBeVisible()
-    await expect(market.getByRole('button', { name: new RegExp(`Market fixture ${theme}`) })).toHaveAttribute('aria-expanded', 'true')
-    await expect(
-      market.getByRole('button', { name: 'Stop tracking source', exact: true }),
+      page.getByRole('menuitem', { name: 'Stop tracking source', exact: true }),
     ).toBeVisible()
     // Save and reuse an export selection, reviewing a frozen archive before download.
-    await market
-      .getByRole('button', { name: 'Export package', exact: true })
-      .last()
+    await page
+      .getByRole('menuitem', { name: 'Export package', exact: true })
       .click()
     const exporter = page.getByRole('dialog', {
       name: 'Export package',
@@ -327,8 +325,9 @@ for (const theme of ['dark', 'light']) {
       `market-fixture-${theme}.zip`,
     )
     await expect(exporter).toBeHidden()
-    await market
-      .getByRole('button', { name: 'Installation backups', exact: true })
+    await installedDetail.getByRole('button', { name: 'More actions', exact: true }).click()
+    await page
+      .getByRole('menuitem', { name: 'Installation backups', exact: true })
       .click()
     const backup = page.getByRole('dialog', {
       name: 'Installation backups',

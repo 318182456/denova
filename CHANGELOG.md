@@ -54,6 +54,12 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 降低长思考流式输出时的 CPU 占用与滚动、工具卡片卡顿；思考逐词动画默认关闭，可通过“完整”动效重新开启。
+- Reduce CPU usage and scrolling or tool-card stalls during long thinking streams; thinking word animations default to off and can be enabled with Full motion.
+
+- 修复 Agent 流式正文被通知事件截断、重连时文字回退和思考内容重复的问题，保留已接受任务并从会话历史恢复冲突内容。
+- Fix truncated Agent text around notification events, text regression and duplicate reasoning during replay, recovering conflicting content from session history while preserving accepted tasks.
+
 - 修复 Safari 中 Agent 输入框的退格和向前删除失效，完整保留 emoji、组合字符与撤销行为。
 - Fix Backspace and forward deletion in the Safari Agent composer, preserving complete emoji, combining characters and undo behavior.
 

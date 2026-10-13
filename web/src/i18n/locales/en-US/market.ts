@@ -1,6 +1,8 @@
 const market = {
   'market.discovery.githubTopic': 'Discovered on GitHub',
   'market.discovery.githubTopicHelp': 'Listed automatically from a GitHub topic set by the author, without manual review. Check the source and required permissions before installing.',
+  'market.acquired.actions': 'More actions',
+  'market.acquired.installedIn': 'Installed in',
   'market.update.fromFile': 'Update from a local file',
   'market.update.sourceHelp': 'Preview a new file for the same package and review changes and new permissions. Local file updates preserve the original source and update policy. Choose whether to keep local edits or back them up and replace them.',
   'market.import.fromFile': 'Add from a local file',
@@ -206,9 +208,9 @@ const market = {
   'market.import.reuseShared': 'Reuse existing resources (default)',
   'market.import.copyShared': 'Import independent copies',
   'market.import.sharedHelp': 'Reuse keeps existing local content and its source tracking. Copies get separate identities; conflicting Skill names receive a numeric suffix. Extensions always share their installed identity. Project resources are imported into the selected book.',
-  'market.import.permissions':
-    'Allow this extension to use the following capabilities:',
-  'market.import.required': 'Required',
+  'market.import.requiredPermissions': 'Required permissions',
+  'market.import.requiredPermissionsHelp': 'Confirming installation grants these required capabilities. No individual selection is needed.',
+  'market.import.optionalPermissions': 'Optional permissions',
   'market.import.dependencies':
     'Dependencies included in this package are selected automatically.',
   'market.import.scope': 'Skill location',

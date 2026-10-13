@@ -111,7 +111,7 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
   }, [open, revision, controller.binding, controller.snapshot?.custom_agent_id, controller.snapshot?.agent_kind, controller.snapshot?.profile_id, t])
 
   const act = async (choice: RuntimeChoice) => {
-    if (selectionDisabled || choice.kind === current) return
+    if (selectionDisabled || (choice.kind === current && !controller.error)) return
     setPending(choice.kind)
     setError('')
     try {
@@ -145,7 +145,8 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
       <DropdownMenuSubContent avoidCollisions={!narrow} className="max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto w-64 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)] max-[700px]:w-56 max-[700px]:[translate:calc(-1*var(--radix-popper-anchor-width))_0]">
         <DropdownMenuGroup>
           {(loading ? [] : choices).map(choice => <div key={choice.kind}>
-            <DropdownMenuItem disabled={selectionDisabled || choice.kind === current || (!choice.changes && !choice.unchecked)}
+            {/* A failed defaults write can leave the conversation switched. Allow reselecting it to retry. */}
+            <DropdownMenuItem disabled={selectionDisabled || (choice.kind === current && !controller.error) || (!choice.changes && !choice.unchecked)}
               aria-label={t(`agentRuntime.${choice.kind}`)} aria-current={choice.kind === current ? 'true' : undefined}
               onSelect={event => { event.preventDefault(); void act(choice) }}>
               <span className="min-w-0 flex-1">{t(`agentRuntime.${choice.kind}`)}</span>
