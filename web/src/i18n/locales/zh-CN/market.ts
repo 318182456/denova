@@ -1,4 +1,6 @@
 const market = {
+  'market.discovery.githubTopic': 'GitHub 自动发现',
+  'market.discovery.githubTopicHelp': '根据作者设置的 GitHub topic 自动收录，未经人工审核。安装前请查看来源与所需权限。',
   'market.update.fromFile': '从本地文件更新',
   'market.update.sourceHelp': '预览同一资源包的新版文件，确认变化与新增权限。从本地文件更新会保留原来源和更新策略；本地修改由你决定保留或备份后替换。',
   'market.import.fromFile': '从本地文件添加',

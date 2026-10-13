@@ -44,7 +44,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func testCatalog() Catalog {
-	return Catalog{SchemaVersion: 1, Entries: []MarketEntry{{ID: "writing", Name: map[string]string{"en-US": "Writing"}, Description: map[string]string{"en-US": "A writing skill"}, Author: "Author", Format: "skill", Kinds: []string{"skill"}, Tags: []string{"writing"}, UpdatedAt: "2026-09-24", Source: Source{Kind: "github", URL: "https://github.com/author/skills", Ref: "main"}}}}
+	return Catalog{SchemaVersion: 1, Entries: []MarketEntry{{ID: "writing", Name: map[string]string{"en-US": "Writing"}, Description: map[string]string{"en-US": "A writing skill"}, Author: "Author", Format: "skill", Kinds: []string{"skill"}, Tags: []string{"writing"}, UpdatedAt: "2026-09-24", Discovery: "github_topic", Source: Source{Kind: "github", URL: "https://github.com/author/skills", Ref: "main"}}}}
 }
 
 func TestMarketExplicitFetchCacheAndOfflineRecovery(t *testing.T) {
@@ -67,7 +67,7 @@ func TestMarketExplicitFetchCacheAndOfflineRecovery(t *testing.T) {
 		t.Fatal("construction fetched catalog")
 	}
 	first, err := m.Catalog(ctx, CatalogURL, false)
-	if err != nil || len(first.Entries) != 1 || calls != 1 {
+	if err != nil || len(first.Entries) != 1 || calls != 1 || first.Entries[0].Discovery != "github_topic" {
 		t.Fatalf("first fetch: %+v %v calls=%d", first, err, calls)
 	}
 	if _, err := m.Catalog(ctx, CatalogURL, false); err != nil || calls != 1 {
@@ -75,7 +75,7 @@ func TestMarketExplicitFetchCacheAndOfflineRecovery(t *testing.T) {
 	}
 	fail = true
 	stale, err := m.Catalog(ctx, CatalogURL, true)
-	if err != nil || !stale.Stale || len(stale.Entries) != 1 || stale.FetchedAt != first.FetchedAt {
+	if err != nil || !stale.Stale || len(stale.Entries) != 1 || stale.FetchedAt != first.FetchedAt || stale.Entries[0].Discovery != "github_topic" {
 		t.Fatalf("cache was lost: %+v %v", stale, err)
 	}
 	if err := os.Remove(m.path); err != nil {
@@ -118,6 +118,19 @@ func TestCatalogIdentityAndSourceValidation(t *testing.T) {
 	for _, source := range []Source{{Kind: "github", URL: "https://user:pass@github.com/a/b"}, {Kind: "github", URL: "https://github.com/a/b", Path: "../outside"}, {Kind: "https_zip", URL: "http://example.com/pack.zip"}, {Kind: "command", URL: "https://example.com"}} {
 		if validateSource(source) == nil {
 			t.Fatalf("invalid source accepted: %+v", source)
+		}
+	}
+	for _, change := range []func(*MarketEntry){
+		func(entry *MarketEntry) { entry.Discovery = "reviewed" },
+		func(entry *MarketEntry) { entry.Featured = true },
+		func(entry *MarketEntry) {
+			entry.Source = Source{Kind: "https_zip", URL: "https://example.com/pack.zip"}
+		},
+	} {
+		catalog = testCatalog()
+		change(&catalog.Entries[0])
+		if validateCatalog(catalog) == nil {
+			t.Fatalf("invalid discovery origin accepted: %+v", catalog.Entries[0])
 		}
 	}
 }

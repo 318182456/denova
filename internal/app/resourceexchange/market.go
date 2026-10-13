@@ -35,16 +35,18 @@ type Source struct {
 }
 
 type MarketEntry struct {
-	ID            string            `json:"id"`
-	Name          map[string]string `json:"name"`
-	Description   map[string]string `json:"description"`
-	Author        string            `json:"author"`
-	Format        string            `json:"format"`
-	Kinds         []string          `json:"kinds"`
-	Tags          []string          `json:"tags"`
-	Source        Source            `json:"source"`
-	UpdatedAt     string            `json:"updated_at"`
-	Featured      bool              `json:"featured,omitempty"`
+	ID          string            `json:"id"`
+	Name        map[string]string `json:"name"`
+	Description map[string]string `json:"description"`
+	Author      string            `json:"author"`
+	Format      string            `json:"format"`
+	Kinds       []string          `json:"kinds"`
+	Tags        []string          `json:"tags"`
+	Source      Source            `json:"source"`
+	UpdatedAt   string            `json:"updated_at"`
+	Featured    bool              `json:"featured,omitempty"`
+	// Discovery describes index provenance, never installation or execution authority.
+	Discovery     string            `json:"discovery,omitempty"`
 	Cover         string            `json:"cover,omitempty"`
 	Compatibility map[string]string `json:"compatibility,omitempty"`
 	Usage         map[string]string `json:"usage,omitempty"`
@@ -198,6 +200,15 @@ func validateCatalog(catalog Catalog) error {
 			return fmt.Errorf("invalid catalog entry %q", entry.ID)
 		}
 		seen[entry.ID] = true
+		switch entry.Discovery {
+		case "":
+		case "github_topic":
+			if entry.Source.Kind != "github" || entry.Featured {
+				return fmt.Errorf("invalid GitHub topic discovery entry %q", entry.ID)
+			}
+		default:
+			return fmt.Errorf("unknown catalog discovery origin %q", entry.Discovery)
+		}
 		for _, value := range []map[string]string{entry.Name, entry.Description, entry.Compatibility, entry.Usage} {
 			if len(value) > 8 {
 				return fmt.Errorf("too many translations")

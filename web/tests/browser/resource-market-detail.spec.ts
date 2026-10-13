@@ -1,11 +1,37 @@
 import { expect, test } from '../support/fixtures'
 
+test('topic discovery is localized and distinct from manual registrations', async ({ page, request }) => {
+  await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'zh-CN', theme: 'dark' } } })
+  await page.addInitScript(() => { localStorage.setItem('nova:mode', 'market'); localStorage.setItem('nova.locale.configured', 'zh-CN') })
+  const entry = { id: 'topic-kit', name: { 'zh-CN': '自动发现的写作与游戏创作资源包' }, description: { 'zh-CN': '适用于写作与游戏。'.repeat(30) }, author: 'Author', kinds: ['skill'], tags: [], format: 'denova.resource-pack', updated_at: '2026-10-13', source: { kind: 'github', url: 'https://github.com/author/topic-kit', ref: 'main' } }
+  await page.route('**/api/resource-market/catalog', route => route.fulfill({ json: { schema_version: 1, entries: [
+    { ...entry, discovery: 'github_topic' },
+    { ...entry, id: 'registered-kit', name: { 'zh-CN': '手动收录的资源包' }, source: { ...entry.source, url: 'https://github.com/author/registered-kit' } },
+  ] } }))
+  await page.goto('/')
+  const automatic = page.getByTestId('market-resource-card').filter({ hasText: entry.name['zh-CN'] })
+  const registered = page.getByTestId('market-resource-card').filter({ hasText: '手动收录的资源包' })
+  await expect(automatic.getByText('GitHub 自动发现', { exact: true })).toBeVisible()
+  await expect(registered.getByText('GitHub 自动发现', { exact: true })).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 900 })
+  await expect(automatic.getByText('GitHub 自动发现', { exact: true })).toBeVisible()
+  expect(await automatic.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/market-topic-zh-card.png', fullPage: true })
+  await automatic.getByRole('button', { name: entry.name['zh-CN'], exact: true }).click()
+  const detail = page.getByTestId('market-entry-detail')
+  await expect(detail.getByText('GitHub 自动发现', { exact: true })).toBeVisible()
+  await expect(detail.getByText('根据作者设置的 GitHub topic 自动收录，未经人工审核。安装前请查看来源与所需权限。')).toBeVisible()
+  await expect(detail.getByText(/Listed automatically|Discovered on GitHub/)).toHaveCount(0)
+  expect(await detail.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/market-topic-zh-detail.png', fullPage: true })
+})
+
 for (const theme of ['dark', 'light']) {
   test(`catalog browsing before download and import contents in ${theme}`, async ({ page, request }) => {
     await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'en-US', theme } } })
     await page.addInitScript(() => { localStorage.setItem('nova:mode', 'market'); localStorage.setItem('nova.locale.configured', 'en-US') })
-    const source = { kind: 'github', url: 'https://github.com/author/resources', ref: 'main', path: 'packages/writing-and-game' }
-    const entry = { id: 'mixed', name: { 'en-US': 'Harbor creative collection with a long package title for writing and interactive stories' }, description: { 'en-US': 'Select the resources you need for your next story.' }, author: 'Author', kinds: ['preset.narrative', 'style.reference', 'game.openings'], tags: ['writing', 'game'], format: 'denova.resource-pack', updated_at: '2026-09-25', source, usage: { 'en-US': 'Use narrative presets in Creative Setups and openings when creating a story.' } }
+    const source = { kind: 'github', url: 'https://github.com/author/resources', ref: 'main' }
+    const entry = { id: 'mixed', name: { 'en-US': 'Harbor creative collection with a long package title for writing and interactive stories' }, description: { 'en-US': 'Select the resources you need for your next story.' }, author: 'Author', kinds: ['preset.narrative', 'style.reference', 'game.openings'], tags: ['writing', 'game'], format: 'denova.resource-pack', updated_at: '2026-09-25', discovery: 'github_topic', source, usage: { 'en-US': 'Use narrative presets in Creative Setups and openings when creating a story.' } }
     const resources = [
       { id: 'narrative', name: 'Quiet mystery', kind: 'preset.narrative', path: 'narrative.json', requires: ['prose'], digest: '1' },
       { id: 'prose', name: 'Prose reference', kind: 'style.reference', path: 'prose.md', digest: '2' },
@@ -17,15 +43,19 @@ for (const theme of ['dark', 'light']) {
     const preview = { preview_id: 'detail-preview', source, candidates: [{ candidate_id: 'mixed', package: { id: 'mixed', name: 'Harbor collection', version: '1.0.0' }, format: 'denova.resource-pack', resources }] }
     let previews = 0, deletes = 0
     await page.route('**/api/resource-market/catalog', route => route.fulfill({ json: { schema_version: 1, entries: [entry] } }))
-    await page.route('**/api/resource-exchange/previews', async route => { previews++; await route.fulfill({ json: preview }) })
+    await page.route('**/api/resource-exchange/previews', async route => { expect(route.request().postDataJSON()).toMatchObject(source); previews++; await route.fulfill({ json: preview }) })
     await page.route('**/api/resource-exchange/previews/detail-preview', async route => { deletes++; await route.fulfill({ json: {} }) })
     await page.route('**/api/resource-exchange/previews/detail-preview/files?*', route => {
       const selected = new URL(route.request().url()).searchParams.get('path')
       return route.fulfill({ json: { files: [{ path: 'opening.json', bytes: 120 }], path: selected, content: selected ? JSON.stringify({ title: 'Late light', content: '# The third light\nA boat emerges from the fog.' }) : undefined, binary: false, truncated: false } })
     })
     await page.goto('/')
+    await expect(page.getByTestId('market-resource-card').getByText('Discovered on GitHub', { exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Submit a package' })).toHaveAttribute('href', 'https://github.com/alfredxw/denova-index/blob/main/docs/publishing.md')
     await page.getByRole('button', { name: entry.name['en-US'], exact: true }).click()
     const detail = page.getByTestId('market-entry-detail')
+    await expect(detail.getByText('Discovered on GitHub', { exact: true })).toBeVisible()
+    await expect(detail.getByText(/without manual review/)).toBeVisible()
     await expect(detail.getByRole('button', { name: 'Get this package', exact: true })).toBeEnabled()
     await expect(detail.getByRole('checkbox')).toHaveCount(0)
     await expect(detail.getByRole('link', { name: 'github.com/author/resources' })).toBeVisible()

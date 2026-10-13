@@ -8,7 +8,7 @@ export interface PackageGameDefaults extends Omit<GameCreationDefaults, 'default
 }
 
 export const submissionURL =
-  'https://github.com/alfredxw/denova-index/issues/new?template=package.yml'
+  'https://github.com/alfredxw/denova-index/blob/main/docs/publishing.md'
 export const resourceKinds = [
   'preset.narrative',
   'preset.image',
@@ -67,6 +67,7 @@ export interface MarketEntry {
   source: Source
   updated_at: string
   featured?: boolean
+  discovery?: 'github_topic'
   compatibility?: Record<string, string>
   usage?: Record<string, string>
 }

@@ -132,6 +132,8 @@ ID 为 example.text-tools 的参考示例公开六个工具：count-characters�
 
 ## 清单和发布
 
+需要进入资源市场时，在公开仓库默认分支根目录提供包含该插件的 `denova-pack.json`，提交可安装文件，并添加 GitHub topic `denova-package`。索引按计划自动发现，市场会标注来源；这不代替安装检查与授权。子目录、指定 ref 或 ZIP 来源继续支持手动注册，详见[资源包发布指南](https://github.com/alfredxw/denova-index/blob/main/docs/publishing.md)。
+
 清单使用 denova.plugin.json，至少声明 manifestVersion: 1、id、严格语义版本 version、apiMajor: 1、minHostVersion: "0.6.0"、中英文 name、permissions 和 contributes。最低宿主版本与 API 主版本分别校验，不兼容时在检查与激活阶段拒绝。包及其他贡献 ID 使用小写字母、数字、点和连字符；builtin、local 保留。工具 ID 遵循上述模型工具名规则。一个产物根只能有一种清单。
 
 - distribution.files 是文件或目录白名单；未列出的依赖、入口或定义会使检查失败。

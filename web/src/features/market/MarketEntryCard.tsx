@@ -102,6 +102,7 @@ export function MarketEntryCard({
             </span>
           )}
         </Badge>
+        {entry.discovery === 'github_topic' && <Badge variant="outline">{t('market.discovery.githubTopic')}</Badge>}
         {entry.tags.slice(0, 2).map((tag) => (
           <Badge variant="outline" key={tag}>
             {t(`market.tag.${tag}`, { defaultValue: tag })}

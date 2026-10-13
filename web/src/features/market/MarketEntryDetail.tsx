@@ -32,7 +32,11 @@ export function MarketEntryDetail({ detail, acquired, onBack, onImport, onManage
           </div>
         </div>
         <p className="max-w-3xl whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]">{localized(detail.description, i18n.language)}</p>
-        <div className="flex flex-wrap gap-2">{detail.tags.map((tag) => <Badge key={tag} variant="outline">{t(`market.tag.${tag}`, { defaultValue: tag })}</Badge>)}</div>
+        <div className="flex flex-wrap gap-2">
+          {detail.discovery === 'github_topic' && <Badge variant="outline">{t('market.discovery.githubTopic')}</Badge>}
+          {detail.tags.map((tag) => <Badge key={tag} variant="outline">{t(`market.tag.${tag}`, { defaultValue: tag })}</Badge>)}
+        </div>
+        {detail.discovery === 'github_topic' && <p className="text-sm text-muted-foreground">{t('market.discovery.githubTopicHelp')}</p>}
       </header>
       <div className="grid min-w-0 items-start gap-6 border-t pt-6 @4xl:grid-cols-[minmax(0,1fr)_17rem] @4xl:gap-8">
         <aside className="space-y-3 @4xl:space-y-4 @4xl:rounded-xl @4xl:border @4xl:bg-muted/20 @4xl:p-4 @4xl:sticky @4xl:top-6 @4xl:col-start-2 @4xl:row-start-1">

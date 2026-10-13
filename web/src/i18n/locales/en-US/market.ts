@@ -1,4 +1,6 @@
 const market = {
+  'market.discovery.githubTopic': 'Discovered on GitHub',
+  'market.discovery.githubTopicHelp': 'Listed automatically from a GitHub topic set by the author, without manual review. Check the source and required permissions before installing.',
   'market.update.fromFile': 'Update from a local file',
   'market.update.sourceHelp': 'Preview a new file for the same package and review changes and new permissions. Local file updates preserve the original source and update policy. Choose whether to keep local edits or back them up and replace them.',
   'market.import.fromFile': 'Add from a local file',

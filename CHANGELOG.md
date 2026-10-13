@@ -36,8 +36,8 @@ Denova records only major user-visible features, important compatibility or data
 - Game stages support per-turn Lore backgrounds and character sprites selected by the Agent, multiple characters, an opening default background, independent dynamic-background and sprite controls, a reading scrim and text hiding. Presentation follows story branches, and invalid materials never block the story.
 - 资料项支持多图与音频素材、网络图片引用与按需保存到项目、独立说明、作品内复用和封面选择；生成图片追加保存，素材随资源包导入导出，版本恢复保留历史可能引用的媒体。旧版单图资料继续保留其属性与封面关系。
 - Lore items support multiple images and audio, web image references with optional local copies, per-item descriptions, project-local reuse and explicit covers. Generated images are appended, resource packs include materials, and version restores retain historical media. Existing single-image Lore retains its attributes and cover associations.
-- 新增市场与统一导入导出：从独立索引发现包含创作方案、Skills、资料、插件和游戏的资源包，预览并组合交付内容，统一管理来源、更新策略与备份恢复，保留各模块的编辑和使用入口。
-- Added a Marketplace and shared import/export: discover packages with creative setups, Skills, Lore, plugins and games through an independent index, preview and bundle resources, and manage sources, update policies and backups while keeping editing in each module.
+- 新增市场与统一导入导出：从独立索引发现包含创作方案、Skills、资料、插件和游戏的资源包，支持 GitHub topic 自助发现并标注来源；预览并组合交付内容，统一管理来源、更新策略与备份恢复，保留各模块的编辑和使用入口。
+- Added a Marketplace and shared import/export: discover packages with creative setups, Skills, Lore, plugins and games through an independent index, including GitHub topic discovery with source labels; preview and bundle resources, and manage sources, update policies and backups while keeping editing in each module.
 - 资源包可推荐背景与创作方案，用户可逐项采纳为书籍的新故事默认值；已有故事、全局偏好与用户自行调整保持独立，资源更新不会重新应用推荐。
 - Packages can recommend backgrounds and creative setups for per-book new-story defaults, adopted field by field. Existing stories, global preferences and user choices remain independent; updates never reapply recommendations.
 - 新增统一扩展管理与工作台开发流程：支持从 GitHub 或本地安装游戏和插件、按提交检查更新，以及启停、独有设置表单、模板创建、构建、独立预览与导出。
