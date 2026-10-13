@@ -125,6 +125,8 @@ func buildExternalAssembly(ctx context.Context, cfg *config.Config, state *book.
 // Agents manifest. Native permissions and session-dependent tools stay dormant.
 func ExternalConversationToolSettings(kind string) config.ResolvedAgentToolSettings {
 	settings := config.ResolveAgentTools(&config.Config{AgentTools: config.DefaultAgentToolSettings()}, kind)
+	// External engines own their plan tools independently of the Native Todo default.
+	settings[config.AgentToolTodo] = true
 	for _, capability := range []string{config.AgentToolDelegation, config.AgentToolScript} {
 		settings[capability] = false
 	}

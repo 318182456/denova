@@ -13,7 +13,7 @@ import (
 	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
-func TestExternalAssembliesExcludeNativeDelegation(t *testing.T) {
+func TestExternalAssembliesExcludeNativeCoordination(t *testing.T) {
 	for _, runtime := range []config.RuntimeSelection{
 		{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "test-model"}},
 		{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "test-model"}},
@@ -94,8 +94,8 @@ func TestExternalAssembliesExcludeNativeDelegation(t *testing.T) {
 						if _, err := definition.Tool.Run(t.Context(), "{}"); err != nil {
 							t.Fatal(err)
 						}
-					case "send", "await", "list_agents", "task", "task_wait":
-						t.Errorf("external assembly exposed Native delegation tool %q", info.Name)
+					case "send", "await", "list_agents", "task", "task_wait", "todo":
+						t.Errorf("external assembly exposed Native coordination tool %q", info.Name)
 					}
 				}
 				if !called {

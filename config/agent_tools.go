@@ -75,7 +75,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		AgentToolWebFetch,
 		AgentToolBrowser,
 		AgentToolAsk,
-		AgentToolTodo,
 		AgentToolSkills,
 		AgentToolDelegation,
 		AgentToolScript,
@@ -83,6 +82,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		AgentToolLoreWrite,
 	)
 	defaults[AgentToolConfigRead] = false
+	defaults[AgentToolTodo] = false
 	defaults[AgentToolConfigApply] = false
 	defaults[AgentToolEventRead] = false
 	defaults[AgentToolImageGeneration] = false
