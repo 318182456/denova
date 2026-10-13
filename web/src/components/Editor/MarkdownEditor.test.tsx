@@ -278,7 +278,7 @@ describe('MarkdownEditor', () => {
     expect(screen.queryByText('与全局外观设置共享，修改后自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('思源宋体阅读')).toBeInTheDocument()
     expect(screen.getByText('默认')).toBeInTheDocument()
-    const readingFontSize = screen.getByRole('group', { name: '阅读内容大小' })
+    const readingFontSize = screen.getByRole('radiogroup', { name: '阅读内容大小' })
     expect(within(readingFontSize).getAllByRole('radio')).toHaveLength(7)
     expect(within(readingFontSize).getByRole('radio', { name: '默认，第 4 档，共 7 档' })).toBeChecked()
     fireEvent.click(within(readingFontSize).getByRole('radio', { name: '大，第 5 档，共 7 档' }))

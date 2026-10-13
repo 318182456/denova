@@ -31,7 +31,7 @@ interface BoundError {
 
 /**
  * Owns one conversation's compare-and-swap configuration snapshot.
- * The backend also remembers explicit Writing/Game model choices in Settings.
+ * The backend also remembers explicit runtime and Writing/Game model choices in Settings.
  * Existing conversations keep their own snapshots; uncommitted drafts refresh.
  */
 export function useConversationConfig(binding?: ConversationConfigBinding): ConversationConfigController {
@@ -109,7 +109,10 @@ export function useConversationConfig(binding?: ConversationConfigBinding): Conv
   }, [bindingKey, source])
 
   useEffect(() => {
-    if (snapshot?.revision !== 0 && !error) return
+    // Settings can repair a failed load, but cannot dismiss a durable
+    // conversation's failed save before the user retries it.
+    if (snapshot !== null && snapshot.revision !== 0) return
+    if (snapshot === null && !error) return
     return subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, () => { void reload() })
   }, [error, reload, snapshot?.revision])
 
@@ -154,10 +157,10 @@ export function useConversationConfig(binding?: ConversationConfigBinding): Conv
     } finally {
       savingRef.current = false
       setSaving(false)
-      if ((changes.profile_id !== undefined || changes.thinking_level !== undefined)
-        && (base.agent_kind === 'ide' || base.agent_kind === 'interactive_story')) {
+      if (changes.runtime !== undefined || ((changes.profile_id !== undefined || changes.thinking_level !== undefined)
+        && (base.agent_kind === 'ide' || base.agent_kind === 'interactive_story'))) {
         void queryClient.invalidateQueries({ queryKey: settingsQueryKeys.all, refetchType: 'all' })
-          .catch((reason) => console.warn('[conversation-config] refresh remembered model settings failed', { reason }))
+          .catch((reason) => console.warn('[conversation-config] refresh remembered selection settings failed', { reason }))
       }
     }
   }, [bindingKey, normalizedBinding, reload, snapshot, source])

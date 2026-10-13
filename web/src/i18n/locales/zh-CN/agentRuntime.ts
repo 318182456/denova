@@ -23,7 +23,7 @@ const agentRuntime = {
   'agentRuntime.switchRuntime': "切换运行时",
   'agentRuntime.switchWhenIdle': "请在当前回合、排队任务和待处理交互结束后切换。",
   'agentRuntime.switchAfterStoryCreated': "创建故事后即可在回合间切换运行时。",
-  'agentRuntime.switchConversationHint': "从下一回合起生效，继续当前会话。",
+  'agentRuntime.switchConversationHint': "从下一回合起生效，新会话也使用此运行时。",
   'agentRuntime.modelChangeIdle': "请等待本次执行及待处理问题结束后，再修改模型或推理强度。",
   'agentRuntime.title': "运行时",
   'agentRuntime.engine': "执行引擎",

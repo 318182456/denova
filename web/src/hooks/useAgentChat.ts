@@ -10,7 +10,7 @@ import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
 import { localizeAgentRuntimeError, localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
-import { AgentChatTransport, AgentUIMessageNormalizer, buildAgentChatRequestBody, type AgentChatRequestMetadata, type AgentUIMessage } from '@/lib/agent-ui'
+import { AgentChatTransport, normalizeAgentUIMessages, buildAgentChatRequestBody, type AgentChatRequestMetadata, type AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
 import { STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
@@ -93,8 +93,6 @@ export function useAgentChat(options: ChatOptions = {}) {
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
   const projectStreamCycleRef = useRef<(operationID: string, cycle?: number) => void>(() => undefined)
   const refreshSessionsRef = useRef<() => Promise<SessionSummary[]>>(async () => [])
-  const messageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
-  messageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   const [displayRehydrateRequest, setDisplayRehydrateRequest] = useState<WritingDisplayRehydrateRequest | null>(null)
   const {
     messages: uiMessages,
@@ -167,14 +165,16 @@ export function useAgentChat(options: ChatOptions = {}) {
       void refreshSessionsRef.current()
     },
   })
-  const messages = useMemo(() => (
-    messageNormalizerRef.current!.normalize(uiMessages).flatMap<AgentUIMessage>((message) => {
+  const { messages, textConflicts } = useMemo(() => {
+    const textConflicts: string[] = []
+    const messages = normalizeAgentUIMessages(uiMessages, identity => textConflicts.push(identity)).flatMap<AgentUIMessage>((message) => {
       const visibleParts = message.parts.filter((part) => part.type !== 'data-agent-error')
       if (visibleParts.length === message.parts.length) return [message]
       if (visibleParts.length === 0) return []
       return [{ ...message, parts: visibleParts }]
     })
-  ), [uiMessages])
+    return { messages, textConflicts }
+  }, [uiMessages])
   const transportStreaming = status === 'submitted' || status === 'streaming'
   const {
     activeSessionId,
@@ -281,6 +281,13 @@ export function useAgentChat(options: ChatOptions = {}) {
     client,
   })
   projectStreamCycleRef.current = projectStreamCycle
+  useEffect(() => {
+    if (!transportStreaming || !textConflicts.length) return
+    console.warn('[useAgentChat.ts] Reloading conflicting Agent display segments', { sessionID: activeSessionId, identities: textConflicts })
+    // Closing only the display connection triggers the existing canonical
+    // inspection/reconnect path. The accepted server operation keeps running.
+    stopAIStream()
+  }, [activeSessionId, stopAIStream, textConflicts, transportStreaming])
   const isStreaming = transportStreaming || recoveryPending
   // Recovery inspection temporarily sets recoveryPending even for an idle
   // conversation. Project-level running state must represent real execution,

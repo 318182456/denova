@@ -1,4 +1,6 @@
 const market = {
+  'market.acquired.actions': '更多操作',
+  'market.acquired.installedIn': '安装位置',
   'market.update.fromFile': '从本地文件更新',
   'market.update.sourceHelp': '预览同一资源包的新版文件，确认变化与新增权限。从本地文件更新会保留原来源和更新策略；本地修改由你决定保留或备份后替换。',
   'market.import.fromFile': '从本地文件添加',
@@ -198,8 +200,9 @@ const market = {
   'market.import.reuseShared': '复用已有资源（默认）',
   'market.import.copyShared': '导入独立副本',
   'market.import.sharedHelp': '复用时保留现有本地内容和来源跟踪。副本使用独立身份，同名技能自动添加数字后缀。扩展始终共用已安装身份。项目资源导入所选书籍。',
-  'market.import.permissions': '授权此扩展使用以下能力：',
-  'market.import.required': '必需',
+  'market.import.requiredPermissions': '必需权限',
+  'market.import.requiredPermissionsHelp': '确认安装即授权以下必需能力，无需逐项勾选。',
+  'market.import.optionalPermissions': '可选权限',
   'market.import.dependencies': '所选资源依赖的包内资源会自动勾选。',
   'market.import.scope': '技能安装位置',
   'market.import.global': '全局资源库',

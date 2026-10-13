@@ -147,20 +147,19 @@ export function ImportDialog({
       ['lore.collection', 'game.openings', 'project.cover', 'project.creator'].includes(r.kind),
     ) || (resources.some((r) => r.kind === 'skill') && scope === 'workspace') || defaultFields.length > 0
   const permissionGrants = (resource: Preview['candidates'][number]['resources'][number]) => {
-    if (grants[resource.id]) return grants[resource.id]
     const extension = installation && resource.extension
       ? installedExtensions.find(item => !item.removed && item.kind === resource.extension?.kind && item.id === resource.extension.manifest.id)
       : undefined
     const release = extension?.releases.find(item => item.ref.releaseId === extension.currentRelease)
     const permissions = resource.extension?.manifest.permissions
-    return (release?.grants ?? extension?.grants ?? []).filter(permission => permissions?.required.includes(permission) || permissions?.optional?.includes(permission))
+    // Confirming installation grants required capabilities; only optional grants are editable.
+    return [...new Set([
+      ...(permissions?.required ?? []),
+      ...(grants[resource.id] ?? release?.grants ?? extension?.grants ?? [])
+        .filter(permission => permissions?.optional?.includes(permission)),
+    ])]
   }
   const sourceReady = input.kind === 'file' ? input.file : input.kind === 'directory' ? input.directory.trim() : input.url.trim()
-  const missingConsent = resources.some((r) =>
-    r.extension?.manifest.permissions.required.some(
-      (p) => !permissionGrants(r).includes(p),
-    ),
-  )
   useEffect(() => {
     let alive = true
     void getBooks()
@@ -286,7 +285,7 @@ export function ImportDialog({
             {!installation && resources.some(resource => resource.kind.startsWith('preset.') || resource.kind === 'style.reference' || resource.kind === 'skill' && scope === 'user') && (
               <Field>
                 <FieldLabel htmlFor="market-shared-resources">{t('market.import.sharedResources')}</FieldLabel>
-                <Select value={sharedResources} onValueChange={(value: 'reuse' | 'copy') => setSharedResources(value)}>
+                <Select value={sharedResources} onValueChange={value => setSharedResources(value as typeof sharedResources)}>
                   <SelectTrigger id="market-shared-resources" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="reuse">{t('market.import.reuseShared')}</SelectItem>
@@ -319,16 +318,21 @@ export function ImportDialog({
                         />
                       </Field>
                     )}
-                  {resource.extension && (
-                    <div className="space-y-2 rounded-md bg-muted p-3">
-                      <p className="text-xs text-muted-foreground">
-                        {t('market.import.permissions')}
-                      </p>
-                      {[
-                        ...resource.extension.manifest.permissions.required,
-                        ...(resource.extension.manifest.permissions.optional ||
-                          []),
-                      ].map((permission) => (
+                  {!!resource.extension?.manifest.permissions.required.length && (
+                    <section className="flex flex-col gap-2 rounded-md bg-muted p-3" aria-label={t('market.import.requiredPermissions')}>
+                      <p className="text-sm font-medium">{t('market.import.requiredPermissions')}</p>
+                      <p className="text-xs text-muted-foreground">{t('market.import.requiredPermissionsHelp')}</p>
+                      <ul className="flex list-disc flex-col gap-1 pl-5 text-sm break-words">
+                        {resource.extension.manifest.permissions.required.map(permission => (
+                          <li key={permission}>{t(`platform.permission.${permission}`)}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                  {!!resource.extension?.manifest.permissions.optional?.length && (
+                    <FieldSet>
+                      <FieldLegend variant="label">{t('market.import.optionalPermissions')}</FieldLegend>
+                      {resource.extension.manifest.permissions.optional.map((permission) => (
                         <Field key={permission} orientation="horizontal">
                           <Checkbox
                             id={`permission-${resource.id}-${permission}`}
@@ -353,15 +357,10 @@ export function ImportDialog({
                             htmlFor={`permission-${resource.id}-${permission}`}
                           >
                             {t(`platform.permission.${permission}`)}
-                            {resource.extension?.manifest.permissions.required.includes(
-                              permission,
-                            )
-                              ? ` · ${t('market.import.required')}`
-                              : ''}
                           </FieldLabel>
                         </Field>
                       ))}
-                    </div>
+                    </FieldSet>
                   )}
                 </div>
               ))}
@@ -525,8 +524,7 @@ export function ImportDialog({
               (!!preview &&
                 !plan &&
                 (!chosen.length ||
-                  (needsProject && (creatingBook ? !bookTitle.trim() : !projectID)) ||
-                  missingConsent))
+                  (needsProject && (creatingBook ? !bookTitle.trim() : !projectID))))
             }
             onClick={() =>
               void run(async () => {

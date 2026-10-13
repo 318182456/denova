@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, Gamepad2, MoreHorizontal, Package, Puzzle, RefreshCw, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +20,7 @@ import { ResourceDiscovery } from './ResourceDiscovery'
 import { MarketEntryDetail } from './MarketEntryDetail'
 import { MarketInstallationUpdates } from './MarketInstallationUpdates'
 import { AcquiredResources } from './AcquiredResources'
+import { InstalledPackageDetail } from './InstalledPackageDetail'
 import { ImportDialog, type ImportDialogProps } from './ImportDialog'
 import { ExportDialog } from './ExportDialog'
 import { openResourceDestination, useResourceNavigation } from './resource-navigation'
@@ -39,6 +40,21 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
   const extensions = useQuery({ queryKey: ['platform', 'catalog'], queryFn: () => management<CatalogEntry[]>('/catalog'), enabled: visible })
   const installations = installed.data ?? []
   const updates = installations.filter(item => item.tracking === 'tracked' && item.remote_state === 'update_available')
+  // Resolve against all installations so finishing an update does not dismiss its detail.
+  const selectedInstallation = destination.section === 'acquired' || destination.section === 'updates'
+    ? installations.find(item => item.installation_id === destination.installationID) : undefined
+  const installationList = useRef<HTMLDivElement>(null)
+  const listHeading = useRef<HTMLHeadingElement>(null)
+  const listReturn = useRef<{ section: 'acquired' | 'updates'; scrollTop: number; trigger?: HTMLButtonElement }>(undefined)
+  useLayoutEffect(() => {
+    if (selectedInstallation || !listReturn.current) return
+    const saved = listReturn.current
+    listReturn.current = undefined
+    if (saved.section !== section) return
+    installationList.current?.scrollTo({ top: saved.scrollTop })
+    const target = saved.trigger?.isConnected ? saved.trigger : listHeading.current
+    target?.focus({ preventScroll: true })
+  }, [selectedInstallation, section])
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [category, setCategory] = useState<MarketCategory>('all')
   const [detail, setDetail] = useState<MarketEntry>()
@@ -137,10 +153,10 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
           onBack={() => setDetail(undefined)} onImport={(source, initialInput) => openImport({ source, initialInput })}
           onManage={() => openResourceDestination({ section: 'acquired', installationID: matchingInstallations[0]?.installation_id })}
           updates={<MarketInstallationUpdates installations={matchingInstallations} projectID={projectID} onImport={openImport} onChanged={refreshResources} blockedReason={blockedReason} />} />}
-        {(section === 'acquired' || section === 'updates') && <div className="h-full overflow-auto">
+        {(section === 'acquired' || section === 'updates') && <div ref={installationList} hidden={!!selectedInstallation} className="h-full overflow-auto" data-testid="market-installation-list">
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-base font-semibold">{t(`market.${section}`)}</h1>
+              <h1 ref={listHeading} tabIndex={-1} className="text-base font-semibold outline-none">{t(`market.${section}`)}</h1>
               <Badge variant="secondary">{t('market.results', { count: section === 'updates' ? updates.length : installations.length })}</Badge>
               <Button variant="outline" size="sm" className="ml-auto" disabled={checking || installed.isPending || !!blockedReason} onClick={() => void checkAllUpdates()}>
                 <RefreshCw className={checking ? 'animate-spin' : ''} data-icon="inline-start" />{t('market.checkUpdates')}
@@ -148,10 +164,19 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
             </div>
             {installed.error && <p role="alert" className="text-sm text-destructive">{t('market.errors.operationFailed')}</p>}
             {installed.isPending ? <p role="status">{t('common.loading')}</p> : section === 'updates' && updates.length === 0 ? <Empty><EmptyHeader><EmptyMedia variant="icon"><RefreshCw /></EmptyMedia><EmptyTitle>{t('market.updatesEmpty')}</EmptyTitle><EmptyDescription>{t('market.updatesHelp')}</EmptyDescription></EmptyHeader></Empty> :
-              <AcquiredResources installations={section === 'updates' ? updates : installations} requested={destination.section === 'acquired' ? destination.installationID : undefined}
-                extensions={extensions.data ?? []} blockedReason={blockedReason} onChanged={refreshResources} onImport={openImport} onExport={setExporting} onDiscover={() => openResourceDestination({ section: 'discover' })} />}
+              <AcquiredResources installations={section === 'updates' ? updates : installations}
+                onOpen={(installationID, trigger) => {
+                  listReturn.current = { section, trigger, scrollTop: installationList.current?.scrollTop ?? 0 }
+                  openResourceDestination({ section, installationID })
+                }} onDiscover={() => openResourceDestination({ section: 'discover' })} />}
           </div>
         </div>}
+        {(section === 'acquired' || section === 'updates') && selectedInstallation && <InstalledPackageDetail key={selectedInstallation.installation_id}
+          installation={selectedInstallation} extensions={extensions.data ?? []} blockedReason={blockedReason}
+          onBack={() => {
+            listReturn.current ??= { section, scrollTop: 0 }
+            openResourceDestination({ section })
+          }} onChanged={refreshResources} onCheckUpdate={checkUpdate} onImport={openImport} onExport={setExporting} />}
         <div hidden={section !== 'extensions'} className="h-full overflow-auto">
           <InstalledExtensions visible={visible && section === 'extensions'} catalog={extensions.data} error={extensions.error} installations={installations}
             dirtyEntries={dirtyExtensions} onDirtyChange={updateDirty} onRefresh={refreshResources} onUpdate={checkUpdate} blockedReason={blockedReason} />
@@ -161,7 +186,9 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
     {importing && <ImportDialog {...importing} installedExtensions={extensions.data ?? []} onClose={() => setImporting(undefined)} onInstalled={async installation => {
       await refreshResources()
       const binding = installation.bindings.length === 1 ? installation.bindings[0] : undefined
-      if (binding?.local.kind === 'extension.plugin' || binding?.local.kind === 'extension.game') openInstalledExtension(binding.local.kind === 'extension.game' ? 'game' : 'plugin', binding.local.id)
+      if (importing.installation?.installation_id === installation.installation_id && (section === 'acquired' || section === 'updates')) {
+        openResourceDestination({ section, installationID: installation.installation_id })
+      } else if (binding?.local.kind === 'extension.plugin' || binding?.local.kind === 'extension.game') openInstalledExtension(binding.local.kind === 'extension.game' ? 'game' : 'plugin', binding.local.id)
       else openResourceDestination({ section: 'acquired', installationID: installation.installation_id })
     }} />}
     {exporting && <ExportDialog {...exporting} projectID={exporting.installation?.project_id ?? projectID} onClose={() => setExporting(undefined)} />}

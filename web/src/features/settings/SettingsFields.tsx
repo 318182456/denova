@@ -18,7 +18,7 @@ const TRACE_CAPTURE_OPTIONS = [
 const TRACE_EXPORTER_OPTIONS = [
   { value: 'local', labelKey: 'settings.debug.traceExporterLocal' },
 ] as const
-export function FieldRow({ label, children }: { label: string; children: ReactNode }) {
+export function FieldRow({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   const generatedID = useId()
   const childID = isValidElement<{ id?: string }>(children) ? children.props.id : undefined
   const controlID = childID || generatedID
@@ -28,6 +28,7 @@ export function FieldRow({ label, children }: { label: string; children: ReactNo
   return (
     <SettingsFieldRow
       title={label}
+      description={description}
       htmlFor={controlID}
       className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
       contentClassName="sm:w-44 sm:flex-none"
@@ -331,7 +332,7 @@ export function MotionIntensitySelect({ label, value, inherited, onChange }: {
   const inheritedValue = inherited || 'system'
   const inheritedLabel = t(MOTION_INTENSITY_OPTIONS.find((option) => option.value === inheritedValue)?.labelKey || 'settings.motion.system')
   return (
-    <FieldRow label={label}>
+    <FieldRow label={label} description={t('settings.appearance.motionIntensityDescription')}>
       <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
         <SelectTrigger size="sm" className="w-full">
           <SelectValue />

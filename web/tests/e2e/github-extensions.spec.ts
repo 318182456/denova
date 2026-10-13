@@ -15,15 +15,18 @@ async function sourceCandidates(request: APIRequestContext, kind: 'plugin' | 'ga
   const development = await initialized.json()
   const index = await (await request.get('/api/agent-chat/projects')).json()
   const directory = index.projects.find((item: { id: string }) => item.id === project.id).path
+  const manifestPath = path.join(directory, `denova.${kind}.json`)
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  if (kind === 'plugin') manifest.permissions.optional = ['library.read']
+  await writeFile(manifestPath, JSON.stringify(manifest))
   const firstResponse = await request.post('/api/resource-exchange/previews', { data: { kind: 'directory', directory } })
   expect(firstResponse.ok(), await firstResponse.text()).toBe(true)
   const first = await firstResponse.json()
   const file = path.join(directory, kind === 'plugin' ? 'server.mjs' : 'game.mjs')
   await writeFile(file, await readFile(file, 'utf8') + '\n// Source update without a version bump.\n')
-  // Add a permission to ensure an update cannot silently grant new capabilities.
-  const manifestPath = path.join(directory, `denova.${kind}.json`)
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  // Updates disclose new required capabilities and keep new optional capabilities off.
   manifest.permissions.required.push('tools.write')
+  if (kind === 'plugin') manifest.permissions.optional.push('library.write')
   await writeFile(manifestPath, JSON.stringify(manifest))
   const secondResponse = await request.post('/api/resource-exchange/previews', { data: { kind: 'directory', directory } })
   expect(secondResponse.ok(), await secondResponse.text()).toBe(true)
@@ -81,8 +84,23 @@ for (const kind of ['plugin', 'game'] as const) {
     await repository.fill(source.url)
     await dialog.getByRole('button', { name: chinese ? '下载并预览' : 'Download and preview', exact: true }).click()
     await expect(dialog.getByRole('button', { name: chinese ? '生成安装计划' : 'Review plan', exact: true })).toBeVisible()
-    for (const permission of await dialog.locator('[id^="permission-"]').all()) await permission.check()
+    const required = dialog.getByRole('region', { name: chinese ? '必需权限' : 'Required permissions', exact: true })
+    const firstMember = first.candidates[0].resources[0]
+    if (kind === 'plugin') {
+      await expect(required.getByRole('listitem')).toHaveCount(firstMember.extension.manifest.permissions.required.length)
+      await expect(required.getByRole('checkbox')).toHaveCount(0)
+      const optional = dialog.locator('[id^="permission-"]')
+      await expect(optional).not.toBeChecked()
+      await optional.check()
+    } else {
+      await expect(required).toHaveCount(0)
+      await expect(dialog.locator('[id^="permission-"]')).toHaveCount(0)
+    }
+    const planning = page.waitForRequest('**/api/resource-exchange/plans')
     await dialog.getByRole('button', { name: chinese ? '生成安装计划' : 'Review plan', exact: true }).click()
+    expect((await planning).postDataJSON().grants).toEqual({
+      [firstMember.id]: [...firstMember.extension.manifest.permissions.required, ...(kind === 'plugin' ? ['library.read'] : [])],
+    })
     const confirmation = page.getByRole('dialog', { name: chinese ? '确认安装计划' : 'Review installation plan' })
     const installed = page.waitForResponse(response => response.url().endsWith('/apply') && response.request().method() === 'POST')
     await confirmation.getByRole('button', { name: chinese ? '安装扩展' : 'Install extension', exact: true }).click()
@@ -98,15 +116,21 @@ for (const kind of ['plugin', 'game'] as const) {
     const review = page.getByRole('dialog', { name: chinese ? '更新内容' : 'Update contents', exact: true })
     await expect(review).toBeVisible()
     const reviewButton = review.getByRole('button', { name: chinese ? '生成安装计划' : 'Review plan', exact: true })
-    await expect(reviewButton).toBeDisabled()
-    const unchecked = review.locator('[id^="permission-"][data-state="unchecked"]')
-    await expect(unchecked).toHaveCount(1)
-    await unchecked.check()
+    await expect(reviewButton).toBeEnabled()
+    const secondMember = second.candidates[0].resources[0]
+    const updatedRequired = review.getByRole('region', { name: chinese ? '必需权限' : 'Required permissions', exact: true })
+    await expect(updatedRequired.getByRole('listitem')).toHaveCount(secondMember.extension.manifest.permissions.required.length)
+    await expect(updatedRequired.getByRole('checkbox')).toHaveCount(0)
+    if (kind === 'plugin') {
+      await expect(review.locator('[id$="-library.read"]')).toBeChecked()
+      await expect(review.locator('[id$="-library.write"]')).not.toBeChecked()
+    }
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 })
       await page.screenshot({ path: `test-results/github-update-${language}-${width}.png`, fullPage: true })
       const bounds = (await review.boundingBox())!
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+      expect(await updatedRequired.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
     }
     await reviewButton.click()
     const updated = page.waitForResponse(response => response.url().endsWith('/apply') && response.request().method() === 'POST')
@@ -118,6 +142,9 @@ for (const kind of ['plugin', 'game'] as const) {
     const firstExtension = first.candidates[0].resources[0].extension
     const secondExtension = second.candidates[0].resources[0].extension
     expect(item.currentRelease).toBe(secondExtension.digest)
+    expect(item.releases.find((release: { digest: string }) => release.digest === item.currentRelease).grants.toSorted()).toEqual(
+      [...secondExtension.manifest.permissions.required, ...(kind === 'plugin' ? ['library.read'] : [])].toSorted(),
+    )
     expect(item.releases.map((release: { digest: string }) => release.digest)).toEqual([firstExtension.digest, secondExtension.digest])
     expect(checks).toEqual([receipt.installation_id])
     const receipts = await (await request.get('/api/resource-exchange/installations')).json()
@@ -277,10 +304,10 @@ test('updates a local extension through its existing receipt and confirms new pe
   await dialog.getByLabel('Local package directory', { exact: true }).fill(directory)
   await dialog.getByRole('button', { name: 'Preview resources', exact: true }).click()
   const review = dialog.getByRole('button', { name: 'Review plan', exact: true })
-  await expect(review).toBeDisabled()
-  const permission = dialog.locator('[id^="permission-"][data-state="unchecked"]')
-  await expect(permission).toHaveCount(1)
-  await permission.check()
+  await expect(review).toBeEnabled()
+  await expect(dialog.locator('[id$="-library.read"]')).toBeChecked()
+  await expect(dialog.locator('[id$="-library.write"]')).not.toBeChecked()
+  await dialog.locator('[id$="-library.read"]').uncheck()
   await review.click()
   const applying = page.waitForResponse(response => response.url().endsWith('/apply') && response.request().method() === 'POST')
   await page.getByRole('dialog', { name: 'Review installation plan', exact: true }).getByRole('button', { name: 'Apply this update', exact: true }).click()
@@ -288,5 +315,8 @@ test('updates a local extension through its existing receipt and confirms new pe
   expect(updated.ok()).toBe(true)
   expect((await updated.json()).installation_id).toBe(receipt.installation_id)
   const catalog = await (await request.get('/api/platform/manage/catalog')).json()
-  expect(catalog.find((item: { id: string }) => item.id === id).currentRelease).toBe(second.candidates[0].resources[0].extension.digest)
+  const item = catalog.find((item: { id: string }) => item.id === id)
+  const extension = second.candidates[0].resources[0].extension
+  expect(item.currentRelease).toBe(extension.digest)
+  expect(item.releases.find((release: { digest: string }) => release.digest === item.currentRelease).grants.toSorted()).toEqual(extension.manifest.permissions.required.toSorted())
 })
