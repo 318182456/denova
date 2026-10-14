@@ -20,7 +20,7 @@ skills_dir = "./skills"
 # Only startup config and DENOVA_DIR select the data root; user/Project settings do not.
 # denova_dir = "./.denova"
 
-# Optional port overrides. Defaults are backend 8080 and frontend 5173;
+# Optional port overrides. Defaults are backend 7789 and frontend 7788;
 # user settings and environment overrides can select other ports.
 # backend_port = 8111
 # frontend_port = 5112

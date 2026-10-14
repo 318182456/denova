@@ -1,34 +1,33 @@
 import { MOBILE_PROJECT_OPEN_EVENT, showMobileWritingView } from '@/components/layout/mobile-pane-events'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { lazy, memo, useCallback } from 'react'
+import { memo, useCallback } from 'react'
+import loadable from '@loadable/component'
 import type { ComponentProps, ReactNode } from 'react'
 import { ArrowRight, FolderOpen, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, PenLine, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImageFilePreview } from './ImageFilePreview'
-import { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor'
+import type { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
-import { WritingSourceEditor } from '@/components/Editor/WritingSourceEditor'
-import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
-import { ProjectBinaryPreview } from '@/features/files/ProjectSourceEditor'
+import type { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { ProjectFileExplorerNode } from '@/features/project-explorer/model'
 import type { ChapterSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
 import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 import type { ReviewFeedbackNavigationTarget } from './use-review-feedback-navigation'
 import type { Tab } from './TabController'
 import { TabController } from './TabController'
-import { WorkbenchRouteLayer } from './WorkbenchRouteHost'
+import { WorkbenchRouteLayer, workbenchLoadingOptions } from './WorkbenchRouteHost'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { AgentChatConversationState } from '@/features/agent-chat/AgentChatConversationTab'
 
-const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
+const LoreWorkspaceTab = memo(loadable(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })), workbenchLoadingOptions))
 const StableImageFilePreview = memo(ImageFilePreview)
-const StableWritingDocumentEditor = memo(WritingDocumentEditor)
-const StableWritingSourceEditor = memo(WritingSourceEditor)
-const StableProjectBinaryPreview = memo(ProjectBinaryPreview)
-const StableChangeReviewWorkspace = memo(ChangeReviewWorkspace)
+const StableWritingDocumentEditor = memo(loadable(() => import('@/components/Editor/WritingDocumentEditor').then(module => ({ default: module.WritingDocumentEditor })), workbenchLoadingOptions))
+const StableWritingSourceEditor = memo(loadable(() => import('@/components/Editor/WritingSourceEditor').then(module => ({ default: module.WritingSourceEditor })), workbenchLoadingOptions))
+const StableProjectBinaryPreview = memo(loadable(() => import('@/features/files/ProjectSourceEditor').then(module => ({ default: module.ProjectBinaryPreview })), workbenchLoadingOptions))
+const StableChangeReviewWorkspace = memo(loadable(() => import('@/features/changes/review/ChangeReviewWorkspace').then(module => ({ default: module.ChangeReviewWorkspace })), workbenchLoadingOptions))
 const StableTabController = memo(TabController)
 
 type ChangeReviewProps = ComponentProps<typeof ChangeReviewWorkspace>

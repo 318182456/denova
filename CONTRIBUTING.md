@@ -22,7 +22,7 @@ Useful local commands:
 ./scripts/build.sh
 ```
 
-If a frontend command is missing, try the project script first, then use `npx` when appropriate. If port `5173` is already occupied by the user's Vite process, do not kill or replace it; use the existing hot-reload page.
+If a frontend command is missing, try the project script first, then use `npx` when appropriate. If port `7788` is already occupied by the user's Vite process, do not kill or replace it; use the existing hot-reload page.
 
 ## Development Principles
 

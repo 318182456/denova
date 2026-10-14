@@ -30,6 +30,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8
+      '@loadable/component':
+        specifier: ^5.16.7
+        version: 5.16.7(react@19.2.6)
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(patch_hash=41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b)(monaco-editor@0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -226,6 +229,9 @@ importers:
       '@testing-library/user-event':
         specifier: ^14.6.1
         version: 14.6.1(@testing-library/dom@10.4.1)
+      '@types/loadable__component':
+        specifier: ^5.13.10
+        version: 5.13.10
       '@types/node':
         specifier: ^25.8.0
         version: 25.8.0
@@ -5177,6 +5183,21 @@ packages:
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
+
+  '@loadable/component@5.16.7':
+    resolution: {integrity: sha512-XvkFixLUOTEaj8lI7uwc4nf8Wmq3IulYG7SZHCWcPm/Li5gjJDFfIkgWOLPnD7jqPJVtAG9bEz4SCek+SpHYYg==}
+    engines: {node: '>=8'}
+    peerDependencies:
+      react: ^16.3.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  '@types/loadable__component@5.13.10':
+    resolution: {integrity: sha512-2/LjmgG1JcGPj7T3NViq7BB5cvOA0s63gL3Gv+FPULj2L+3ExWfsNQcsFPUIOoGsVUJeZxgNPf320JZDyxjtCQ==}
+
+  hoist-non-react-statics@3.3.2:
+    resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
+
+  react-is@16.12.0:
+    resolution: {integrity: sha512-rPCkf/mWBtKc97aLL9/txD8DZdemK0vkA3JMLShjlJB3Pj3s+lpf1KaBzMfQrAmhMQB0n1cU/SUGgKKBCe837Q==}
 
 snapshots:
 
@@ -10508,3 +10529,20 @@ snapshots:
       use-sync-external-store: 1.6.0(react@19.2.6)
 
   zwitch@2.0.4: {}
+
+  '@loadable/component@5.16.7(react@19.2.6)':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      hoist-non-react-statics: 3.3.2
+      react: 19.2.6
+      react-is: 16.12.0
+
+  '@types/loadable__component@5.13.10':
+    dependencies:
+      '@types/react': 19.2.14
+
+  hoist-non-react-statics@3.3.2:
+    dependencies:
+      react-is: 16.12.0
+
+  react-is@16.12.0: {}

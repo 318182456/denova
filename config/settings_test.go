@@ -107,10 +107,10 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.UpdateCheckEnabled == nil || *s.UpdateCheckEnabled != true {
 		t.Fatalf("UpdateCheckEnabled default")
 	}
-	if s.BackendPort == nil || *s.BackendPort != 8080 {
+	if s.BackendPort == nil || *s.BackendPort != 7789 {
 		t.Fatalf("BackendPort default")
 	}
-	if s.FrontendPort == nil || *s.FrontendPort != 5173 {
+	if s.FrontendPort == nil || *s.FrontendPort != 7788 {
 		t.Fatalf("FrontendPort default")
 	}
 	if s.AllowLANAccess == nil || *s.AllowLANAccess {
@@ -157,8 +157,8 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UpdateCheckEnabled:         boolPtr(true),
 		ChapterFilenameFormat:      "old-chapter",
 		VolumeDirFormat:            "old-volume",
-		BackendPort:                intPtr(8080),
-		FrontendPort:               intPtr(5173),
+		BackendPort:                intPtr(7789),
+		FrontendPort:               intPtr(7788),
 		AllowLANAccess:             boolPtr(false),
 		WritingSkillDefault:        "novel-standard",
 		IDEImagePresetID:           "realistic",

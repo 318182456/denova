@@ -1,6 +1,7 @@
 package project
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +41,9 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 	var data registryData
 	raw, err := os.ReadFile(registry.path)
 	if err == nil {
+		if cached := registry.readCache; cached != nil && bytes.Equal(raw, cached.raw) {
+			return cloneRegistryData(cached.data), false, nil
+		}
 		if err := json.Unmarshal(raw, &data); err != nil {
 			return registryData{}, false, fmt.Errorf("decode project registry: %w", err)
 		}
@@ -61,6 +65,7 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 			if err := registry.normalizeRegistryData(&data); err != nil {
 				return registryData{}, false, err
 			}
+			registry.readCache = &registryReadCache{raw: raw, data: cloneRegistryData(data)}
 			return data, false, nil
 		case legacyProjectStateRegistryVersion:
 			if err := registry.normalizeRegistryData(&data); err != nil {

@@ -187,8 +187,8 @@ func DefaultSettings() Settings {
 		SkillsDir:                   "./skills",
 		DenovaDir:                   "./" + workspacelayout.DataDirName,
 		NovaDir:                     "./" + workspacelayout.DataDirName,
-		BackendPort:                 intPtr(8080),
-		FrontendPort:                intPtr(5173),
+		BackendPort:                 intPtr(7789),
+		FrontendPort:                intPtr(7788),
 		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
@@ -830,7 +830,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		)
 		resolvedContexts[customAgent.ID] = ResolveAgentContext(&customConfig, runtimeKind)
 	}
-	backendPort := settingsInt(eff.BackendPort, 8080)
+	backendPort := settingsInt(eff.BackendPort, 7789)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
 	if rev, err := UserSettingsRevision(novaDir); err == nil {

@@ -239,6 +239,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.DELETE("/skills/document", apiHandlers.HandleSkillDelete)
 		api.GET("/automations", apiHandlers.HandleAutomations)
 		api.GET("/automations/templates", apiHandlers.HandleAutomationTemplates)
+		api.GET("/automations/catalog", apiHandlers.HandleAutomationCatalog)
 		api.POST("/automations", apiHandlers.HandleAutomationCreate)
 		api.GET("/automations/inbox", apiHandlers.HandleAutomationInbox)
 		api.POST("/automations/inbox/:item_id/confirm", apiHandlers.HandleAutomationInboxConfirm)

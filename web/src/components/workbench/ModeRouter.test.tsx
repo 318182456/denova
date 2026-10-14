@@ -279,10 +279,11 @@ describe('ModeRouter autosave navigation policy', () => {
     })
   })
 
-  it('shows Diff Review while hiding the retained document tabs', () => {
+  it('shows Diff Review while hiding the retained document tabs', async () => {
     writingChangeReviewMock.activeReviewThreadID = 'review-thread'
 
     const { container } = render(withAppProviders(<ModeRouter {...modeRouterProps()} />))
+    await screen.findByTestId('change-review-workspace')
 
     const writingLayer = container.querySelector('[data-writing-content-layer="true"]')
     expect(writingLayer).toHaveAttribute('aria-hidden', 'true')
@@ -527,7 +528,7 @@ describe('ModeRouter autosave navigation policy', () => {
       onSetSidebarView,
     })} />))
 
-    await user.click(screen.getByRole('button', { name: 'reveal chapter in outline' }))
+    await user.click(await screen.findByRole('button', { name: 'reveal chapter in outline' }))
 
     expect(onToggleProjectVisible).toHaveBeenCalledTimes(1)
     expect(onSetSidebarView).toHaveBeenCalledWith('outline')
@@ -594,7 +595,7 @@ describe('ModeRouter autosave navigation policy', () => {
       activeTabKey: `file:${firstPath}`,
     })} />))
 
-    expect(markdownEditorLifecycle.mounts).toBe(1)
+    await waitFor(() => expect(markdownEditorLifecycle.mounts).toBe(1))
     expect(markdownEditorLifecycle.unmounts).toBe(0)
 
     await act(async () => {

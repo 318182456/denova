@@ -1,9 +1,19 @@
 import { memo, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
 import { MobileWorkspaceHeaderScope } from '@/components/layout/mobile-workspace-header'
 import { isPluginPageRoute, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { WorkbenchPresentedLayout } from './WorkbenchShell'
+
+// Loadable boundaries reveal a downloaded route immediately. The fallback
+// remains a live component so a language change updates its localized label.
+export const workbenchLoadingOptions = { fallback: <WorkbenchLoadingState /> }
+
+function WorkbenchLoadingState() {
+  const { t } = useTranslation()
+  return <LoadingState label={t('router.loading')} className="h-full min-h-0" />
+}
 
 export type WorkbenchRouteId =
   | 'plugin'

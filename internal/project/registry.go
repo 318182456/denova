@@ -41,6 +41,8 @@ type Registry struct {
 	path            string
 	legacyBooksPath string
 	denovaDir       string
+	readCache       *registryReadCache
+	preparedStores  map[string]preparedProjectStore // Guarded by storeMu; successful migrations only.
 }
 
 func NewRegistry(denovaDir string) *Registry {
@@ -656,6 +658,7 @@ func (registry *Registry) saveLocked(data registryData) error {
 		return err
 	}
 	removeTemp = false
+	registry.readCache = &registryReadCache{raw: append(raw, '\n'), data: cloneRegistryData(data)}
 	return nil
 }
 

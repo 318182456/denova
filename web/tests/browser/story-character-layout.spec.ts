@@ -23,7 +23,7 @@ for (const theme of ['dark', 'light']) {
     await page.goto('/')
     await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
     await page.getByRole('tab', { name: '控制', exact: true }).click()
-    const layout = page.getByRole('group', { name: '角色布局', exact: true })
+    const layout = page.getByRole('radiogroup', { name: '角色布局', exact: true })
     await expect(layout).toHaveCount(1)
     await expect(layout.getByRole('radio')).toHaveCount(4)
     const size = page.getByRole('slider', { name: '角色大小', exact: true })
@@ -133,7 +133,7 @@ for (const theme of ['dark', 'light']) {
     if (theme === 'light') {
       await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'en-US' } } })
       await page.reload()
-      const englishLayout = page.getByRole('group', { name: 'Character layout', exact: true })
+      const englishLayout = page.getByRole('radiogroup', { name: 'Character layout', exact: true })
       await expect(englishLayout.getByRole('radio', { name: 'Center', exact: true })).toBeChecked()
       await expect(page.getByRole('slider', { name: 'Character size', exact: true })).toHaveAttribute('aria-valuetext', '100%')
       await englishLayout.scrollIntoViewIfNeeded()

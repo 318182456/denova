@@ -61,7 +61,7 @@ for (const engine of ['codex', 'claude'] as const) {
       const trigger = page.locator('[data-model-profile-trigger]').filter({ visible: true })
       await trigger.click()
       await page.getByRole('menuitem', { name: '配置', exact: true }).click()
-      await expect(runtime.getByRole('group', { name: '模型来源' })).toBeVisible()
+      await expect(runtime.getByRole('radiogroup', { name: '模型来源' })).toBeVisible()
       const enginePicker = runtime.getByRole('combobox', { name: '执行引擎', exact: true })
       await enginePicker.click()
       await page.getByRole('option', { name: 'Native', exact: true }).click()

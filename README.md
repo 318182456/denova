@@ -112,8 +112,8 @@ corepack enable
 
 默认地址：
 
-- 前端：`http://localhost:5173`
-- 后端：`http://localhost:8080`
+- 前端：`http://localhost:7788`
+- 后端：`http://localhost:7789`
 
 ## 模型与配置
 

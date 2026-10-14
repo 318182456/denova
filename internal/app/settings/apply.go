@@ -82,10 +82,10 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 		cfg.SetDataDir(layered.Paths.DenovaDir)
 	}
 	if effective.BackendPort != nil {
-		cfg.BackendPort = positiveInt(effective.BackendPort, 8080)
+		cfg.BackendPort = positiveInt(effective.BackendPort, 7789)
 	}
 	if effective.FrontendPort != nil {
-		cfg.FrontendPort = positiveInt(effective.FrontendPort, 5173)
+		cfg.FrontendPort = positiveInt(effective.FrontendPort, 7788)
 	}
 	if effective.AllowLANAccess != nil {
 		cfg.AllowLANAccess = *effective.AllowLANAccess

@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { Agent } from 'node:http'
 import path from 'path'
 
-const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '8080'
+const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '7789'
 
 // Only suites that exercise browser APIs need a fresh DOM and React setup.
 // Keep file isolation in both projects so mocks and module state cannot leak.
@@ -41,7 +41,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    exclude: [...configDefaults.exclude, 'tests/**'],
+    exclude: [...configDefaults.exclude, 'tests/**', 'test-results/**'],
     // Only the review workspace relies on computed CSS visibility in jsdom.
     // Other styles are presentation-only and do not need Vitest processing.
     css: { include: [/review-diff\.css$/] },
@@ -49,7 +49,7 @@ export default defineConfig({
     projects: [
       { extends: true, test: {
         name: 'node', environment: 'node', include: ['**/*.test.ts'],
-        exclude: [...configDefaults.exclude, 'tests/**', ...domTests],
+        exclude: [...configDefaults.exclude, 'tests/**', 'test-results/**', ...domTests],
       } },
       { extends: true, test: {
         name: 'dom', environment: 'jsdom', include: domTests,
@@ -65,15 +65,24 @@ export default defineConfig({
   },
   build: {
     rolldownOptions: {
+      preserveEntrySignatures: 'allow-extension',
       output: {
+        strictExecutionOrder: true,
         codeSplitting: {
+          includeDependenciesRecursively: false,
           // Keep size caps on individual groups: a global cap can split tightly coupled SDKs into cyclic chunks.
           minSize: 20 * 1024,
           groups: [
+            // React is shared by the shell and optional SDKs. Give it explicit
+            // ownership so an SDK's atomic group cannot capture the UI runtime.
+            { name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/, priority: 100 },
             // @pierre/diffs has top-level initializers across its internal modules.
             // Keep the package atomic so the vendor size cap cannot create cyclic chunks.
+            // Shared dependencies (especially React) must not be absorbed into
+            // optional SDK chunks, or every page has to load those SDKs too.
             { name: 'pierre-diffs', test: /node_modules[\\/]@pierre[\\/]diffs[\\/]/, priority: 50 },
-            { name: 'shiki', test: /node_modules[\\/](?:shiki|@shikijs)[\\/]/, priority: 40 },
+            // Keep asynchronously loaded grammars and themes behind their own entries.
+            { name: 'shiki', test: /node_modules[\\/](?:shiki|@shikijs)[\\/]/, priority: 40, entriesAware: true },
             { name: 'monaco', test: /node_modules[\\/](?:monaco-editor|@monaco-editor)[\\/]/, priority: 30 },
             // Radix primitives initialize shared contexts at module scope. Splitting
             // them by size can call those factories before their chunk initializes.
@@ -87,6 +96,7 @@ export default defineConfig({
     },
   },
   server: {
+    port: 7788,
     // Test workspaces contain their own HTML/JS packages. Their writes must not
     // reload the host application in the middle of a browser interaction.
     watch: { ignored: ['**/test-results/**', '**/playwright-report/**'] },

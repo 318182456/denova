@@ -52,13 +52,19 @@ type migrationLocations struct{ BackupRoot, StoreRoot string }
 
 func migrate(workspace string, locations migrationLocations) error {
 	legacyFound := false
-	for _, name := range []string{"assets/lore/images", "assets/lore/media", "assets/interactive/images", "assets/illustrations", "assets/image/generated", "assets/image/covers", "assets/image/cover.png"} {
-		if _, err := os.Lstat(filepath.Join(workspace, filepath.FromSlash(name))); err == nil {
-			legacyFound = true
-			break
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
+	// Empty Books have no asset directory. Avoid seven negative filesystem
+	// probes while still checking the durable plan and detecting later imports.
+	if _, err := os.Lstat(filepath.Join(workspace, "assets")); err == nil {
+		for _, name := range []string{"assets/lore/images", "assets/lore/media", "assets/interactive/images", "assets/illustrations", "assets/image/generated", "assets/image/covers", "assets/image/cover.png"} {
+			if _, err := os.Lstat(filepath.Join(workspace, filepath.FromSlash(name))); err == nil {
+				legacyFound = true
+				break
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
 		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	backupRoot := locations.BackupRoot
 	planPath := filepath.Join(backupRoot, "plan.json")

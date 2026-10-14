@@ -1,5 +1,5 @@
-import { PluginPageWorkspace } from '@/features/platform/PluginPageWorkspace'
-import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import loadable from '@loadable/component'
 import { BookCreationProvider } from './book-creation'
 import { PluginWorkspaceProvider } from '@/features/platform/PluginWorkspace'
 import { useTranslation } from 'react-i18next'
@@ -27,7 +27,7 @@ import { useLoreCategories } from '@/features/lore/use-lore-categories'
 import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
 import { tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
-import { useWorkbenchRouteHost, WorkbenchRouteLayer } from './WorkbenchRouteHost'
+import { useWorkbenchRouteHost, WorkbenchRouteLayer, workbenchLoadingOptions } from './WorkbenchRouteHost'
 import { flattenFileTree } from './workbench-utils'
 import { useReviewFeedbackNavigation } from './use-review-feedback-navigation'
 import { WritingSidebar } from './WritingSidebar'
@@ -46,9 +46,10 @@ import {
 } from '@/features/trajectory/trajectory-navigation'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
-const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
-const SettingPanel = memo(lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel }))))
-const VersionPanel = memo(lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel }))))
+const PluginPageWorkspace = memo(loadable(() => import('@/features/platform/PluginPageWorkspace').then(module => ({ default: module.PluginPageWorkspace })), workbenchLoadingOptions))
+const InteractiveLayout = memo(loadable(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout })), workbenchLoadingOptions))
+const SettingPanel = memo(loadable(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })), workbenchLoadingOptions))
+const VersionPanel = memo(loadable(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel })), workbenchLoadingOptions))
 const EMPTY_CHAPTERS: ChapterSummary[] = []
 const EMPTY_CHAPTER_PLANS: DocumentPreview[] = []
 const EXTERNAL_CONTENT_CHANGE = { impact: 'content', origin: 'external' } satisfies WorkspaceChangeMetadata

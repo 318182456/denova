@@ -26,13 +26,7 @@ import {
   type RuntimeSnapshot,
 } from './api'
 
-export function usePluginPages() {
-  return useQuery({
-    queryKey: ['platform', 'plugin-pages'],
-    queryFn: () => management<PluginPage[]>('/plugin-pages'),
-    refetchInterval: 5000,
-  })
-}
+import { usePluginPages } from './use-plugin-pages'
 
 /** Navigation selects a destination; its consumer and Agent remain bound to the
  * same Project while the user visits other routes. Project changes revoke it. */

@@ -1,13 +1,14 @@
 package api
 
 import (
+	"compress/gzip"
 	"context"
 	"log/slog"
 	"net"
 
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 	hertzconfig "github.com/cloudwego/hertz/pkg/common/config"
-	"github.com/hertz-contrib/gzip"
+	hertzgzip "github.com/hertz-contrib/gzip"
 
 	"denova/config"
 	"denova/internal/api/sse"
@@ -70,7 +71,9 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	// The gzip middleware buffers body streams before compressing them. Exclude
 	// every SSE route at the server boundary so browsers can consume events as
 	// they arrive even when their automatic Accept-Encoding header includes gzip.
-	h.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathRegexes([]string{
+	// Fast compression keeps large settings/history responses off the CPU hot
+	// path while preserving compressed transfers. SSE stays unbuffered.
+	h.Use(hertzgzip.Gzip(gzip.BestSpeed, hertzgzip.WithExcludedPathRegexes([]string{
 		`^/api/.*/stream(?:\?.*)?$`,
 		`^/api/(?:chat|interactive/chat|projects/[^/]+/agent-chat/chat|workspace/events)(?:\?.*)?$`,
 	})))

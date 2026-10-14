@@ -68,7 +68,7 @@ for (const language of ['zh-CN', 'en-US'] as const) {
         await page.getByRole('menuitem', { name: label, exact: true }).click()
         const create = page.getByRole('dialog', { name: createLabel })
         await expect(create.getByLabel(templateLabel, { exact: true })).toHaveCount(0)
-        const types = create.getByRole('group', { name: chinese ? '扩展类型' : 'Extension type', exact: true })
+        const types = create.getByRole('radiogroup', { name: chinese ? '扩展类型' : 'Extension type', exact: true })
         const plugin = types.getByRole('radio', { name: chinese ? '插件' : 'Plugin', exact: true })
         const game = types.getByRole('radio', { name: chinese ? '游戏' : 'Game', exact: true })
         await expect(kind === 'game' ? game : plugin).toBeChecked()

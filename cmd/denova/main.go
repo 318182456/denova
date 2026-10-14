@@ -259,14 +259,14 @@ func defaultPort(cfg *config.Config) string {
 	if cfg != nil && cfg.BackendPort > 0 {
 		return strconv.Itoa(cfg.BackendPort)
 	}
-	return "8080"
+	return "7789"
 }
 
 func defaultFrontendPort(cfg *config.Config) string {
 	if cfg != nil && cfg.FrontendPort > 0 {
 		return strconv.Itoa(cfg.FrontendPort)
 	}
-	return "5173"
+	return "7788"
 }
 
 // reserveBackendListener atomically claims the selected HTTP port. The listener

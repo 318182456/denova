@@ -112,8 +112,8 @@ corepack enable
 
 Default addresses:
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8080`
+- Frontend: `http://localhost:7788`
+- Backend: `http://localhost:7789`
 
 ## Models and Configuration
 
