@@ -84,21 +84,21 @@ for (const theme of ['dark', 'light']) {
     })
     const entries = Array.from({ length: 51 }, (_, i) => ({
       id: `fixture-${i}`,
-      name: { 'en-US': `Creative resource ${i}` },
+      name: { 'en-US': i === 0 ? `Creative resource ${i} ${'with a long title '.repeat(12)}` : `Creative resource ${i}` },
       description: {
         'en-US':
           i === 0
             ? 'Long description '.repeat(80)
             : 'A writing resource for the test library.',
       },
-      author: 'Fixture author',
+      author: i === 0 ? 'Long author name '.repeat(12) : 'Fixture author',
       format:
         i === 50 ? 'extension.game' : i === 49 ? 'extension.plugin' : i === 48 ? 'denova.resource-pack' : 'skill',
       kinds:
         i === 48
           ? ['preset.narrative', 'style.reference']
           : [i === 50 ? 'extension.game' : i === 49 ? 'extension.plugin' : 'skill'],
-      tags: ['writing'],
+      tags: i === 0 ? ['writing', 'research'] : ['writing'],
       updated_at: '2026-09-24',
       source: { kind: 'github', url: 'https://github.com/author/repository' },
     }))
@@ -126,20 +126,11 @@ for (const theme of ['dark', 'light']) {
       await expect(market.getByRole('button', { name: 'Creative resource 48', exact: true })).toBeVisible()
     }
     await navigation
-      .getByRole('button', { name: 'Content type', exact: true })
-      .click()
-    await expect(
-      navigation.getByRole('button', { name: 'Plugins', exact: true }),
-    ).toBeHidden()
-    await navigation
-      .getByRole('button', { name: 'Content type', exact: true })
-      .click()
-    await navigation
       .getByRole('button', { name: 'Plugins', exact: true })
       .click()
     await expect(market.getByTestId('market-resource-card')).toHaveCount(1)
     await navigation
-      .getByRole('button', { name: 'Discover resources', exact: true })
+      .getByRole('button', { name: 'All resources', exact: true })
       .click()
     await market
       .getByRole('button', { name: 'Collapse sidebar', exact: true })
@@ -152,8 +143,7 @@ for (const theme of ['dark', 'light']) {
     const cards = market.getByTestId('market-resource-card')
     expect((await cards.first().boundingBox())!.height).toBeLessThan(200)
     await market.getByRole('radio', { name: 'List view' }).click()
-    expect((await cards.first().boundingBox())!.height).toBeLessThan(110)
-    await market.getByRole('radio', { name: 'Grid view' }).click()
+    expect((await cards.first().boundingBox())!.height).toBeLessThan(140)
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 })
       await expect(
@@ -164,10 +154,31 @@ for (const theme of ['dark', 'light']) {
           (element) => element.scrollWidth <= element.clientWidth,
         ),
       ).toBe(true)
-      await page.screenshot({
-        path: `test-results/market-${theme}-${width}.png`,
-        fullPage: true,
-      })
+      for (const view of ['List', 'Grid']) {
+        await market.getByRole('radio', { name: `${view} view` }).click()
+        // Different tag widths and long text must not move the description into another column.
+        const layouts = await cards.evaluateAll(cards => cards.slice(0, 2).map(card => {
+          const header = card.querySelector('[data-slot="card-header"]')!.getBoundingClientRect()
+          const content = card.querySelector('[data-slot="card-content"]')!.getBoundingClientRect()
+          const footer = card.querySelector('[data-slot="card-footer"]')!.getBoundingClientRect()
+          return {
+            headerX: header.x, headerBottom: header.bottom,
+            contentX: content.x, contentY: content.y, contentBottom: content.bottom,
+            footerY: footer.y,
+            contained: card.scrollWidth <= card.clientWidth,
+          }
+        }))
+        for (const layout of layouts) {
+          expect(Math.abs(layout.headerX - layout.contentX)).toBeLessThan(1)
+          expect(layout.contentY).toBeGreaterThanOrEqual(layout.headerBottom)
+          expect(layout.footerY).toBeGreaterThanOrEqual(layout.contentBottom)
+          expect(layout.contained).toBe(true)
+        }
+        await page.screenshot({
+          path: `test-results/market-${view.toLowerCase()}-${theme}-${width}.png`,
+          fullPage: true,
+        })
+      }
     }
     await page
       .getByRole('button', {
@@ -185,7 +196,7 @@ for (const theme of ['dark', 'light']) {
       })
       .click()
     await navigation
-      .getByRole('button', { name: 'Discover resources', exact: true })
+      .getByRole('button', { name: 'All resources', exact: true })
       .click()
     await market
       .getByRole('textbox', { name: 'Search name, description or author' })

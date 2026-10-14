@@ -1,7 +1,6 @@
 import {
   ArrowUpRight,
   BookOpen,
-  ChevronDown,
   Compass,
   Gamepad2,
   Library,
@@ -16,11 +15,6 @@ import {
 import { useTranslation } from 'react-i18next'
 import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import {
   SidebarContent,
   SidebarFooter,
@@ -108,21 +102,34 @@ export function MarketSidebar({
         className="flex h-full min-h-0 flex-col"
       >
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('market.title')}</SidebarGroupLabel>
+          <SidebarGroup role="group" aria-label={t('market.discovery.title')}>
+            <SidebarGroupLabel>{t('market.discovery.title')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton isActive={section === 'discover' && category === 'all'} aria-current={section === 'discover' && category === 'all' ? 'page' : undefined} onClick={() => select('discover')}>
-                    <Compass /><span>{t('market.discover')}</span>
+                    <Compass /><span>{t('market.allResources')}</span>
                   </SidebarMenuButton>
                   <SidebarMenuBadge>{entries.length}</SidebarMenuBadge>
                 </SidebarMenuItem>
+                {categories.map(({ id, icon: Icon }) => (
+                  <SidebarMenuItem key={id}>
+                    <SidebarMenuButton
+                      isActive={section === 'discover' && category === id}
+                      aria-current={section === 'discover' && category === id ? 'page' : undefined}
+                      onClick={() => select('discover', id)}
+                    >
+                      <Icon /><span>{t(`market.category.${id}`)}</span>
+                    </SidebarMenuButton>
+                    <SidebarMenuBadge>{entries.filter(entry => matchesCategory(entry, id)).length}</SidebarMenuBadge>
+                  </SidebarMenuItem>
+                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('market.added')}</SidebarGroupLabel>
+          <SidebarSeparator />
+          <SidebarGroup role="group" aria-label={t('market.installed')}>
+            <SidebarGroupLabel>{t('market.installed')}</SidebarGroupLabel>
             <SidebarGroupContent><SidebarMenu>
               {([{ id: 'acquired', icon: Library, count: acquiredCount }, { id: 'extensions', icon: Puzzle, count: extensionCount }, { id: 'updates', icon: RefreshCw, count: updateCount }] as const).map(({ id, icon: Icon, count }) => <SidebarMenuItem key={id}>
                 <SidebarMenuButton isActive={section === id} aria-current={section === id ? 'page' : undefined} onClick={() => select(id)}>
@@ -132,46 +139,6 @@ export function MarketSidebar({
               </SidebarMenuItem>)}
             </SidebarMenu></SidebarGroupContent>
           </SidebarGroup>
-          <SidebarSeparator />
-          <Collapsible defaultOpen className="group/types">
-            <SidebarGroup>
-              <SidebarGroupLabel asChild>
-                <CollapsibleTrigger className="w-full gap-2">
-                  <ChevronDown className="transition-transform group-data-[state=closed]/types:-rotate-90" />
-                  <span>{t('market.type')}</span>
-                </CollapsibleTrigger>
-              </SidebarGroupLabel>
-              <CollapsibleContent>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {categories.map(({ id, icon: Icon }) => (
-                      <SidebarMenuItem key={id}>
-                        <SidebarMenuButton
-                          isActive={section === 'discover' && category === id}
-                          aria-current={
-                            section === 'discover' && category === id
-                              ? 'page'
-                              : undefined
-                          }
-                          onClick={() => select('discover', id)}
-                        >
-                          <Icon />
-                          <span>{t(`market.category.${id}`)}</span>
-                        </SidebarMenuButton>
-                        <SidebarMenuBadge>
-                          {
-                            entries.filter((entry) =>
-                              matchesCategory(entry, id),
-                            ).length
-                          }
-                        </SidebarMenuBadge>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </CollapsibleContent>
-            </SidebarGroup>
-          </Collapsible>
         </SidebarContent>
         {officialRegistry && (
           <>

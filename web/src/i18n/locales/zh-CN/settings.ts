@@ -15,6 +15,9 @@ const settings = {
 
   'settings.section.market': "资源中心",
   'settings.market.registryURL': '注册点索引地址',
+  'settings.market.githubToken': 'GitHub Token（可选）',
+  'settings.market.githubTokenHint': '提高 GitHub 下载与更新检查的请求额度。保存在用户设置中，仅发送给 GitHub API。留空时读取环境变量 GITHUB_TOKEN 或 GH_TOKEN。',
+  'settings.market.githubTokenPlaceholder': '留空则使用环境变量 Token 或匿名请求',
   'settings.market.hint': '支持使用 Denova 索引格式的自托管 HTTPS 注册点。资源包下载地址需公开可访问，无需鉴权。',
   'settings.market.restoreDefault': '恢复官方注册点',
   'settings.partialSaveFailed': '已保存：{{saved}}。保存失败：{{failed}}。未保存的修改已保留，可修改后重试。',

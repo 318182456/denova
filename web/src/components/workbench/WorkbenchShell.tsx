@@ -26,6 +26,7 @@ import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import { WorkbenchAppSidebar } from './WorkbenchAppSidebar'
+import { useActivityBarWidth } from './use-activity-bar-width'
 import {
   defaultActivityOrderForScope,
   isActivityItemID,
@@ -69,14 +70,7 @@ interface WorkbenchShellProps {
   onDismissNotice?: () => void
 }
 
-// User-level width preference; it should survive reloads and development hot updates.
-const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 48
-const ACTIVITY_BAR_MIN_WIDTH = 192
-const ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH = 152
-const ACTIVITY_BAR_DEFAULT_WIDTH = 224
-const ACTIVITY_BAR_MAX_WIDTH = 288
-const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
 
 export function WorkbenchShell({
   mode,
@@ -110,7 +104,7 @@ export function WorkbenchShell({
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemID[]>>(readStoredActivityOrders)
   const [hiddenActivityIDs, setHiddenActivityIDs] = useState<ActivityItemID[]>(readStoredHiddenActivityIDs)
-  const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
+  const activityBarSizing = useActivityBarWidth(activityBarExpanded && !isMobile)
   const activitySummary = useActivitySummary().data
   const messageUnread = activitySummary?.message_unread_count ?? 0
   const automationInboxUnread = activitySummary?.automation_inbox_unread_count ?? 0
@@ -350,45 +344,6 @@ export function WorkbenchShell({
     }
   }
 
-  const resizeActivityBar = (nextWidth: number) => {
-    const clampedWidth = clampActivityBarWidth(nextWidth)
-    setActivityBarWidth(clampedWidth)
-    storeActivityBarWidth(clampedWidth)
-  }
-
-  const handleActivityBarResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!activityBarExpanded) return
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = activityBarWidth
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      resizeActivityBar(startWidth + moveEvent.clientX - startX)
-    }
-    const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp, { once: true })
-  }
-
-  const handleActivityBarResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!activityBarExpanded) return
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      resizeActivityBar(activityBarWidth - ACTIVITY_BAR_WIDTH_KEYBOARD_STEP)
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      resizeActivityBar(activityBarWidth + ACTIVITY_BAR_WIDTH_KEYBOARD_STEP)
-    } else if (event.key === 'Home') {
-      event.preventDefault()
-      resizeActivityBar(ACTIVITY_BAR_MIN_WIDTH)
-    } else if (event.key === 'End') {
-      event.preventDefault()
-      resizeActivityBar(ACTIVITY_BAR_MAX_WIDTH)
-    }
-  }
-
   const activityBar = (
     <WorkbenchAppSidebar
       expanded={activityBarExpanded}
@@ -431,16 +386,16 @@ export function WorkbenchShell({
       settingsActive={settingsOpen}
       toggleLabel={activityBarExpanded ? t('workbench.activity.toggleCollapse') : t('workbench.activity.toggleExpand')}
       resizeLabel={t('layout.resize.activityBar')}
-      minWidth={ACTIVITY_BAR_MIN_WIDTH}
-      maxWidth={ACTIVITY_BAR_MAX_WIDTH}
-      currentWidth={activityBarWidth}
+      minWidth={activityBarSizing.minWidth}
+      maxWidth={activityBarSizing.maxWidth}
+      currentWidth={activityBarSizing.width}
       onOpenSettings={onToggleSettings}
       onToggle={onToggleActivityBarExpanded}
       onReorder={handleActivityReorder}
       onCustomizationReorder={handleCustomizationActivityReorder}
       onActivityVisibilityChange={handleActivityVisibilityChange}
-      onResizePointerDown={handleActivityBarResizePointerDown}
-      onResizeKeyDown={handleActivityBarResizeKeyDown}
+      onResizePointerDown={activityBarSizing.onResizePointerDown}
+      onResizeKeyDown={activityBarSizing.onResizeKeyDown}
     />
   )
 
@@ -525,9 +480,10 @@ export function WorkbenchShell({
   return (
     <MobileWorkspaceHeaderProvider route={presentedLayout}>
       <SidebarProvider
+        ref={activityBarSizing.wrapperRef}
         open={activityBarExpanded}
         style={{
-          '--sidebar-width': `${activityBarWidth}px`,
+          '--sidebar-width': `${activityBarSizing.width}px`,
           '--sidebar-width-icon': `${ACTIVITY_BAR_COLLAPSED_WIDTH}px`,
         } as CSSProperties}
       >
@@ -561,22 +517,4 @@ function ActivityIconBadge({ count, running, children }: { count: number; runnin
       )}
     </span>
   )
-}
-
-export function readStoredActivityBarWidth() {
-  if (typeof window === 'undefined') return ACTIVITY_BAR_DEFAULT_WIDTH
-  const raw = window.localStorage.getItem(ACTIVITY_BAR_WIDTH_STORAGE_KEY)
-  if (raw === null) return ACTIVITY_BAR_DEFAULT_WIDTH
-  const value = Number(raw)
-  if (value === ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH) return ACTIVITY_BAR_DEFAULT_WIDTH
-  return Number.isFinite(value) ? clampActivityBarWidth(value) : ACTIVITY_BAR_DEFAULT_WIDTH
-}
-
-function storeActivityBarWidth(width: number) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(ACTIVITY_BAR_WIDTH_STORAGE_KEY, String(clampActivityBarWidth(width)))
-}
-
-function clampActivityBarWidth(width: number) {
-  return Math.min(ACTIVITY_BAR_MAX_WIDTH, Math.max(ACTIVITY_BAR_MIN_WIDTH, Math.round(width)))
 }

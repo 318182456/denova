@@ -11,7 +11,7 @@ export interface SpeechSettings {
 }
 
 export interface Settings {
-  market?: { registry_url?: string }
+  market?: { registry_url?: string; github_token?: string }
   game_creation_defaults?: import('@/features/interactive/game-creation-defaults').GameCreationDefaults
   speech?: SpeechSettings
   agent_runtimes?: Partial<Record<'ide' | 'general' | 'interactive_story', import('@/features/agent-runtime/types').RuntimePreferences>>

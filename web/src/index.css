@@ -908,6 +908,12 @@ html[data-nova-motion="off"] .shimmer {
   transition-timing-function: var(--nova-panel-motion-ease) !important;
 }
 
+/* Pointer resizing follows the pointer directly; explicit collapse/expand still animates. */
+[data-nova-activity-bar-resizing="true"] > [data-slot="sidebar-gap"],
+[data-nova-activity-bar-resizing="true"] > .nova-activity-bar {
+  transition-duration: 0s !important;
+}
+
 /* The primary menu belongs to the app canvas; the inset workspace is the single elevated surface. */
 .nova-workspace-frame {
   border: 1px solid var(--nova-border-soft);

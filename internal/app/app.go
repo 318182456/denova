@@ -218,6 +218,11 @@ func New(ctx context.Context, cfg *config.Config) (_ *App, err error) {
 		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
 	}
 	app.platform = platform.New(dataDir, registry)
+	app.platform.ConfigureGitHubToken(func() string {
+		app.mu.RLock()
+		defer app.mu.RUnlock()
+		return app.cfg.Market.GitHubToken
+	})
 	finishStage(nil)
 	finishStage = observability.StartStartupStage(ctx, "application_runtime")
 	app.platform.ConfigureAgents(canonicalSessions, platformapp.NewModels(platformHost{app}).Resolve)

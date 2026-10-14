@@ -259,7 +259,10 @@ func Merge(parent, child Settings) Settings {
 	child = preserveTerminalCommandRegistryPresence(child)
 	out := parent
 	if child.Market.RegistryURL != "" {
-		out.Market = child.Market
+		out.Market.RegistryURL = child.Market.RegistryURL
+	}
+	if child.Market.GitHubToken != "" {
+		out.Market.GitHubToken = child.Market.GitHubToken
 	}
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
@@ -920,6 +923,7 @@ func workspaceAgentSettings(settings Settings) Settings {
 
 func sanitizeEditableSettings(s Settings) Settings {
 	s.Market.RegistryURL = strings.TrimSpace(s.Market.RegistryURL)
+	s.Market.GitHubToken = strings.TrimSpace(s.Market.GitHubToken)
 	s = preserveTerminalCommandRegistryPresence(s)
 	s, _ = migrateModelEndpointSettings(s)
 	s, _ = migrateImageAPIEndpointSettings(s)

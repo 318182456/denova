@@ -268,6 +268,7 @@ type Error struct {
 	Code       string               `json:"code"`
 	MessageKey string               `json:"messageKey"`
 	Diagnostic string               `json:"diagnostic"`
+	RetryAt    string               `json:"retryAt,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Diagnostic }

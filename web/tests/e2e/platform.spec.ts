@@ -234,7 +234,7 @@ test('edits extension settings through bilingual forms with persistent defaults'
   await expect(settings.getByRole('tab')).toHaveCount(0)
   await settings.getByRole('switch', { name: '使用选定模型生成内容', exact: true }).click()
   const navigation = page.getByRole('navigation', { name: '资源中心导航', exact: true })
-  await navigation.getByRole('button', { name: '发现资源', exact: true }).click()
+  await navigation.getByRole('button', { name: '全部资源', exact: true }).click()
   await expect(page.getByText('资源索引暂时无法访问，请稍后刷新；仍可从文件或链接导入。', { exact: true }).first()).toBeVisible()
   await navigation.getByRole('button', { name: '资源包', exact: true }).click()
   await expect(page.getByRole('button', { name: '添加资源', exact: true })).toBeDisabled()

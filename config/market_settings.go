@@ -14,6 +14,8 @@ var ErrInvalidMarketRegistryURL = errors.New("market registry requires an absolu
 // retain their own sources independently of this registry.
 type MarketSettings struct {
 	RegistryURL string `toml:"registry_url,omitempty" json:"registry_url,omitempty"`
+	// GitHubToken authenticates API metadata requests only, never archives or registries.
+	GitHubToken string `toml:"github_token,omitempty" json:"github_token,omitempty"`
 }
 
 func (settings MarketSettings) Validate() error {

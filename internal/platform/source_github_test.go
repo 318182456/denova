@@ -91,11 +91,8 @@ func githubTestServer(t *testing.T, manager *Manager, head *string, archives map
 				t.Fatal("update check unnecessarily downloads commit diffs")
 			}
 			data = []byte(sha)
-		case strings.HasPrefix(request.URL.Path, "/repos/author/repo/zipball/"):
-			response.StatusCode = 302
-			response.Header.Set("Location", "https://codeload.github.com/author/repo/"+strings.TrimPrefix(request.URL.Path, "/repos/author/repo/zipball/"))
 		case request.URL.Host == "codeload.github.com":
-			data = archives[strings.TrimPrefix(request.URL.Path, "/author/repo/")]
+			data = archives[strings.TrimPrefix(request.URL.Path, "/author/repo/zip/")]
 			if data == nil {
 				response.StatusCode = 404
 			}

@@ -41,16 +41,20 @@ type Candidate struct {
 // Manager owns package and instance mutations. Runtime handles and candidate
 // bytes are process-local; only stable references enter the data directory.
 type Manager struct {
-	root       string
-	registry   *project.Registry
-	mu         sync.Mutex
-	candidates map[string]*Candidate
-	runtimeMu  sync.Mutex
-	runtimes   map[string]*Runtime
-	agents     *AgentService
-	resources  *ResourceService
-	stories    StoryHost
-	githubHTTP *http.Client
+	root            string
+	registry        *project.Registry
+	mu              sync.Mutex
+	candidates      map[string]*Candidate
+	runtimeMu       sync.Mutex
+	runtimes        map[string]*Runtime
+	agents          *AgentService
+	resources       *ResourceService
+	stories         StoryHost
+	githubHTTP      *http.Client
+	githubToken     func() string
+	githubMu        sync.Mutex
+	githubCache     map[string]githubCachedResponse
+	githubTokenHash [32]byte
 }
 
 func New(root string, registry *project.Registry) *Manager {

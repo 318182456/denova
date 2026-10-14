@@ -187,7 +187,7 @@ export function ResourceDiscovery({ catalog, loading, error, category, setCatego
                         className={cn(
                           'grid gap-3',
                           view === 'grid'
-                            ? 'grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))]'
+                            ? 'grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))]'
                             : 'grid-cols-1',
                         )}
                       >

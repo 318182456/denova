@@ -22,6 +22,16 @@ func exchangeError(ctx context.Context, c *app.RequestContext, err error) {
 	switch {
 	case errors.As(err, &platformError) && platformError.Code == "GITHUB_UNAVAILABLE":
 		key, status = "market.errors.downloadFailed", 502
+	case errors.As(err, &platformError) && platformError.Code == "GITHUB_RATE_LIMIT":
+		if platformError.RetryAt != "" {
+			writeErrorKey(c, 429, "market.errors.githubRateLimitedUntil", "time", platformError.RetryAt, "detail", err.Error())
+			return
+		}
+		key, status = "market.errors.githubRateLimited", 429
+	case errors.As(err, &platformError) && platformError.Code == "GITHUB_FORBIDDEN":
+		key, status = "market.errors.githubDenied", 502
+	case errors.As(err, &platformError) && platformError.Code == "GITHUB_AUTH_FAILED":
+		key, status = "market.errors.githubTokenRejected", 502
 	case errors.Is(err, lore.ErrNameRequiredForID):
 		key = "api.lore.nameRequiredForID"
 	case errors.As(err, &conflict):

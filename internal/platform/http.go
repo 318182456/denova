@@ -36,7 +36,7 @@ func ErrorResponse(err error) (int, *Error) {
 	}
 	status := http.StatusBadRequest
 	switch platformError.Code {
-	case "NOT_FOUND":
+	case "NOT_FOUND", "GITHUB_NOT_FOUND":
 		status = http.StatusNotFound
 	case "PERMISSION_DENIED":
 		status = http.StatusForbidden
@@ -46,6 +46,10 @@ func ErrorResponse(err error) (int, *Error) {
 		status = http.StatusRequestEntityTooLarge
 	case "RUNTIME_FAILED", "RUNTIME_UNAVAILABLE":
 		status = http.StatusServiceUnavailable
+	case "GITHUB_RATE_LIMIT":
+		status = http.StatusTooManyRequests
+	case "GITHUB_UNAVAILABLE", "GITHUB_FORBIDDEN", "GITHUB_AUTH_FAILED":
+		status = http.StatusBadGateway
 	}
 	return status, platformError
 }

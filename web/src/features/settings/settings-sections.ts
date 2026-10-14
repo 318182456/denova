@@ -33,7 +33,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'web-access', group: 'tools', titleKey: 'settings.section.webAccess', icon: Globe,
     fieldKeys: ['settings.webAccess.searxngBaseUrl', 'settings.webAccess.searchMaxResults', 'settings.webAccess.searchProviderTimeoutSeconds', 'settings.webAccess.fetchMaxResponseKB', 'settings.webAccess.fetchMaxContentChars'] },
   { id: 'market', group: 'tools', titleKey: 'settings.section.market', icon: Store,
-    fieldKeys: ['settings.market.registryURL'] },
+    fieldKeys: ['settings.market.registryURL', 'settings.market.githubToken'] },
   { id: 'paths', group: 'system', titleKey: 'settings.section.paths', icon: Folder,
     fieldKeys: ['settings.paths.skillsDir', 'settings.paths.novaDir', 'settings.paths.userConfig'] },
   { id: 'versions', group: 'system', titleKey: 'settings.section.versions', icon: History,

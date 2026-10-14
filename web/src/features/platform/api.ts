@@ -211,10 +211,15 @@ export function platformError(error: unknown): string {
     error instanceof APIError && typeof error.payload.messageKey === 'string'
       ? error.payload.messageKey
       : 'platform.errors.RUNTIME_FAILED'
-  const summary = i18n.exists(key)
+  let summary = i18n.exists(key)
     ? i18n.t(key)
     : i18n.t('platform.errors.RUNTIME_FAILED')
   if (error instanceof APIError) {
+    if (error.code === 'GITHUB_RATE_LIMIT' && typeof error.payload.retryAt === 'string') {
+      summary = i18n.t('platform.errors.GITHUB_RATE_LIMIT_UNTIL', {
+        time: new Date(error.payload.retryAt).toLocaleString(i18n.resolvedLanguage),
+      })
+    }
     return errorMessage({
       summary, code: error.code, status: error.status, requestID: error.requestID,
       details: { ...error.details, detail: error.details?.detail || error.payload.diagnostic },

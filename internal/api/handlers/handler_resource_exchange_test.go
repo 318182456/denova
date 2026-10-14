@@ -32,6 +32,16 @@ func TestExchangeErrorIncludesSafeDiagnostics(t *testing.T) {
 			status: 502, code: "market.errors.downloadFailed", detail: "context deadline exceeded",
 		},
 		{
+			name:   "GitHub rate limit with reset",
+			err:    &platform.Error{Code: "GITHUB_RATE_LIMIT", Diagnostic: "GitHub request limit was reached", RetryAt: "2030-01-01T00:00:00Z"},
+			status: 429, code: "market.errors.githubRateLimitedUntil", detail: "request limit",
+		},
+		{
+			name:   "GitHub access denial",
+			err:    &platform.Error{Code: "GITHUB_FORBIDDEN", Diagnostic: "GitHub denied access with HTTP 403"},
+			status: 502, code: "market.errors.githubDenied", detail: "HTTP 403",
+		},
+		{
 			name:   "local modification",
 			err:    fmt.Errorf("resource fixture: %w", resourceexchange.ErrLocalModified),
 			status: 409, code: "market.errors.localModified", detail: "fixture",

@@ -2,12 +2,15 @@ package platform
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -33,6 +36,31 @@ type GitHubUpdate struct {
 var githubName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 var githubCommit = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
 
+type githubCachedResponse struct {
+	etag string
+	data []byte
+}
+
+// ConfigureGitHubToken binds the current user setting before requests begin.
+// Credentials are read per API request so changing settings needs no restart.
+func (m *Manager) ConfigureGitHubToken(resolve func() string) {
+	m.githubToken = resolve
+}
+
+func (m *Manager) githubAPIToken() string {
+	if m.githubToken != nil {
+		if token := strings.TrimSpace(m.githubToken()); token != "" {
+			return token
+		}
+	}
+	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+		if token := strings.TrimSpace(os.Getenv(key)); token != "" {
+			return token
+		}
+	}
+	return ""
+}
+
 func newGitHubClient() *http.Client {
 	// Fixed HTTPS origins let source downloads use the host's proxy settings
 	// without exposing a general-purpose URL fetcher through management APIs.
@@ -41,6 +69,10 @@ func newGitHubClient() *http.Client {
 	return &http.Client{Transport: transport, Timeout: 3 * time.Minute, CheckRedirect: func(request *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || !githubDownloadURL(request.URL) {
 			return failure("GITHUB_UNAVAILABLE", "GitHub redirected outside the supported download origins")
+		}
+		if request.URL.Hostname() != "api.github.com" {
+			request.Header.Del("Authorization")
+			request.Header.Del("If-None-Match")
 		}
 		return nil
 	}}
@@ -100,6 +132,30 @@ func (m *Manager) githubGet(ctx context.Context, address, mediaType string, limi
 	}
 	request.Header.Set("Accept", mediaType)
 	request.Header.Set("User-Agent", "Denova")
+	var cached githubCachedResponse
+	cacheKey := address + "\n" + mediaType
+	if request.URL.Hostname() == "api.github.com" {
+		// Serialize metadata requests so overlapping previews revalidate one
+		// bounded cache. Archives remain independent and are never cached here.
+		m.githubMu.Lock()
+		defer m.githubMu.Unlock()
+		token := m.githubAPIToken()
+		if strings.ContainsFunc(token, unicode.IsSpace) || strings.ContainsFunc(token, unicode.IsControl) {
+			return nil, failure("GITHUB_AUTH_FAILED", "GitHub token contains whitespace or control characters")
+		}
+		hash := sha256.Sum256([]byte(token))
+		if m.githubCache == nil || hash != m.githubTokenHash {
+			m.githubCache = make(map[string]githubCachedResponse)
+			m.githubTokenHash = hash
+		}
+		if token != "" {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		cached = m.githubCache[cacheKey]
+		if cached.etag != "" {
+			request.Header.Set("If-None-Match", cached.etag)
+		}
+	}
 	response, err := m.githubHTTP.Do(request)
 	if err != nil {
 		return nil, failure("GITHUB_UNAVAILABLE", "GitHub request failed: %v", err)
@@ -107,12 +163,15 @@ func (m *Manager) githubGet(ctx context.Context, address, mediaType string, limi
 	defer response.Body.Close()
 	switch response.StatusCode {
 	case http.StatusOK:
+	case http.StatusNotModified:
+		if cached.etag != "" && int64(len(cached.data)) <= limit {
+			return cached.data, nil
+		}
+		return nil, failure("GITHUB_UNAVAILABLE", "GitHub returned HTTP 304 without a cached response")
 	case http.StatusNotFound:
 		return nil, failure("GITHUB_NOT_FOUND", "GitHub repository or ref is unavailable: %s", address)
-	case http.StatusForbidden, http.StatusTooManyRequests:
-		return nil, failure("GITHUB_RATE_LIMIT", "GitHub rejected the request with HTTP %d", response.StatusCode)
 	default:
-		return nil, failure("GITHUB_UNAVAILABLE", "GitHub returned HTTP %d", response.StatusCode)
+		return nil, githubResponseError(response)
 	}
 	if response.ContentLength > limit {
 		return nil, failure("LIMIT_EXCEEDED", "GitHub response exceeds %d bytes", limit)
@@ -124,7 +183,56 @@ func (m *Manager) githubGet(ctx context.Context, address, mediaType string, limi
 	if int64(len(data)) > limit {
 		return nil, failure("LIMIT_EXCEEDED", "GitHub response exceeds %d bytes", limit)
 	}
+	if request.URL.Hostname() == "api.github.com" {
+		delete(m.githubCache, cacheKey)
+		// At most 32 metadata responses, each bounded by MaxDefinitionBytes.
+		if len(m.githubCache) >= 32 {
+			clear(m.githubCache)
+		}
+		if etag := response.Header.Get("ETag"); etag != "" && len(data) <= MaxDefinitionBytes {
+			m.githubCache[cacheKey] = githubCachedResponse{etag: etag, data: data}
+		}
+	}
 	return data, nil
+}
+
+func githubResponseError(response *http.Response) error {
+	data, _ := io.ReadAll(io.LimitReader(response.Body, 8<<10))
+	var body struct {
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(data, &body)
+	remaining := response.Header.Get("X-RateLimit-Remaining")
+	reset := response.Header.Get("X-RateLimit-Reset")
+	retryAfter := response.Header.Get("Retry-After")
+	slog.WarnContext(response.Request.Context(), "platform_github_request_rejected", "host", response.Request.URL.Hostname(), "path", response.Request.URL.Path,
+		"status", response.StatusCode, "remaining", remaining, "reset", reset, "retry_after", retryAfter)
+	limited := response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusForbidden &&
+		(remaining == "0" || retryAfter != "" || strings.Contains(strings.ToLower(body.Message), "rate limit"))
+	if limited {
+		problem := &Error{Code: "GITHUB_RATE_LIMIT", MessageKey: "platform.errors.GITHUB_RATE_LIMIT",
+			Diagnostic: "GitHub request limit was reached; retry after the limit resets"}
+		var until time.Time
+		if seconds, err := strconv.ParseInt(retryAfter, 10, 64); err == nil && seconds > 0 {
+			until = time.Now().Add(time.Duration(seconds) * time.Second)
+		} else if date, err := http.ParseTime(retryAfter); err == nil {
+			until = date
+		} else if epoch, err := strconv.ParseInt(reset, 10, 64); err == nil && epoch > 0 {
+			until = time.Unix(epoch, 0)
+		}
+		if !until.IsZero() {
+			problem.RetryAt = until.UTC().Format(time.RFC3339)
+		}
+		return problem
+	}
+	switch response.StatusCode {
+	case http.StatusUnauthorized:
+		return failure("GITHUB_AUTH_FAILED", "GitHub refused the configured token")
+	case http.StatusForbidden:
+		return failure("GITHUB_FORBIDDEN", "GitHub denied access with HTTP 403")
+	default:
+		return failure("GITHUB_UNAVAILABLE", "GitHub returned HTTP %d", response.StatusCode)
+	}
 }
 
 func (m *Manager) resolveGitHubSource(ctx context.Context, source GitHubSource) (GitHubSource, error) {
@@ -146,12 +254,15 @@ func (m *Manager) resolveGitHubSource(ctx context.Context, source GitHubSource) 
 		}
 		source.Ref = repository.DefaultBranch
 	}
-	ref := source.Commit
-	if ref == "" {
-		ref = source.Ref
+	if source.Commit != "" {
+		return source, nil
+	}
+	if githubCommit.MatchString(source.Ref) {
+		source.Commit = strings.ToLower(source.Ref)
+		return source, nil
 	}
 	// Request only the SHA, avoiding potentially large commit diffs.
-	data, err := m.githubGet(ctx, endpoint+"/commits/"+url.PathEscape(ref), "application/vnd.github.sha", 1024)
+	data, err := m.githubGet(ctx, endpoint+"/commits/"+url.PathEscape(source.Ref), "application/vnd.github.sha", 1024)
 	if err != nil {
 		return source, err
 	}
@@ -177,8 +288,8 @@ func (m *Manager) downloadGitHubArchive(ctx context.Context, source GitHubSource
 	if err != nil {
 		return source, nil, err
 	}
-	address := "https://api.github.com/repos/" + strings.TrimPrefix(source.URL, "https://github.com/") + "/zipball/" + source.Commit
-	data, err := m.githubGet(ctx, address, "application/vnd.github+json", MaxPackageBytes)
+	address := "https://codeload.github.com/" + strings.TrimPrefix(source.URL, "https://github.com/") + "/zip/" + source.Commit
+	data, err := m.githubGet(ctx, address, "application/zip", MaxPackageBytes)
 	if err != nil {
 		return source, nil, err
 	}

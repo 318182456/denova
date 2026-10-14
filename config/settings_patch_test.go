@@ -7,6 +7,26 @@ import (
 	"testing"
 )
 
+func TestMarketTokenSettingsRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	existing := Settings{Market: MarketSettings{RegistryURL: "https://example.com/index.json"}}
+	next, err := ApplySettingsMergePatch(existing, json.RawMessage(`{"market":{"github_token":"test-token"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(UserConfigPath(root), next); err != nil {
+		t.Fatal(err)
+	}
+	layered, err := LoadLayered(root, "")
+	if err != nil || layered.Effective.Market.GitHubToken != "test-token" || layered.Effective.Market.RegistryURL != existing.Market.RegistryURL {
+		t.Fatalf("market settings did not round-trip: %+v %v", layered.Effective.Market, err)
+	}
+	next, err = ApplySettingsMergePatch(next, json.RawMessage(`{"market":{"github_token":null}}`))
+	if err != nil || next.Market.GitHubToken != "" || next.Market.RegistryURL != existing.Market.RegistryURL {
+		t.Fatalf("clearing the token changed registry: %+v %v", next.Market, err)
+	}
+}
+
 func TestApplySettingsMergePatchPreservesOmittedFieldsAndMergesNestedObjects(t *testing.T) {
 	existing := Settings{
 		OpenAIModel: "keep-model",

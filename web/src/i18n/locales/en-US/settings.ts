@@ -15,6 +15,9 @@ const settings = {
 
   'settings.section.market': "Resource Center",
   'settings.market.registryURL': 'Registry index URL',
+  'settings.market.githubToken': 'GitHub token (optional)',
+  'settings.market.githubTokenHint': 'Raise the request limit for GitHub downloads and update checks. Saved in your user settings and sent only to the GitHub API. Leave blank to use GITHUB_TOKEN or GH_TOKEN from the environment.',
+  'settings.market.githubTokenPlaceholder': 'Leave blank for unauthenticated requests or an environment token',
   'settings.market.hint': 'Use a self-hosted HTTPS index in the Denova registry format. Package downloads must be publicly accessible without authentication.',
   'settings.market.restoreDefault': 'Use official registry',
   'settings.partialSaveFailed': 'Saved: {{saved}}. Failed: {{failed}}. Unsaved edits are preserved; edit or retry when ready.',
