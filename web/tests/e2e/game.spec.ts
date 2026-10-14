@@ -85,9 +85,18 @@ for (const viewportWidth of [1280, 390]) {
     const toggle = page.locator('.nova-story-stage-composer [aria-controls][aria-expanded]')
     await expect(toggle).toBeEnabled()
     const timeline = page.locator('.nova-story-stage-content .nova-chat-canvas')
-    await timeline.hover()
+    // Wheel over the timeline gutter so nested state panels do not consume it.
+    await timeline.hover({ position: { x: 8, y: 80 } })
     await page.mouse.wheel(0, -600)
     await expect.poll(() => timeline.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeGreaterThan(400)
+    // Measure choice motion only after the route's entrance fade has settled.
+    await expect.poll(() => page.locator('.nova-story-choice-panel').evaluate(surface => {
+      let opacity = 1
+      for (let ancestor = surface.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        opacity *= Number(getComputedStyle(ancestor).opacity)
+      }
+      return opacity
+    })).toBe(1)
     const frames = await toggle.evaluate(async (element) => {
       const button = element as HTMLButtonElement
       const panel = document.getElementById(button.getAttribute('aria-controls')!)!
