@@ -84,11 +84,11 @@ func main() {
 	if port != requestedPort {
 		reportBackendPortFallback(os.Stderr, requestedPort, port)
 	}
-	frontendPort = selectFrontendPort(frontendPort, port)
 	if runtimeWebPort, err := strconv.Atoi(port); err == nil {
 		cfg.RuntimeWebPort = runtimeWebPort
 	}
 	if dev {
+		frontendPort = selectFrontendPort(listenHost, frontendPort, port)
 		if runtimeWebPort, err := strconv.Atoi(frontendPort); err == nil {
 			cfg.RuntimeWebPort = runtimeWebPort
 		}
@@ -326,14 +326,14 @@ func waitForAnyKey(input io.Reader) {
 	_, _ = bufio.NewReader(input).ReadByte()
 }
 
-// selectFrontendPort 为前端 Vite dev server 自动选择一个可用端口。
-// 与 HTTP 后端端口不同，前端端口总是尝试自动选择（因为 Vite 不负责端口协商）。
-func selectFrontendPort(preferred string, reservedPorts ...string) string {
-	if !portReserved(preferred, reservedPorts...) && portAvailable(preferred) {
+// selectFrontendPort probes the frontend's listen address, preserving local-only
+// access even for temporary listeners that can trigger Windows firewall prompts.
+func selectFrontendPort(host, preferred string, reservedPorts ...string) string {
+	if !portReserved(preferred, reservedPorts...) && portAvailable(host, preferred) {
 		return preferred
 	}
 
-	next, err := findAvailablePort(preferred, 20, reservedPorts...)
+	next, err := findAvailablePort(host, preferred, 20, reservedPorts...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: frontend port %s is unavailable and automatic selection failed: %v\n", preferred, err)
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] frontend port %s is unavailable and automatic selection failed err=%v", preferred, err))
@@ -345,14 +345,14 @@ func selectFrontendPort(preferred string, reservedPorts ...string) string {
 	return next
 }
 
-func findAvailablePort(preferred string, attempts int, reservedPorts ...string) (string, error) {
+func findAvailablePort(host, preferred string, attempts int, reservedPorts ...string) (string, error) {
 	start, err := strconv.Atoi(preferred)
 	if err != nil || start <= 0 || start > 65535 {
 		return "", fmt.Errorf("invalid port: %s", preferred)
 	}
 	for port := start + 1; port <= 65535 && port <= start+attempts; port++ {
 		candidate := strconv.Itoa(port)
-		if !portReserved(candidate, reservedPorts...) && portAvailable(candidate) {
+		if !portReserved(candidate, reservedPorts...) && portAvailable(host, candidate) {
 			return candidate, nil
 		}
 	}
@@ -373,8 +373,8 @@ func portReserved(port string, reservedPorts ...string) bool {
 	return false
 }
 
-func portAvailable(port string) bool {
-	ln, err := net.Listen("tcp", "0.0.0.0:"+port)
+func portAvailable(host, port string) bool {
+	ln, err := listenOnPort(host, port)
 	if err != nil {
 		return false
 	}
