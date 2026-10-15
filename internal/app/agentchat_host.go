@@ -9,6 +9,7 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentruntime "denova/internal/agents/runtime"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/analytics"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
@@ -18,6 +19,14 @@ import (
 // AgentChat owner and process-wide mutation/lifecycle policy.
 type agentChatHost struct {
 	app *App
+}
+
+func (host agentChatHost) BeginUsageRun(cfg config.Config, origin string) analytics.Run {
+	feature, trigger := analytics.Chat, analytics.User
+	if origin == "automation" {
+		feature, trigger = analytics.Automation, analytics.Scheduled
+	}
+	return host.app.Analytics().BeginRun(feature, analyticsEngine(cfg), trigger)
 }
 
 func (host agentChatHost) AgentEngines() *agentruntime.Engines { return host.app.AgentEngines() }

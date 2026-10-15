@@ -18,6 +18,7 @@ import (
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/analytics"
 	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
@@ -52,6 +53,8 @@ type AcceptedTurn struct {
 	conversation *agentconversation.SessionConversation
 	replayed     bool
 	receipt      agentrun.CommandReceipt
+	usageOnce    sync.Once
+	usageRun     analytics.Run
 
 	mutationMu        sync.Mutex
 	verifiedMutations []agenttool.Mutation
@@ -105,6 +108,11 @@ func (turn *AcceptedTurn) Wait(ctx context.Context) agentrun.Outcome {
 		return agentrun.NewOutcome(agentrun.OutcomeFailed, err, err.Error(), "", "")
 	}
 	defer turn.service.releaseActiveRun(turn.active)
+	turn.usageOnce.Do(func() {
+		if turn.service.host != nil {
+			turn.usageRun = turn.service.host.BeginUsageRun(turn.runtime.Config, turn.active.policy.Origin)
+		}
+	})
 	binding := turn.active.binding
 	slog.InfoContext(ctx, fmt.Sprintf(
 		"[app/agentchat] run begin task_id=%s project_id=%s workspace=%q session_id=%s message_len=%d origin=%s",
@@ -112,6 +120,20 @@ func (turn *AcceptedTurn) Wait(ctx context.Context) agentrun.Outcome {
 		len(turn.active.request.Message), turn.active.policy.Origin,
 	))
 	outcome := turn.accepted.Wait(ctx)
+	switch outcome.Status {
+	case agentrun.OutcomeCompleted:
+		turn.usageRun.Finish(analytics.Success)
+	case agentrun.OutcomeFailed:
+		turn.usageRun.Finish(analytics.Failure)
+	case agentrun.OutcomeAborted:
+		turn.usageRun.Finish(analytics.Cancelled)
+	case agentrun.OutcomeSuspended:
+		turn.usageRun.Finish(analytics.Suspended)
+	case agentrun.OutcomePreempted:
+		turn.usageRun.Finish(analytics.Preempted)
+	default:
+		slog.ErrorContext(ctx, "analytics_outcome_unknown", "status", outcome.Status)
+	}
 	outputCommitted := turn.accepted.OutputCommitted()
 	postSettlementCtx := ctx
 	if outputCommitted {

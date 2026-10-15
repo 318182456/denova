@@ -17,6 +17,7 @@ import (
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
+	"denova/internal/analytics"
 	activityapp "denova/internal/app/activity"
 	agentchatapp "denova/internal/app/agentchat"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -47,7 +48,8 @@ import (
 
 // App 是 API 层使用的应用门面；具体业务由领域应用服务承接。
 type App struct {
-	cfg *config.Config
+	cfg       *config.Config
+	analytics *analytics.Service
 
 	workspace                       string
 	bookState                       *book.State
@@ -524,6 +526,9 @@ func (a *App) Close() {
 		sessionStore := a.sessionStore
 		a.mu.Unlock()
 
+		if a.analytics != nil {
+			a.analytics.Close()
+		}
 		if workspaceFiles != nil {
 			workspaceFiles.Close()
 		}

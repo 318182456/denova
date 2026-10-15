@@ -184,7 +184,9 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
   )
   // Transport streaming may pause between tool/recovery phases while the turn
   // remains active and can still publish layout updates.
-  const tailFollowActive = isStreaming || isExecutionActive
+  // A confirmed trailing result ends prose following even if the transport is
+  // still open. Its reveal must not drag the reader to the bottom of the panel.
+  const tailFollowActive = (isStreaming || isExecutionActive) && !afterContent
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
   const initialPositionKey = scrollResetKey || 'default'
   const hasInitialContent = views.length > 0 || isStreaming || Boolean(activityContent)
@@ -199,6 +201,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
     resetPosition: initialPosition,
     itemCount: listItems.length,
     autoFollowEnabled: tailFollowActive,
+    hasAfterContent: Boolean(afterContent),
     visible,
     bottomInsetPx: bottomPaddingPx,
     resolveScroller: resolveMessageScroller,

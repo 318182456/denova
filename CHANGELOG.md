@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- 新增不包含创作内容的使用统计，首次告知并默认开启，可在设置中随时关闭。
+- Adds usage statistics without creative content, disclosed on first use and enabled by default, with a setting to turn collection off anytime.
+
 - 更新支持后台定时检查、可选自动下载，以及等待活动任务完成后重启。
 - Updates add background checks, optional automatic downloads, and restart after active tasks finish.
 

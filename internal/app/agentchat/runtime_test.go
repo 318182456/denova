@@ -12,11 +12,14 @@ import (
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/analytics"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 )
 
 type activeViewTestHost struct{}
+
+func (activeViewTestHost) BeginUsageRun(config.Config, string) analytics.Run { return analytics.Run{} }
 
 func (activeViewTestHost) AgentEngines() *agentruntime.Engines { return nil }
 

@@ -15,6 +15,7 @@ import (
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/analytics"
 	appagentruntime "denova/internal/app/agentruntime"
 )
 
@@ -151,8 +152,10 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	var accepted *conversationapp.Operation
 	runAccepted := func(ctx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
+		usageRun := a.Analytics().BeginRun(analytics.Writing, analyticsEngine(runtime.cfg), analytics.User)
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s session_id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), runtime.sess.ID, len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
-		accepted.Wait(ctx)
+		outcome := accepted.Wait(ctx)
+		finishAnalyticsRun(usageRun, outcome.Status)
 		outputCommitted := accepted.OutputCommitted()
 		postSettlementCtx := ctx
 		if outputCommitted {

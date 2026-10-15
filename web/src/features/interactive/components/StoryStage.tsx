@@ -212,6 +212,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   const liveAccumulator = useLiveMessageAccumulator({
     setMessages: setStageLiveMessages,
   })
+  const currentTurnPersisted = liveAccumulator.isCurrentTurnPersisted(snapshot?.current_turn?.id || '')
   const storyImages = useStoryImages({
     stageKey,
     storyId,
@@ -752,8 +753,9 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 onLoadEarlierMessages={loadEarlierMessages}
                 autoLoadEarlierMessages
                 onLoadExecutionDetails={loadExecutionDetails}
-                afterContent={historyWindow.followLatest && !streaming && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
+                afterContent={historyWindow.followLatest && (!streaming || currentTurnPersisted) && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
                   <StoryStateLedger
+                    animateEntrance={Boolean(liveAccumulator.renderKeyFor(snapshot?.current_turn?.id || '', 'assistant'))}
                     snapshot={snapshot}
                     actorLore={{
                       projectId,

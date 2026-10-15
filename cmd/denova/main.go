@@ -113,6 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer application.Close()
+	application.StartAnalytics(buildinfo.Version)
 
 	// 启动 HTTP 服务
 	finishStage = observability.StartStartupStage(ctx, "http_setup")

@@ -13,6 +13,7 @@ import type { Teller } from '@/features/interactive/types'
 import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
+import { AnalyticsSettings } from '@/features/analytics/AnalyticsPreferences'
 import { SettingsPageFrame } from './SettingsPageFrame'
 import { Button } from '@/components/ui/button'
 import { DEFAULT_MODEL_PROFILE_ID, modelEndpointsWithDefault, modelProfilesWithDefault } from './model-profiles'
@@ -234,6 +235,7 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
             </Button>
           </SettingsFieldRow>
         </div>
+        <AnalyticsSettings />
       </>
     ),
     'writing': (

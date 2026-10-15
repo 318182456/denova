@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"denova/internal/analytics"
 	"errors"
 	"fmt"
 	"os"
@@ -122,6 +123,9 @@ func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestCont
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.saveFailed")
 		return
+	}
+	if result.Changed {
+		h.app.Analytics().Activity(analytics.Writing)
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{
 		"project_id": result.ProjectID,

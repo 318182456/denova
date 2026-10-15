@@ -15,6 +15,7 @@ import (
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/analytics"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
 	"denova/internal/book"
@@ -26,6 +27,9 @@ const RuntimeMode = "agent_chat"
 // Host supplies the small amount of process-wide policy that cannot be owned
 // by one Project runtime. Project identity and session state stay in Service.
 type Host interface {
+	// BeginUsageRun observes one product execution without exposing its content
+	// to the analytics service. Background origins never count as user activity.
+	BeginUsageRun(config.Config, string) analytics.Run
 	BaseRuntime() (config.Config, *agentexecution.Runtime)
 	PageInstructions(context.Context, string, string, string) (string, error)
 	AgentEngines() *agentruntime.Engines

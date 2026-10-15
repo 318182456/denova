@@ -9,6 +9,8 @@ import { UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-events'
 import type { UpdateCheckResult } from '@/features/settings/types'
 import { buildFrontendReloadURL } from '@/features/settings/update-reload'
 import { APP_VERSION } from '@/app-version'
+import { AnalyticsNotice } from '@/features/analytics/AnalyticsPreferences'
+import { useAnalyticsActivity } from '@/features/analytics/use-analytics-activity'
 import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { withErrorLogID } from '@/lib/api-client'
 import { CommandPalette } from '@/components/common/command-palette'
@@ -81,6 +83,7 @@ function App() {
   const [projectExplorerRefreshSignal, setProjectExplorerRefreshSignal] = useState(0)
   const [versionRefreshSignal, setVersionRefreshSignal] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(() => readLayoutBoolean(SETTINGS_OPEN_KEY, false))
+  const [analyticsReady, setAnalyticsReady] = useState(false)
   useEffect(() => {
     const openSettings = () => setSettingsOpen(true)
     window.addEventListener(SETTINGS_SECTION_EVENT, openSettings)
@@ -142,6 +145,7 @@ function App() {
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks,
   } = useWorkspace()
+  useAnalyticsActivity(settingsOpen || !analyticsReady, Boolean(selectedFile))
   // A late response stays with its Project instead of replacing another library.
   const loreQuery = useQuery({
     queryKey: ['lore-items', projectId],
@@ -886,6 +890,7 @@ function App() {
 
   return (
     <NovaMotionProvider intensity={motionIntensity}>
+      <AnalyticsNotice onReadyChange={setAnalyticsReady} />
       <ModeRouter
         mode={mode}
         lastCreationRoute={lastCreationRoute}
@@ -1046,7 +1051,7 @@ function App() {
         onImport={handleCharacterCardImport}
       />
       <OnboardingGuide
-        workspaceReady={workspaceLoaded && booksLoaded}
+        workspaceReady={workspaceLoaded && booksLoaded && analyticsReady}
         mode={mode}
         rightPanel={rightPanel}
         settingsOpen={settingsOpen}

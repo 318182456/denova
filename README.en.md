@@ -129,6 +129,10 @@ When running from source, QR codes and connection links use the backend port to 
 
 For public or domain-based deployments, put Denova behind an HTTPS reverse proxy such as Caddy or Nginx so login credentials are not transmitted in cleartext.
 
+## Usage statistics
+
+Release builds explain usage statistics on first use and enable them by default. Turn collection off anytime under **Settings → General**. Only fixed activity, feature, retention and execution categories are sent to Umami Cloud, without creative text, prompts, AI replies, images, project names, file paths or keys. A random local ID links return visits; the cloud receives the connection IP. Source and development builds do not send statistics. See the [metric and field definitions](./docs/analytics.md).
+
 ## Development
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing. Common commands:

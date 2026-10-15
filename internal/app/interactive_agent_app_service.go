@@ -5,6 +5,7 @@ import (
 	agentchat "denova/internal/agents/chat"
 	"denova/internal/agents/conversationconfig"
 	agentexecution "denova/internal/agents/execution"
+	"denova/internal/analytics"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
@@ -172,8 +173,10 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	}
 	runAccepted := func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
+		usageRun := a.Analytics().BeginRun(analytics.Game, analyticsEngine(cycle.runtimeCfg), analytics.User)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] run begin id=%s command_id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), identity.request.CommandID, cycle.storyID, cycle.branchID, identity.request.RegenerateFromTurnID, len(identity.request.Message), len(identity.request.StyleScenes)))
 		outcome := accepted.Wait(ctx)
+		finishAnalyticsRun(usageRun, outcome.Status)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] run end id=%s command_id=%s outcome=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status, task.Status()))
 	}
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {

@@ -4,6 +4,7 @@ import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Glo
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { novaEase } from '@/features/motion/motion-tokens'
+import { useMotionIntensity } from '@/features/motion/motion-preferences'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -46,6 +47,8 @@ const PANEL_MODE_BY_PREFERENCE: Record<StoryStateDisplayPreference, StoryStatePa
 
 interface StoryStateLedgerProps {
   snapshot: Snapshot | null
+  /** Reveal a newly confirmed turn without replaying entrance motion on history load. */
+  animateEntrance?: boolean
   displayPreference: StoryStateDisplayPreference
   onDisplayPreferenceChange: (value: StoryStateDisplayPreference) => void
   detailsAction?: ReactNode
@@ -68,8 +71,10 @@ interface StateLedgerPresentation {
  * sections with a "show all" affordance; the turn's change count appears in the
  * header, with details available in per-field change chips.
  */
-export function StoryStateLedger({ snapshot, displayPreference, onDisplayPreferenceChange, detailsAction, actorLore }: StoryStateLedgerProps) {
+export function StoryStateLedger({ snapshot, animateEntrance = false, displayPreference, onDisplayPreferenceChange, detailsAction, actorLore }: StoryStateLedgerProps) {
   const { t } = useTranslation()
+  const reducedMotion = useReducedMotionConfig()
+  const motionDisabled = useMotionIntensity() === 'off'
   const isMobile = useIsMobile()
   const { model, actorLedgers, worldLedger, allActors, actorTabs, hasWorldFacts, storyId } = useStoryStateLedgerData(snapshot)
   const [selectedTab, setSelectedTab] = useStoryStateTab(actorTabs, hasWorldFacts)
@@ -103,7 +108,12 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
         onOpenChange={(nextOpen) => setPanelMode(nextOpen ? 'preview' : 'collapsed')}
         asChild
       >
-        <section
+        <motion.section
+          // Keep intrinsic height stable for the virtual list. Reduced motion
+          // still gets a gentle fade; only the explicit off preference skips it.
+          initial={animateEntrance && !motionDisabled ? { opacity: 0, y: reducedMotion ? 0 : 12 } : false}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: motionDisabled ? 0 : reducedMotion ? 0.18 : 0.32, ease: 'easeOut' }}
           aria-label={t('storyStage.state.current')}
           data-state-panel-mode={panelMode}
           className="story-state-ledger mt-3 overflow-clip rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
@@ -120,7 +130,7 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
             onSelectedTabChange={setSelectedTab}
             onPanelModeChange={setPanelMode}
             header={
-              <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">
+              <header data-nova-chat-after-content-reveal className="flex h-10 min-w-0 items-center gap-2 px-2.5">
                 {isMobile ? (
                   <CollapsibleTrigger asChild>
                     <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-label={collapsed ? t('storyStage.state.expand') : t('storyStage.state.collapse')}>
@@ -185,7 +195,7 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               }}
             />
           ) : null}
-        </section>
+        </motion.section>
       </Collapsible>
     </ActorReferenceProvider>
   )

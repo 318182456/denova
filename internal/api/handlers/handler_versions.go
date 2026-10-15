@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"denova/internal/analytics"
 	"errors"
 	"strconv"
 
@@ -142,6 +143,7 @@ func (h *Handlers) HandleVersionRestore(ctx context.Context, c *app.RequestConte
 		writeVersionError(c, err)
 		return
 	}
+	h.app.Analytics().ActionCompleted(analytics.VersionRestored)
 	writeJSON(c, consts.StatusOK, result)
 }
 
