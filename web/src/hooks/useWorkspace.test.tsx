@@ -139,7 +139,8 @@ describe('useWorkspace', () => {
   it('routes every workspace tree mutation through the project-scoped operations API', async () => {
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness autoRefreshEnabled={false} onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('|project-demo'))
+    // The DOM can commit before the harness effect publishes the new callbacks.
+    await waitFor(() => expect(workspace?.projectId).toBe('project-demo'))
 
     await act(async () => {
       await workspace?.createItem('notes/new.md', 'file')

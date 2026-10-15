@@ -5,7 +5,7 @@ import { getModelStatus, modelControlURL, releaseDelayedRequest } from '../suppo
 
 const delayedReplyMarker = 'E2E_DELAYED_AGENT_REPLY'
 
-test('applies an Agent edit and supports review, undo, and redo', async ({ page, request }) => {
+test('applies an Agent edit and supports review, undo, and redo', { tag: '@smoke' }, async ({ page, request }) => {
   const book = await createAndOpenBook(request, 'Writing Agent E2E Book')
   const chapterPath = 'chapters/e2e-agent-chapter.md'
   const original = '# Agent 测试\n\nAgent 修改前。'

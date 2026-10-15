@@ -3,7 +3,7 @@ import { createAndOpenBook, createStartedStory } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`connection and model switches preserve configuration and filter Writing and Game choices in ${theme}`, async ({ page, request }) => {
+  test(theme === 'light' ? 'renders long model labels across Writing, Game and settings in light' : 'connection and model switches preserve configuration and filter Writing and Game choices in dark', async ({ page, request }) => {
     await createAndOpenBook(request, `Model availability ${theme}`)
     await createStartedStory(request, `Model availability ${theme}`)
     const created = await request.post('/api/sessions', { data: { title: 'Model availability' } })
@@ -68,6 +68,19 @@ for (const theme of ['dark', 'light'] as const) {
     }
 
     await expectChoices(true, true)
+    // Long connection/model labels render in both themes and widths. The
+    // enable/disable state machine and reload recovery run once in dark.
+    if (theme === 'light') {
+      await openSettings()
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 })
+        await connectionSwitch.scrollIntoViewIfNeeded()
+        await expect(connectionSwitch).toBeVisible()
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        await page.screenshot({ path: test.info().outputPath(`model-availability-${theme}-${width}.png`) })
+      }
+      return
+    }
     await openSettings()
     await expect(connectionSwitch).toBeChecked()
     await expect(modelSwitch).toBeChecked()

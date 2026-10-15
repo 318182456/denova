@@ -3,7 +3,7 @@ import { createAndOpenBook } from '../support/api'
 import type { LoreItem } from '../../src/lib/api'
 
 for (const theme of ['dark', 'light']) {
-  test(`names lore inline before persisting an identity in ${theme}`, async ({ page, request, browserDiagnostics }, testInfo) => {
+  test(theme === 'light' ? 'renders empty and long inline Lore names in light' : 'names Lore inline before persisting an identity in dark', async ({ page, request, browserDiagnostics }, testInfo) => {
     const book = await createAndOpenBook(request, `Inline lore ${theme}`)
     const url = `/api/projects/${book.projectId}/book/lore/items`
     const items = async (): Promise<LoreItem[]> => (await (await request.get(url)).json()).items
@@ -40,6 +40,9 @@ for (const theme of ['dark', 'light']) {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.screenshot({ path: testInfo.outputPath(`creation-${theme}-long-narrow.png`) })
     expect(await pending.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+    // Preserve empty/long-name layout coverage in light; identity creation,
+    // conflicts and retries are shared business behavior verified in dark.
+    if (theme === 'light') return
     await title.fill('沈凝')
     await title.press('Enter')
     await expect(pending).toHaveCount(0)

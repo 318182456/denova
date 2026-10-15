@@ -60,7 +60,7 @@ for (const language of ['zh-CN', 'en-US']) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`Agent runtime configuration preserves dormant settings in ${theme}`, async ({ page, request }) => {
+  test(theme === 'light' ? 'renders Agent runtime configuration at wide and narrow widths in light' : 'Agent runtime configuration preserves dormant settings in dark', async ({ page, request }) => {
     test.setTimeout(90_000)
     await createAndOpenBook(request, `Runtime Settings ${theme}`)
     const initial = await (await request.get('/api/settings')).json()
@@ -89,6 +89,18 @@ for (const theme of ['dark', 'light']) {
     const runtime = page.locator('[data-agent-configuration-section="runtime"]')
     await expect(runtime.getByRole('button', { name: '登录', exact: true })).toHaveCount(0)
     await expect(runtime.getByRole('button', { name: '退出登录', exact: true })).toHaveCount(0)
+    // Both themes cover the actual configuration surface. Atomic settings
+    // edits and dormant-runtime recovery need only one functional journey.
+    if (theme === 'light') {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 })
+        await engine.scrollIntoViewIfNeeded()
+        await expect(engine).toBeVisible()
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        await page.screenshot({ path: test.info().outputPath(`runtime-${theme}-${width}.png`), animations: 'disabled' })
+      }
+      return
+    }
     await runtime.getByRole('button', { name: '运行时', exact: true }).click()
     await expect(engine).toBeHidden()
     await expect(runtime.getByText('Codex · Engine model', { exact: true })).toBeVisible()

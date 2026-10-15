@@ -4,7 +4,7 @@ import { test, expect } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
 for (const theme of ['dark', 'light']) {
-  test(`migrates and manages project categories across writing and games in ${theme}`, async ({ page, request }, testInfo) => {
+  test(theme === 'light' ? 'renders empty Lore categories at wide and narrow widths in light' : 'migrates and manages project categories across Writing and Game in dark', async ({ page, request }, testInfo) => {
     const book = await createAndOpenBook(request, `Categories ${theme}`)
     const base = `/api/projects/${book.projectId}/book/lore`
     const settings = await (await request.get('/api/settings')).json()
@@ -15,6 +15,14 @@ for (const theme of ['dark', 'light']) {
     const library = page.getByTestId('lore-library')
     await expect(library.getByText('还没有资料', { exact: true })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath(`categories-${theme}-empty.png`) })
+    // Migration and category identity do not depend on visual theme.
+    if (theme === 'light') {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect(library.getByText('还没有资料', { exact: true })).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath(`categories-${theme}-empty-narrow.png`) })
+      return
+    }
     const legacy = JSON.stringify({ version: 2, items: [
       { id: 'hero', type: 'character', name: 'Hero', content: 'Identity', tags: ['主角'] },
       { id: 'guild', type: 'faction', name: 'Guild', content: 'Organization' },

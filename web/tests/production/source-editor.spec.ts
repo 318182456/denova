@@ -1,7 +1,7 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createProjectFile } from '../support/api'
 
-test('loads the source editor and its worker without public network access', async ({ page, request }) => {
+test('loads the source editor and its worker without public network access', { tag: '@smoke' }, async ({ page, request }) => {
   const book = await createAndOpenBook(request, 'Offline Source Editor')
   await createProjectFile(request, book.projectId, 'chapters/offline.md', '# Offline\n\nLocal editor content.\n')
   await page.setViewportSize({ width: 390, height: 844 })

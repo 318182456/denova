@@ -18,7 +18,7 @@ const multiAgentExpectations = [
   { marker: 'E2E_MULTI_AGENT_GAMMA', output: 'Gamma stream started.', reasoning: 'Gamma reasoning one. Gamma reasoning two.' },
 ]
 
-test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
+test('runs General Agent tools in ordinary directories without crossing Project boundaries', { tag: '@smoke' }, async ({ page, request }) => {
   const [alphaPath, betaPath] = await Promise.all([
     mkdtemp(path.join(runtimeRoot, 'general-project-alpha-')),
     mkdtemp(path.join(runtimeRoot, 'general-project-beta-')),

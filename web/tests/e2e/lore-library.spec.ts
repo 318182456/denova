@@ -41,7 +41,7 @@ async function customGenerate(page: Page, title: string) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`browses categorized cards, filters and returns from editing in ${theme}`, async ({
+  test(theme === 'light' ? 'renders empty and populated Lore cards at wide and narrow widths in light' : 'browses categorized cards, filters and returns from editing in dark', async ({
     page,
     request,
   }, testInfo) => {
@@ -95,6 +95,16 @@ for (const theme of ['dark', 'light']) {
     await expect(library.getByRole('button', { name: longName, exact: true })).toBeVisible()
     await expect(sizes.getByRole('radio', { name: '中', exact: true })).toBeChecked()
     await page.setViewportSize({ width: 1600, height: 1000 })
+    // The light journey retains empty/data/long-label layouts. Filtering,
+    // cover mutations and editor persistence are verified once in dark.
+    if (theme === 'light') {
+      await page.screenshot({ path: testInfo.outputPath(`library-${theme}-wide.png`) })
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect(hero).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath(`library-${theme}-narrow.png`) })
+      return
+    }
     const directory = page.locator('.nova-embedded-sidebar').filter({ has: page.getByRole('textbox', { name: '搜索资料', exact: true }) })
     await directory.getByRole('button', { name: '收起全部', exact: true }).click()
     await expect(directory.getByRole('button', { name: '展开角色', exact: true })).toHaveAttribute('aria-expanded', 'false')

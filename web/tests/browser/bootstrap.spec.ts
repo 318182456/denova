@@ -1,7 +1,7 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
-test('mounts the application without runtime errors', async ({ page }) => {
+test('mounts the application without runtime errors', { tag: '@smoke' }, async ({ page }) => {
   const response = await page.goto('/')
 
   expect(response?.ok()).toBe(true)
@@ -11,7 +11,7 @@ test('mounts the application without runtime errors', async ({ page }) => {
   await expect(page.locator('[data-slot=loading-state]:visible')).toHaveCount(0)
 })
 
-test('restores writing and game after a full page reload', async ({ page, request }) => {
+test('restores writing and game after a full page reload', { tag: '@smoke' }, async ({ page, request }) => {
   await createAndOpenBook(request, 'Startup Reload Book')
   await page.goto('/')
   const sidebar = page.getByLabel('工作台侧边栏')

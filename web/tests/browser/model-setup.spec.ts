@@ -2,7 +2,7 @@ import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
 for (const theme of ['dark', 'light']) {
-  test(`configures a first language model from empty settings in ${theme} theme`, async ({ page, request }) => {
+  test(theme === 'light' ? 'renders empty language-model settings at wide and narrow widths in light' : 'configures and restores a first language model in dark', async ({ page, request }) => {
     test.setTimeout(60_000)
     await createAndOpenBook(request, `Model Setup ${theme}`)
     const current = await (await request.get('/api/settings')).json()
@@ -34,6 +34,9 @@ for (const theme of ['dark', 'light']) {
     await expect(page.getByText('尚未配置语言模型。', { exact: false })).toBeVisible()
     await page.screenshot({ path: test.info().outputPath(`empty-models-narrow-${theme}.png`) })
     await page.setViewportSize({ width: 1280, height: 900 })
+    // Empty-state rendering covers both themes; provider editing, persistence
+    // and English labels are independent of theme and run once below.
+    if (theme === 'light') return
 
     await page.getByRole('button', { name: '添加连接', exact: true }).first().click()
     const protocolPicker = page.getByRole('combobox', { name: 'API 协议', exact: true })

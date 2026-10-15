@@ -34,7 +34,7 @@ async function drag(page: Page, source: Locator, target: Locator, screenshotPath
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`shares direct lore directory sorting across surfaces and keeps hidden entries in ${theme}`, async ({ page, request }, testInfo) => {
+  test(theme === 'light' ? 'renders long Lore directory names at wide and narrow widths in light' : 'shares direct Lore directory sorting across surfaces and keeps hidden entries in dark', async ({ page, request }, testInfo) => {
     const book = await createAndOpenBook(request, `Lore directory ${theme}`)
     const url = `/api/projects/${book.projectId}/book/lore/items`
     const gamma = 'Gamma 很长的资料名称LongUnbrokenName'.repeat(4)
@@ -57,6 +57,17 @@ for (const theme of ['dark', 'light']) {
     await expect.poll(names).toEqual(['Alpha', 'Beta', gamma])
     await expect(row(gamma)).toHaveCSS('cursor', 'default')
     await expect(row(gamma)).toHaveAttribute('title', gamma)
+    // Sorting persistence and Project isolation run once. Keep long-name
+    // directory rendering in both themes, including the mobile drawer.
+    if (theme === 'light') {
+      await page.screenshot({ path: testInfo.outputPath(`directory-${theme}-wide.png`) })
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.getByRole('button', { name: '资料库目录', exact: true }).click()
+      await expect(row(gamma)).toBeVisible()
+      expect(await directory.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath(`directory-${theme}-narrow.png`) })
+      return
+    }
     await drag(page, row(gamma), row('Alpha'))
     await expect.poll(names).toEqual([gamma, 'Alpha', 'Beta'])
     await expect(library).toBeVisible()

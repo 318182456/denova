@@ -9,7 +9,7 @@ import { openAgentChatSession, openAgentChatWorkbench, openWritingAgent } from '
 // browser test isolates the composer contract without requiring CLI login.
 for (const kind of ['writing', 'general', 'game'] as const) {
   for (const theme of ['dark', 'light'] as const) {
-    test(`${kind} switches runtimes without losing draft in ${theme}`, async ({ page, request }) => {
+    test(theme === 'light' ? `${kind} renders the runtime menu at wide and narrow widths in light` : `${kind} switches runtimes without losing draft in dark`, async ({ page, request }) => {
       test.setTimeout(90_000)
       const current = await (await request.get('/api/settings')).json()
       const seeded = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user,
@@ -70,6 +70,23 @@ for (const kind of ['writing', 'general', 'game'] as const) {
       await expect(trigger).toBeEnabled()
       await editor.fill('Keep this draft / 保留这段草稿')
       await expect(page.locator('[data-action="send"]').filter({ visible: true })).toBeEnabled()
+      // Keep both products and General in both visual themes without repeating
+      // the same runtime state transitions and persistence assertions.
+      if (theme === 'light') {
+        for (const width of [1440, 390]) {
+          await page.setViewportSize({ width, height: 960 })
+          if (kind === 'writing' && width === 390) await page.getByRole('tab', { name: 'Agent', exact: true }).click()
+          await trigger.click()
+          await page.getByRole('menuitem', { name: '运行时：Native', exact: true }).click()
+          await expect(page.getByRole('menuitem', { name: 'Codex', exact: true })).toBeVisible()
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+          await page.screenshot({ path: test.info().outputPath(`${kind}-${theme}-${width}-runtimes.png`), animations: 'disabled' })
+          await page.keyboard.press('Escape')
+          await page.keyboard.press('Escape')
+          await expect(page.getByRole('menu')).toHaveCount(0)
+        }
+        return
+      }
       if (kind === 'writing' && theme === 'dark') {
         statuses.codex = 'unchecked'
         statuses.claude = 'not_installed'

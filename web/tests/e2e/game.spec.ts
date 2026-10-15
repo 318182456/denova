@@ -184,7 +184,7 @@ for (const viewportWidth of [1280, 390]) {
   })
 }
 
-test('submits, streams, and persists a complete Game turn', async ({ page, request }) => {
+test('submits, streams, and persists a complete Game turn', { tag: '@smoke' }, async ({ page, request }) => {
   await createAndOpenBook(request, 'Game E2E Book')
   const story = await createStartedStory(request, 'Game E2E Story')
 
@@ -215,7 +215,7 @@ test('submits, streams, and persists a complete Game turn', async ({ page, reque
   await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns[2]?.user).toBe('走进旧车站')
 })
 
-test('creates and switches to a branch from a persisted Game turn', async ({ page, request }) => {
+test('creates and switches to a branch from a persisted Game turn', { tag: '@smoke' }, async ({ page, request }) => {
   await createAndOpenBook(request, 'Game Branch E2E Book')
   const story = await createStartedStory(request, 'Game Branch E2E Story')
 
