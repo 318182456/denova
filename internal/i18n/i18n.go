@@ -77,6 +77,12 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"api.agentChat.searchFailed":               "搜索对话历史失败，请重试。",
+	"api.agentChat.exportFailed":               "导出对话失败，请重试。",
+	"api.agentChat.untitled":                   "未命名会话",
+	"api.agentChat.exportUser":                 "用户",
+	"api.agentChat.exportAssistant":            "Agent",
+	"api.agentChat.exportAttachment":           "附件：{{name}}（文件未包含）",
 	"lore.index.contextTooLarge":               "资料索引超过当前 Agent 的上下文上限（{{limit}} 字节）。请降低分组的展示级别，或调整上下文预算；正文不会被截断。",
 	"lore.index.invalid":                       "章节名称不能为空或重复（最多 256 UTF-8 字节），导航摘要最多 1024 字节；最多 256 个章节，总说明最多 64 KiB。",
 	"lore.index.previewFailed":                 "预览暂不可用，请检查分组名称和说明。",
@@ -316,6 +322,12 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"api.agentChat.searchFailed":               "Failed to search conversation history. Please try again.",
+	"api.agentChat.exportFailed":               "Failed to export the conversation. Please try again.",
+	"api.agentChat.untitled":                   "Untitled conversation",
+	"api.agentChat.exportUser":                 "User",
+	"api.agentChat.exportAssistant":            "Agent",
+	"api.agentChat.exportAttachment":           "Attachment: {{name}} (file not included)",
 	"lore.index.contextTooLarge":               "The Lore index exceeds this Agent’s context limit ({{limit}} bytes). Load large sections on demand, reduce their detail, or adjust the context budget. Full bodies will not be truncated.",
 	"lore.index.invalid":                       "Use unique, nonempty section names (up to 256 UTF-8 bytes), short purposes (1024 bytes), at most 256 sections and a 64 KiB introduction.",
 	"lore.index.previewFailed":                 "Preview unavailable. Check group names and notes.",

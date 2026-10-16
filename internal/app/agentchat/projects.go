@@ -152,10 +152,10 @@ func sessionFromMeta(meta session.SessionMeta, projectID string, runningBindings
 	}
 }
 
-func (service *Service) History(query HistoryQuery) HistoryPage {
+func (service *Service) History(ctx context.Context, query HistoryQuery) (HistoryPage, error) {
 	page := HistoryPage{Items: []HistoryItem{}, Offset: max(query.Offset, 0)}
 	if service == nil || service.registry == nil || query.Limit <= 0 {
-		return page
+		return page, nil
 	}
 	startedAt := time.Now()
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query.Search))
@@ -178,15 +178,34 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 		}
 		projectSearchText := strings.ToLower(record.Name + " " + record.WorkspacePath)
 		for _, meta := range metas {
+			if err := ctx.Err(); err != nil {
+				return HistoryPage{}, err
+			}
+			excerpt := ""
 			if normalizedQuery != "" {
 				sessionSearchText := strings.ToLower(meta.Title + " " + meta.ID)
 				if !strings.Contains(sessionSearchText, normalizedQuery) && !strings.Contains(projectSearchText, normalizedQuery) {
-					continue
+					store, err := service.projectSessionStore(record.ID, layout.SessionsDir(), false)
+					if err != nil {
+						return HistoryPage{}, err
+					}
+					sess, err := store.Get(meta.ID)
+					if err != nil {
+						return HistoryPage{}, err
+					}
+					excerpt, err = searchHistoryContent(ctx, sess, normalizedQuery)
+					if err != nil {
+						return HistoryPage{}, fmt.Errorf("search conversation %s: %w", meta.ID, err)
+					}
+					if excerpt == "" {
+						continue
+					}
 				}
 			}
 			items = append(items, HistoryItem{
 				ProjectID: record.ID, ProjectName: record.Name,
 				Session: sessionFromMeta(meta, record.ID, runningBindings),
+				Excerpt: excerpt,
 			})
 		}
 	}
@@ -201,7 +220,7 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 	})
 	page.Total = len(items)
 	if page.Offset >= page.Total {
-		return page
+		return page, nil
 	}
 	end := min(page.Offset+query.Limit, page.Total)
 	page.Items = append(page.Items, items[page.Offset:end]...)
@@ -210,7 +229,7 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 		"[app/agentchat] searched conversation history query_length=%d total=%d offset=%d returned=%d duration=%s",
 		len([]rune(normalizedQuery)), page.Total, page.Offset, len(page.Items), time.Since(startedAt),
 	))
-	return page
+	return page, nil
 }
 
 func (service *Service) readProjectSessions(projectID, sessionsDir string) ([]session.SessionMeta, error) {

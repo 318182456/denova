@@ -125,6 +125,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		projects.POST("/agent-chat/chat/recovery", apiHandlers.HandleAgentChatRecovery)
 		projects.POST("/agent-chat/chat/context-analysis", apiHandlers.HandleAgentChatContextAnalysis)
 		projects.GET("/agent-chat/session/messages", apiHandlers.HandleAgentChatMessages)
+		projects.GET("/agent-chat/session/export", apiHandlers.HandleAgentChatExport)
 		projects.POST("/agent-chat/session/asks/:ask_id/answer", apiHandlers.HandleAgentChatAskAnswer)
 		projects.POST("/agent-chat/session/asks/:ask_id/cancel", apiHandlers.HandleAgentChatAskCancel)
 		projects.POST("/agent-chat/command", apiHandlers.HandleAgentChatSlashCommand)

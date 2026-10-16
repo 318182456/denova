@@ -96,6 +96,7 @@ type HistoryItem struct {
 	ProjectID   string  `json:"project_id"`
 	ProjectName string  `json:"project_name"`
 	Session     Session `json:"session"`
+	Excerpt     string  `json:"excerpt,omitempty"`
 }
 
 type HistoryPage struct {

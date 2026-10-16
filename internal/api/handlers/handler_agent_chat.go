@@ -165,8 +165,8 @@ const (
 )
 
 // HandleAgentChatHistory searches durable conversations across every registered project without
-// changing the Writing workspace or loading message bodies.
-func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestContext) {
+// changing the Writing workspace. Bodies are read only for non-metadata matches.
+func (h *Handlers) HandleAgentChatHistory(ctx context.Context, c *app.RequestContext) {
 	offset := 0
 	limit := defaultAgentChatHistoryPageSize
 	var err error
@@ -185,12 +185,36 @@ func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestConte
 		}
 		limit = min(limit, maxAgentChatHistoryPageSize)
 	}
-	writeJSON(c, consts.StatusOK, h.app.AgentChat().History(agentchatapp.HistoryQuery{
+	page, err := h.app.AgentChat().History(ctx, agentchatapp.HistoryQuery{
 		ProjectID: c.Query("project_id"),
 		Search:    c.Query("query"),
 		Offset:    offset,
 		Limit:     limit,
-	}))
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "Search conversation history failed", "project_id", c.Query("project_id"), "error", err)
+		writeErrorKey(c, consts.StatusInternalServerError, "api.agentChat.searchFailed")
+		return
+	}
+	writeJSON(c, consts.StatusOK, page)
+}
+
+// HandleAgentChatExport downloads the saved visible transcript as Markdown.
+func (h *Handlers) HandleAgentChatExport(ctx context.Context, c *app.RequestContext) {
+	binding, ok := requireAgentChatBindingFromQuery(c)
+	if !ok {
+		return
+	}
+	data, err := h.app.AgentChat().ExportMarkdown(ctx, binding, requestLocale(c))
+	if err != nil {
+		slog.ErrorContext(ctx, "Export conversation Markdown failed", "project_id", binding.ProjectID,
+			"session_id", binding.SessionID, "error", err)
+		writeErrorKey(c, consts.StatusInternalServerError, "api.agentChat.exportFailed")
+		return
+	}
+	c.Response.Header.Set("Content-Disposition", attachmentContentDisposition(binding.SessionID+".md"))
+	c.Response.Header.Set("Cache-Control", "no-store")
+	c.Data(consts.StatusOK, "text/markdown; charset=utf-8", data)
 }
 
 func (h *Handlers) HandleAgentChatSessionCreate(ctx context.Context, c *app.RequestContext) {

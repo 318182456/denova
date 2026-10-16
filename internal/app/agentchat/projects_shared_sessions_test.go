@@ -61,7 +61,10 @@ func TestProjectsAndHistoryShareEveryProjectSession(t *testing.T) {
 	projects := service.Projects("")
 	assertProjectSessionIDs(t, projects, ordinary.ID, configured.ID)
 
-	history := service.History(HistoryQuery{Limit: 10})
+	history, err := service.History(context.Background(), HistoryQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if history.Total != 2 || len(history.Items) != 2 {
 		t.Fatalf("history = %#v", history)
 	}

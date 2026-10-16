@@ -37,6 +37,7 @@ export interface AgentChatHistoryItem {
   project_id: string
   project_name: string
   session: AgentChatSession
+  excerpt?: string
 }
 
 export interface AgentChatHistoryPage {
@@ -96,7 +97,7 @@ export function getAgentChatActivity(): Promise<AgentChatActivityBinding[]> {
   return requestJSON<{ bindings?: AgentChatActivityBinding[] }>('/api/agent-chat/activity').then((data) => data.bindings ?? [])
 }
 
-/** Search complete durable conversation metadata without switching the foreground workspace. */
+/** Search titles and saved visible messages without switching the foreground workspace. */
 export function getAgentChatHistory(
   options: {
     query?: string
@@ -117,6 +118,21 @@ export function getAgentChatHistory(
   return requestJSON<AgentChatHistoryPage>(`/api/agent-chat/history${suffix}`, {
     signal: options.signal,
   }).then((page) => ({ ...page, items: page.items ?? [] }))
+}
+
+/** Downloads the saved visible transcript without opening or switching its session. */
+export async function exportAgentChatMarkdown(projectId: string, sessionId: string): Promise<void> {
+  const params = new URLSearchParams({ session_id: sessionId })
+  const response = await fetchAPI(`${projectAPIPath(projectId, 'agent-chat/session/export')}?${params}`)
+  if (!response.ok) throw await responseAPIError(response)
+  const href = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = href
+  link.download = `${sessionId}.md`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(href), 0)
 }
 
 /** Create a conversation inside any project, open or not. */
