@@ -35,10 +35,6 @@ func (h *Handlers) HandleInteractiveStoryCreate(ctx context.Context, c *app.Requ
 	}
 	story, err := h.app.CreateInteractiveStoryContext(ctx, body)
 	if err != nil {
-		if errors.Is(err, appsvc.ErrGameCreationDefaults) {
-			writeErrorKey(c, consts.StatusBadRequest, "api.interactive.gameDefaultsUnavailable")
-			return
-		}
 		if errors.Is(err, interactive.ErrDefaultBackground) {
 			writeErrorKey(c, consts.StatusBadRequest, "api.interactive.invalidDefaultBackground")
 			return

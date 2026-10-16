@@ -13,6 +13,7 @@ const gameDefaults = {
   'gameDefaults.replaceExisting': 'Replaces this existing book default',
   'gameDefaults.none': 'None',
   'gameDefaults.unavailable': 'Resource unavailable or not selected for import. Include it or deselect this default.',
+  'gameDefaults.importUnavailable': 'Selected defaults are unavailable: {{fields}}. Resolve resource conflicts and refresh the plan, or go back and deselect these defaults.',
   'gameDefaults.loadFailed': 'Could not load book defaults or resources. Please retry.',
   'gameDefaults.saveFailed': 'Could not save defaults. Please retry.',
   'gameDefaults.saved': 'New-story defaults updated for this book',

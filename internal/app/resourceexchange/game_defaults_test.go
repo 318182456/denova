@@ -192,3 +192,126 @@ func TestGameDefaultsPreviewRejectsInvalidReferences(t *testing.T) {
 		}
 	}
 }
+
+func TestGameDefaultsAdoptionReviewsBackgroundConflicts(t *testing.T) {
+	for _, resolution := range []string{"remote", "keep"} {
+		t.Run(resolution, func(t *testing.T) {
+			ctx := context.Background()
+			s := testService(t)
+			preview, projectID, configPath := gameDefaultsFixture(t, s)
+			if err := os.WriteFile(configPath, []byte("theme = 'dark'\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			dir, err := s.previewPath(preview.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := readFiles(filepath.Join(dir, "files"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// An older package can have the same Lore material without a default.
+			var manifest Manifest
+			if err := json.Unmarshal(files["denova-pack.json"], &manifest); err != nil {
+				t.Fatal(err)
+			}
+			defaults := manifest.GameDefaults
+			manifest.GameDefaults = nil
+			files["denova-pack.json"] = jsonBytes(t, manifest)
+			baseline, err := s.previewFiles(ctx, preview.Source, files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := PlanRequest{PreviewID: baseline.ID, CandidateID: baseline.Candidates[0].ID, Resources: []string{"lore", "style"}, ProjectID: projectID}
+			plan, err := s.Plan(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			installed, err := s.Apply(ctx, plan.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, layout, err := s.registry.Resolve(projectID, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := lore.NewStore(layout.ContentRoot)
+			if _, err := store.Update("moonlit_scene", lore.ItemInput{Name: "Moonlit Scene", Content: "My local setting"}); err != nil {
+				t.Fatal(err)
+			}
+			beforeConfig, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeLore, err := os.ReadFile(filepath.Join(layout.ContentRoot, lore.ItemsRelativePath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			manifest.GameDefaults = defaults
+			files["denova-pack.json"] = jsonBytes(t, manifest)
+			files["lore.json"] = bytes.ReplaceAll(files["lore.json"], []byte("A setting"), []byte("An upstream setting"))
+			updated, err := s.previewFiles(ctx, preview.Source, files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.PreviewID, request.InstallationID = updated.ID, installed.ID
+			request.GameDefaultsFields = []string{"default_background", "narrative_style_id"}
+			plan, err = s.Plan(ctx, request)
+			if err != nil {
+				t.Fatalf("background adoption prevented conflict review: %v", err)
+			}
+			if !reflect.DeepEqual(plan.GameDefaultsUnavailable, []string{"default_background"}) || plan.GameDefaultsApplied != nil {
+				t.Fatalf("unavailable defaults were not deferred: %+v", plan)
+			}
+			if len(plan.Updates) == 0 || !plan.Updates[0].Conflict {
+				t.Fatalf("background conflict is missing: %+v", plan.Updates)
+			}
+			if _, err := s.Apply(ctx, plan.ID); err == nil {
+				t.Fatal("applied a plan that could not honor selected defaults")
+			}
+			if raw, _ := os.ReadFile(configPath); !bytes.Equal(raw, beforeConfig) {
+				t.Fatal("conflict review changed book settings")
+			}
+			if raw, _ := os.ReadFile(filepath.Join(layout.ContentRoot, lore.ItemsRelativePath)); !bytes.Equal(raw, beforeLore) {
+				t.Fatal("conflict review changed local Lore")
+			}
+			request.Resolutions = map[string]map[string]string{"lore": {"scene": resolution}}
+			plan, err = s.Plan(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolution == "keep" {
+				if !reflect.DeepEqual(plan.GameDefaultsUnavailable, []string{"default_background"}) {
+					t.Fatal("retained local content supplied an unmapped background")
+				}
+				request.GameDefaultsFields = nil
+				plan, err = s.Plan(ctx, request)
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if len(plan.GameDefaultsUnavailable) > 0 || plan.GameDefaultsApplied.DefaultBackground == nil || plan.GameDefaultsApplied.NarrativeStyleID == nil {
+				t.Fatal("resolved conflict did not restore all selected defaults")
+			}
+			if _, err := s.Apply(ctx, plan.ID); err != nil {
+				t.Fatal(err)
+			}
+			item, err := store.ReadAny("moonlit_scene")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolution == "keep" {
+				if item.Content != "My local setting" {
+					t.Fatal("keeping local content overwrote the user's edit")
+				}
+				if raw, _ := os.ReadFile(configPath); !bytes.Equal(raw, beforeConfig) {
+					t.Fatal("deselecting defaults changed book settings")
+				}
+			} else {
+				saved, err := config.ReadSettingsFile(configPath)
+				if err != nil || !reflect.DeepEqual(saved.GameCreationDefaults, plan.GameDefaultsApplied) || item.Content != "An upstream setting" || item.ResolvedMaterials[0].ID != saved.GameCreationDefaults.DefaultBackground.AssetID {
+					t.Fatalf("adopted defaults do not match imported content: %+v %v", saved.GameCreationDefaults, err)
+				}
+			}
+		})
+	}
+}

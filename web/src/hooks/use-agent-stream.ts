@@ -5,6 +5,8 @@ import { AgentStreamProjection, applyAgentStreamUpdates, isAgentDataChunk } from
 import { createRafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
 
 type Status = 'ready' | 'submitted' | 'streaming' | 'error'
+/** Only a protocol terminal chunk certifies that the display reached its end. */
+export type AgentStreamCompletion = 'terminal' | 'disconnected' | null
 type MessageUpdate = AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])
 type DataPart = Extract<AgentUIMessage['parts'][number], { type: `data-${string}` }>
 interface StreamOptions {
@@ -30,6 +32,7 @@ export function useAgentStream(options: StreamOptions) {
   const [messages, publishMessages] = useState<AgentUIMessage[]>([])
   const currentMessages = useRef(messages)
   const [status, setStatus] = useState<Status>('ready')
+  const [completion, setCompletion] = useState<AgentStreamCompletion>(null)
   const [error, setError] = useState<Error>()
   const connection = useRef<Connection | null>(null)
   const chatID = useRef(crypto.randomUUID())
@@ -56,6 +59,7 @@ export function useAgentStream(options: StreamOptions) {
 
   const stop = useCallback(() => {
     disconnect()
+    setCompletion('disconnected')
     setStatus('ready')
   }, [disconnect])
 
@@ -66,6 +70,7 @@ export function useAgentStream(options: StreamOptions) {
     // A reconnect belongs to an accepted task. Preserve its display status
     // until attachment resolves so recovery cannot mistake it for a new POST.
     if (mode === 'submit') {
+      setCompletion(null)
       setError(undefined)
       setStatus('submitted')
     }
@@ -78,18 +83,24 @@ export function useAgentStream(options: StreamOptions) {
       if (!stream) { setStatus('ready'); return }
       active.reader = stream.getReader()
       if (mode === 'resume') {
+        setCompletion(null)
         setError(undefined)
         setStatus('streaming')
       }
+      let completion: AgentStreamCompletion = 'disconnected'
       while (connection.current === active) {
         const { done, value } = await active.reader.read()
         if (done || connection.current !== active) break
         setStatus('streaming')
         active.projection.consume(value)
+        if (value.type === 'finish' || value.type === 'abort') completion = 'terminal'
         batcher.enqueue(current => applyAgentStreamUpdates(current, active.projection.takeUpdates()))
         if (isAgentDataChunk(value)) callbacks.current.onData(value as DataPart)
       }
-      if (connection.current === active) setStatus('ready')
+      if (connection.current === active) {
+        setCompletion(completion)
+        setStatus('ready')
+      }
     } catch (cause) {
       if (connection.current !== active || active.controller.signal.aborted) return
       const failure = cause instanceof Error ? cause : new Error(String(cause))
@@ -130,5 +141,5 @@ export function useAgentStream(options: StreamOptions) {
     batcher.discard()
   }, [batcher, options.transport])
 
-  return { messages, setMessages, sendMessage, resumeStream, stop, status, error }
+  return { messages, setMessages, sendMessage, resumeStream, stop, status, error, completion }
 }

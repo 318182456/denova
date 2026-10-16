@@ -132,7 +132,7 @@ describe('AgentChatView project workbenches', () => {
     await waitFor(() => expect(addAgentChatProject).toHaveBeenCalledWith('/projects/story'))
     expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith(undefined)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'story' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '收起 story' })).toBeInTheDocument()
   })
 
   it('opens the shared Book form after the creation guard succeeds', async () => {

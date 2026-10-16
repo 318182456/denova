@@ -13,6 +13,7 @@ const gameDefaults = {
   'gameDefaults.replaceExisting': '将替换本书已有的这一项默认配置',
   'gameDefaults.none': '不使用',
   'gameDefaults.unavailable': '资源不可用或未选择导入，请补选资源或取消这一项。',
+  'gameDefaults.importUnavailable': '所选默认配置暂不可用：{{fields}}。请先处理资源冲突并重新生成计划，或返回取消这些默认配置。',
   'gameDefaults.loadFailed': '无法读取本书默认配置或资源，请重试。',
   'gameDefaults.saveFailed': '默认配置保存失败，请重试。',
   'gameDefaults.saved': '已更新本书的新故事默认配置',

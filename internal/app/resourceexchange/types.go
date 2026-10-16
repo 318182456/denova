@@ -186,6 +186,10 @@ type Plan struct {
 	Items               []PlanItem                   `json:"items"`
 	PlatformState       string                       `json:"platform_state,omitempty"`
 	Changes             []fileChange                 `json:"changes,omitempty"`
+
+	// Unavailable selections keep the review visible but prevent application
+	// until resources are resolved or the user deselects those defaults.
+	GameDefaultsUnavailable []string `json:"game_defaults_unavailable,omitempty"`
 }
 
 // PublicPlan excludes staged bytes and filesystem locations from API responses.

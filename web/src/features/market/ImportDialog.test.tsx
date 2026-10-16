@@ -8,7 +8,7 @@ import { fetchProjectSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import { BookCreationProvider } from '@/components/workbench/book-creation'
 import { ImportDialog } from './ImportDialog'
-import { discardPreview, previewSource, exchange, type Preview } from './api'
+import { discardPreview, previewSource, exchange, type Installation, type Preview } from './api'
 vi.mock('@/lib/api', () => ({ getBooks: vi.fn().mockResolvedValue([]), createBook: vi.fn() }))
 vi.mock('@/features/lore/events', () => ({ notifyLoreUpdated: vi.fn() }))
 vi.mock('@/features/settings/api', () => ({ fetchProjectSettings: vi.fn(), invalidateSettingsCache: vi.fn() }))
@@ -64,6 +64,30 @@ it('preselects available recommendations only when creating a new book', async (
   expect(screen.getByRole('checkbox', { name: '插图方案 · Selected image' })).toBeChecked()
   await user.click(screen.getByRole('button', { name: '清空选择' }))
   expect(screen.getByRole('checkbox', { name: '插图方案 · Selected image' })).toBeDisabled()
+})
+it('reviews background conflicts before allowing selected defaults to be applied', async () => {
+  const user = userEvent.setup()
+  const candidate = { ...preview.candidates[1], resources: [preview.candidates[1].resources[0]], game_defaults: { default_background: { resource_id: 'lore', item_id: 'world', asset_path: 'background.png' } } }
+  const installation = { installation_id: 'installed', package: candidate.package, project_id: 'target', bindings: [{ resource_id: 'lore', local: { kind: 'lore.collection', project_id: 'target' } }] } as Installation
+  const plan = { plan_id: 'conflicted', installation, items: [], game_defaults_unavailable: ['default_background'], updates: [{ resource_id: 'lore', member_id: 'world', name: 'World', state: 'conflict', conflict: true }] }
+  vi.mocked(exchange).mockResolvedValueOnce(plan).mockResolvedValueOnce({ ...plan, plan_id: 'resolved', game_defaults_unavailable: [], game_defaults_applied: { default_background: { mode: 'image', item_id: 'world', asset_id: 'background' } }, updates: [{ ...plan.updates[0], resolution: 'remote', state: 'update' }] }).mockResolvedValueOnce(installation)
+  const onInstalled = vi.fn()
+  render(<ImportDialog preview={{ ...preview, candidates: [candidate] }} installation={installation} onClose={vi.fn()} onInstalled={onInstalled} />)
+  const adopt = screen.getByRole('checkbox', { name: '用作本书的新故事默认配置' })
+  await waitFor(() => expect(adopt).toBeEnabled())
+  await user.click(adopt)
+  await user.click(screen.getByRole('button', { name: '生成安装计划' }))
+  expect(await screen.findByText(/所选默认配置暂不可用：默认背景/)).toBeVisible()
+  expect(screen.getByRole('button', { name: '应用本次更新' })).toBeDisabled()
+  expect(exchange).toHaveBeenCalledExactlyOnceWith('/plans', expect.objectContaining({ game_defaults_fields: ['default_background'] }))
+  await user.click(screen.getByRole('button', { name: '全部替换' }))
+  await user.click(screen.getByRole('button', { name: '更新安装计划' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '应用本次更新' })).toBeEnabled())
+  expect(exchange).toHaveBeenNthCalledWith(2, '/plans', expect.objectContaining({ game_defaults_fields: ['default_background'], resolutions: { lore: { world: 'remote' } } }))
+  expect(screen.queryByText(/所选默认配置暂不可用/)).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '应用本次更新' }))
+  await waitFor(() => expect(onInstalled).toHaveBeenCalledWith(installation))
+  expect(exchange).toHaveBeenNthCalledWith(3, '/plans/resolved/apply', {})
 })
 it('plans exactly the selected candidate and resources, while displaying its dependency', async () => {
   vi.mocked(exchange).mockResolvedValue({ plan_id: 'plan', items: [], installation: { package: { name: 'Chosen package' } } })

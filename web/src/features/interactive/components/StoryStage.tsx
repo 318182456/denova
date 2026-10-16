@@ -753,6 +753,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 onLoadEarlierMessages={loadEarlierMessages}
                 autoLoadEarlierMessages
                 onLoadExecutionDetails={loadExecutionDetails}
+                afterContentScroll="reveal-heading"
                 afterContent={historyWindow.followLatest && (!streaming || currentTurnPersisted) && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
                   <StoryStateLedger
                     animateEntrance={Boolean(liveAccumulator.renderKeyFor(snapshot?.current_turn?.id || '', 'assistant'))}

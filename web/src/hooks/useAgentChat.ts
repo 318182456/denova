@@ -102,6 +102,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     stop: stopAIStream,
     status,
     error,
+    completion,
   } = useAgentStream({
     transport,
     throttle: STREAMING_RENDER_INTERVAL_MS,
@@ -265,7 +266,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     [t],
   )
 
-  const { abortRecovery, resumeTask: continueTask, projectStreamCycle, recoveryPending, recoveryFailed, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
+  const { abortRecovery, resumeTask: continueTask, projectStreamCycle, recoveryPending, recoveryFailed, resumeActiveChat, synchronizeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
     activeSessionId,
     displayRehydrateRequest,
     loadHistoryAuthoritative,
@@ -277,6 +278,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     transport,
     transportError: error,
     transportStatus: status,
+    transportCompletion: completion,
     transportStreaming,
     client,
   })
@@ -876,6 +878,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     hasEarlierMessages,
     isLoadingEarlierHistory,
     resumeActiveChat,
+    synchronizeActiveChat,
     createChatSession,
     switchChatSession,
     renameChatSession,

@@ -53,6 +53,8 @@ interface MessageListProps {
   /** Exposes the scrollport so floating controls can share its content width. */
   onScrollerChange?: (element: HTMLElement | null) => void
   afterContent?: ReactNode
+  /** Generic controls follow output; confirmed result panels only reveal their marked heading. */
+  afterContentScroll?: 'follow' | 'reveal-heading'
   afterContentKey?: string
   hasEarlierMessages?: boolean
   isLoadingEarlierMessages?: boolean
@@ -132,7 +134,7 @@ export function MessageList(props: MessageListProps) {
   return <VirtualizedMessageState key={props.scrollResetKey || 'default'}><MessageListContent {...props} /></VirtualizedMessageState>
 }
 
-function MessageListContent({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, onScrollerChange, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, autoLoadEarlierMessages = false, onLoadExecutionDetails, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+function MessageListContent({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, onScrollerChange, afterContent, afterContentScroll = 'follow', afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, autoLoadEarlierMessages = false, onLoadExecutionDetails, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -186,7 +188,8 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
   // remains active and can still publish layout updates.
   // A confirmed trailing result ends prose following even if the transport is
   // still open. Its reveal must not drag the reader to the bottom of the panel.
-  const tailFollowActive = (isStreaming || isExecutionActive) && !afterContent
+  const revealAfterContent = Boolean(afterContent) && afterContentScroll === 'reveal-heading'
+  const tailFollowActive = (isStreaming || isExecutionActive) && !revealAfterContent
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
   const initialPositionKey = scrollResetKey || 'default'
   const hasInitialContent = views.length > 0 || isStreaming || Boolean(activityContent)
@@ -201,7 +204,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
     resetPosition: initialPosition,
     itemCount: listItems.length,
     autoFollowEnabled: tailFollowActive,
-    hasAfterContent: Boolean(afterContent),
+    revealAfterContent,
     visible,
     bottomInsetPx: bottomPaddingPx,
     resolveScroller: resolveMessageScroller,

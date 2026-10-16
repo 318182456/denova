@@ -84,7 +84,6 @@ var catalogZH = map[string]string{
 	"api.interactive.backgroundUpdateFailed":   "无法切换当前背景，请刷新后重试，并选择资料库中已启用的本地图片。",
 	"api.interactive.executionDetailsFailed":   "无法加载执行详情，请刷新后重试。",
 	"api.interactive.invalidDefaultBackground": "背景不可用，请重新选择资料库中已启用并保存到本地的图片素材。",
-	"api.interactive.gameDefaultsUnavailable":  "本书默认资源不可用或配置不匹配，请重新选择故事资源或修改本书默认配置。",
 
 	"market.errors.resourceOwned":       "此资源属于另一个正在跟踪的安装，请先管理或停止该来源跟踪，再替换内容。",
 	"market.errors.creatorInvalid":      "创作规则必须是非空 UTF-8 文本，且不能超过目标项目的 Agent 上下文片段容量上限。",
@@ -324,7 +323,6 @@ var catalogEN = map[string]string{
 	"api.interactive.backgroundUpdateFailed":   "Could not change the current background. Reload and select an enabled local Lore image.",
 	"api.interactive.executionDetailsFailed":   "Could not load execution details. Reload and try again.",
 	"api.interactive.invalidDefaultBackground": "Background unavailable. Select an enabled Lore image saved locally.",
-	"api.interactive.gameDefaultsUnavailable":  "Book defaults contain unavailable or incompatible resources. Choose Story resources again or update the book defaults.",
 
 	"market.errors.resourceOwned":       "This resource belongs to another tracked installation. Manage or detach its source before replacing it.",
 	"market.errors.creatorInvalid":      "Creative instructions must be non-empty UTF-8 text within the target Project’s Agent context fragment limits.",

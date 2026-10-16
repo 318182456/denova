@@ -167,6 +167,9 @@ func (s *Service) stageGameDefaults(ctx context.Context, request PlanRequest, pl
 	if plan.Installation.ProjectID != "" && plan.Installation.ProjectID != request.ProjectID {
 		return fmt.Errorf("game defaults must belong to the installation Project")
 	}
+	if len(plan.GameDefaultsUnavailable) > 0 {
+		return nil
+	}
 	selected, err := plan.Installation.GameDefaults.Select(request.GameDefaultsFields)
 	if err != nil {
 		return err

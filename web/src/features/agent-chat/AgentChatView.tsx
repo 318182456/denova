@@ -41,6 +41,7 @@ import type { AgentChatConversationState } from './AgentChatConversationTab'
 import { AgentChatTabDragContext } from './AgentChatTabDragContext'
 import { AgentChatWorkspaceSurface } from './AgentChatWorkspaceSurface'
 import { agentChatSessionBindingKey } from './sidebar-activity'
+import { pendingAgentChatSessionNavigation } from './session-navigation'
 import {
   createTabId,
   draftSessionTitle,
@@ -365,6 +366,16 @@ export function AgentChatView({
     },
     [openTab],
   )
+
+  useEffect(() => {
+    if (projectsLoading || pendingAgentChatSessionNavigation()) return
+    const project = projectsRef.current.find((candidate) => candidate.id === activeProjectId)
+    if (!project || project.status !== 'available' || workbenchRef.current.projects[project.id]?.tabs.length) return
+    // Seed only on project entry. Closing the last tab or refreshing metadata must respect
+    // the user's empty layout until the next entry, while restored tabs always take priority.
+    console.info('[agent-chat] Opening default conversation draft', { projectId: project.id })
+    openDraftSessionInProject(project)
+  }, [activeProjectId, projectsLoading, openDraftSessionInProject])
 
   const openConfiguredSessionInProject = useCallback(async (project: AgentChatProject, customAgentId: string, group: AgentChatGroupId = 'primary') => {
     try {

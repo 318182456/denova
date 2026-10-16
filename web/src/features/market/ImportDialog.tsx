@@ -501,6 +501,9 @@ export function ImportDialog({
             {error}
           </p>
         )}
+        {!!plan?.game_defaults_unavailable?.length && <p role="status" className="text-sm text-muted-foreground">
+          {t('gameDefaults.importUnavailable', { fields: plan.game_defaults_unavailable.map(field => t(`gameDefaults.fields.${field}`)).join(' · ') })}
+        </p>}
         {plan?.game_defaults_applied && <section className="space-y-2 rounded-lg border p-3">
           <p className="text-sm font-medium">{t('gameDefaults.adopt')}</p>
           <p className="text-xs text-muted-foreground">{t('gameDefaults.help')}</p>
@@ -520,6 +523,7 @@ export function ImportDialog({
           <Button
             disabled={
               busy ||
+              (!!plan?.game_defaults_unavailable?.length && !needsPlanReview) ||
               (!preview && !sourceReady) ||
               (!!preview &&
                 !plan &&

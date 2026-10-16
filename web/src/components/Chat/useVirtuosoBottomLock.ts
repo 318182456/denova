@@ -22,7 +22,7 @@ interface VirtuosoBottomLockOptions {
   itemCount: number
   autoFollowEnabled: boolean
   /** Preserve the reply; reveal only the footer's data-nova-chat-after-content-reveal anchor. */
-  hasAfterContent?: boolean
+  revealAfterContent?: boolean
   /** Persistent AgentChat tabs stay mounted under `display: none`; hidden geometry is not measurable. */
   visible?: boolean
   /** Height covered by the composer and its breathing room inside the message viewport. */
@@ -31,7 +31,7 @@ interface VirtuosoBottomLockOptions {
   resolveScroller?: () => HTMLElement | null
 }
 
-export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCount, autoFollowEnabled, hasAfterContent = false, visible = true, bottomInsetPx, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: VirtuosoBottomLockOptions) {
+export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCount, autoFollowEnabled, revealAfterContent = false, visible = true, bottomInsetPx, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: VirtuosoBottomLockOptions) {
   const reducedMotion = useReducedMotionConfig()
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const scrollerElementRef = useRef<HTMLElement | null>(null)
@@ -166,7 +166,7 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
     ) return
     const element = currentScrollerElement()
     if (!element || element.clientHeight <= 0) return
-    if (hasAfterContent) {
+    if (revealAfterContent) {
       if (!afterContentRevealPendingRef.current) return
       const reveal = element.querySelector('[data-nova-chat-after-content-reveal]')
       // Virtuoso can mount its footer after the parent's layout effect. Consume
@@ -180,7 +180,7 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
     element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
     viewportScrollTopRef.current = element.scrollTop
     setIsAwayFromBottom(false)
-  }, [bottomInsetPx, currentScrollerElement, hasAfterContent, reducedMotion])
+  }, [bottomInsetPx, currentScrollerElement, revealAfterContent, reducedMotion])
 
   const unlockFromBottom = useCallback(() => {
     lockedRef.current = false
@@ -421,8 +421,8 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
           )
           element.scrollTop = preservedScrollTop
           viewportScrollTopRef.current = preservedScrollTop
-          afterContentRevealPendingRef.current = hasAfterContent && lockedRef.current
-          if (hasAfterContent) syncIdleBottomLayout()
+          afterContentRevealPendingRef.current = revealAfterContent && lockedRef.current
+          if (revealAfterContent) syncIdleBottomLayout()
           updateAwayFromBottom(element)
         }
       }
@@ -436,7 +436,7 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
     // explicit upward interaction may unlock it. An already-unlocked viewport
     // may still relock when it was effectively at the end before streaming.
     if (!lockedRef.current) lockedRef.current = !element || isNearBottom(element)
-  }, [autoFollowEnabled, cancelScheduledScroll, currentScrollerElement, hasAfterContent, isNearBottom, itemCount, resetAfterContentInteraction, scrollToBottomNow, syncIdleBottomLayout, updateAwayFromBottom, visible])
+  }, [autoFollowEnabled, cancelScheduledScroll, currentScrollerElement, revealAfterContent, isNearBottom, itemCount, resetAfterContentInteraction, scrollToBottomNow, syncIdleBottomLayout, updateAwayFromBottom, visible])
 
   useLayoutEffect(() => {
     resetAfterContentInteraction()

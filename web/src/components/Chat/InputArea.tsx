@@ -51,6 +51,8 @@ export function applyInputPrefill(current: string, prefill: InputAreaPrefill): s
 
 interface InputAreaProps {
   page?: AgentPage
+  /** Focus a newly opened draft on desktop without raising the mobile keyboard. */
+  autoFocus?: boolean
   onSend: (message: string, options?: InputAreaSendOptions) => boolean | void | Promise<boolean | void>
   onStop?: () => void
   disabled: boolean
@@ -120,6 +122,7 @@ interface InputAreaProps {
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
 export function InputArea({
   page,
+  autoFocus = false,
   onSend,
   onStop,
   disabled,
@@ -279,6 +282,12 @@ export function InputArea({
     submittingRef.current = false
     setSubmitting(false)
   }, [generationActive])
+
+  useEffect(() => {
+    if (!autoFocus || isMobile || disabled) return
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [autoFocus, disabled, isMobile])
 
   useEffect(() => {
     if (!inputPrefill) return

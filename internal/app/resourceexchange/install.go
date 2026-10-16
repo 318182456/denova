@@ -48,6 +48,9 @@ func (s *Service) Apply(ctx context.Context, id string) (Installation, error) {
 	if err != nil {
 		return Installation{}, err
 	}
+	if len(plan.GameDefaultsUnavailable) > 0 {
+		return Installation{}, fmt.Errorf("selected game defaults are unavailable: %s", strings.Join(plan.GameDefaultsUnavailable, ", "))
+	}
 	// A lost HTTP response may be retried safely with the same plan.
 	txnSnapshot, err := readTransaction(ctx, s.root, id)
 	if err != nil {

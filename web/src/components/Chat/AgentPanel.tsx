@@ -660,6 +660,7 @@ function AgentPanelComponent({
   }
   const inputAreaProps = {
     page,
+    autoFocus: active && sessionDraft && chrome === 'workbench',
     onSend: sendWithWritingSkill,
     attachmentsEnabled: true,
     // Preserve resumable output only when the selected engine supports pause.

@@ -154,6 +154,7 @@ export interface UpdateItem {
 }
 export interface Plan {
   updates?: UpdateItem[]
+  game_defaults_unavailable?: GameDefaultField[]
   game_defaults_before?: GameCreationDefaults
   game_defaults_applied?: GameCreationDefaults
   plan_id: string

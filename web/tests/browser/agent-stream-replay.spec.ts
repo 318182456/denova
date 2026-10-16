@@ -62,8 +62,8 @@ for (const [product, theme] of [['writing', 'dark'], ['general', 'light']] as co
       historyReads++
       return route.fulfill({ json: { messages: history, page: { has_more: false, total: history.length } } })
     })
-    await page.route(`**${apiPath}/chat/active?*`, route => route.fulfill({ json: settled ? { active: false } : {
-      active: true, status: 'running', phase: 'running', task_id: 'existing-task', stream_attached: true,
+    await page.route(`**${apiPath}/chat/active?*`, route => route.fulfill({ json: settled ? { active: false, cursor: 12 } : {
+      active: true, status: 'running', phase: 'running', task_id: 'existing-task', stream_attached: true, cursor: 10,
     } }))
     await page.route(`**${apiPath}/chat/stream?*`, route => {
       streamRequests.push(new URL(route.request().url()))
@@ -72,9 +72,11 @@ for (const [product, theme] of [['writing', 'dark'], ['general', 'light']] as co
         { type: 'text-start', id: 'first', providerMetadata: { agent: metadata('first') } },
         { type: 'text-delta', id: 'first', delta: 'Known' },
         // This visible marker proves the short prefix reached a rendered batch.
+        { type: 'message-metadata', messageMetadata: { run_id: 'replay-marker' } },
         { type: 'text-start', id: 'marker' },
         { type: 'text-delta', id: 'marker', delta: `Replay attached ${streamRequests.length}.` },
         { type: 'text-end', id: 'marker' },
+        { type: 'message-metadata', messageMetadata: { run_id: 'replay-run' } },
       ]
       return route.fulfill({ headers: { 'content-type': 'text/event-stream', 'x-test-agent-replay': 'true' },
         body: chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join(''),
@@ -116,12 +118,28 @@ for (const [product, theme] of [['writing', 'dark'], ['general', 'light']] as co
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await page.screenshot({ path: test.info().outputPath(`replay-recovered-${product}-${theme}.png`) })
 
+    const readsBeforeFinish = historyReads
+    await page.evaluate(() => {
+      const warnings: string[] = []
+      const observer = new MutationObserver(() => {
+        if (document.body.textContent?.includes('正在从持久化状态恢复')) warnings.push('recovery')
+      })
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+      Object.assign(window, { finishRecoveryWarnings: warnings, finishRecoveryObserver: observer })
+    })
     settled = true
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('test-agent-replay', {
       detail: 'data: {"type":"text-end","id":"first"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n',
     })))
     await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0)
     await expect(page.getByText('Authoritative recovered answer.', { exact: true })).toHaveCount(1)
+    expect(historyReads).toBe(readsBeforeFinish)
+    expect(await page.evaluate(() => {
+      const state = window as unknown as { finishRecoveryWarnings: string[]; finishRecoveryObserver: MutationObserver }
+      state.finishRecoveryObserver.disconnect()
+      return state.finishRecoveryWarnings
+    })).toEqual([])
+    await page.screenshot({ path: test.info().outputPath(`replay-finished-${product}-${theme}.png`) })
     expect(commands).toEqual([])
   })
 }

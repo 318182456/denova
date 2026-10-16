@@ -97,6 +97,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, im
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
   const [storyIndexLoading, setStoryIndexLoading] = useState(true)
+  const [loadedWorkspace, setLoadedWorkspace] = useState(workspace)
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
   const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
@@ -199,6 +200,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, im
     if (workspace !== undefined) {
       resetWorkspaceState()
       if (!workspace) {
+        setLoadedWorkspace(workspace)
         setStoryIndexLoading(false)
         return () => { cancelled = true }
       }
@@ -213,7 +215,10 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, im
         if (!cancelled) console.error('[InteractiveLayout.tsx] failed to load the interactive workspace index', { workspace, error })
       })
       .finally(() => {
-        if (!cancelled) setStoryIndexLoading(false)
+        if (!cancelled) {
+          setLoadedWorkspace(workspace)
+          setStoryIndexLoading(false)
+        }
       })
     return () => { cancelled = true }
   }, [reloadStories, resetWorkspaceState, setPlanningTemplates, setTellers, workspace])
@@ -226,9 +231,9 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, im
   }, [reloadBookOpeningPreset])
 
   useEffect(() => {
-    if (!active) return
+    if (!active || storyIndexLoading || loadedWorkspace !== workspace) return
     void reloadSnapshot()
-  }, [active, currentStoryId, reloadSnapshot])
+  }, [active, currentStoryId, loadedWorkspace, reloadSnapshot, storyIndexLoading, workspace])
 
   useEffect(() => {
     const branchID = snapshot?.branch_id
@@ -450,7 +455,9 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, im
     await reloadStories()
   }
 
-  if (storyIndexLoading) {
+  // Workspace props change before the shared story store is reset by its effect.
+  // Never bind the previous story to the incoming Project during that render.
+  if (storyIndexLoading || loadedWorkspace !== workspace) {
     return (
       <LoadingState
         label={t('interactiveLayout.loading')}

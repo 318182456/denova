@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
@@ -64,13 +63,17 @@ func TestBookGameDefaultsSeedOnlyNewStories(t *testing.T) {
 	}
 }
 
-func TestBookGameDefaultsMissingResourcesRequireExplicitChoice(t *testing.T) {
+func TestBookGameDefaultsDoNotRestrictStoryChoices(t *testing.T) {
 	a := newExecutionProfileTestApp(t)
 	if _, err := a.SettingsService().Patch(appsettings.Project(a.ProjectID()), config.SettingsLayerWorkspace, []byte(`{"game_creation_defaults":{"narrative_style_id":"missing","default_background":{"mode":"image","item_id":"missing","asset_id":"missing"}}}`), ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.CreateInteractiveStory(interactive.CreateStoryRequest{}); !errors.Is(err, ErrGameCreationDefaults) {
-		t.Fatalf("missing resource silently replaced: %v", err)
+	inherited, err := a.CreateInteractiveStory(interactive.CreateStoryRequest{PresentationSettings: &interactive.StoryPresentationSettings{Background: true, Characters: true}})
+	if err != nil {
+		t.Fatalf("unavailable recommendation blocked story creation: %v", err)
+	}
+	if inherited.ModuleRefs.NarrativeStyleID != "missing" {
+		t.Fatalf("recommended resource choice was lost: %+v", inherited.ModuleRefs)
 	}
 	refs := interactive.DefaultStoryDirectorModuleRefs()
 	refs.NarrativeStyleID = ""

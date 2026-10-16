@@ -82,6 +82,11 @@ func (registry *Registry) EnsureStore(record Record) (Layout, error) {
 		{name: "artifacts", source: workspacelayout.Path(layout.ContentRoot, "artifacts"), destination: layout.ArtifactsDir()},
 		{name: "automations", source: workspacelayout.Path(layout.ContentRoot, "automations"), destination: layout.AutomationsDir()},
 	}
+	if workspacelayout.IsUserDataRoot(workspacelayout.Dir(layout.ContentRoot)) {
+		// A code project may contain the application's entire data root. It
+		// does not own those global settings, automations or other Projects.
+		legacy = nil
+	}
 	copied := make([]string, 0, len(legacy))
 	if layout.Type == TypeBook {
 		migrated, migrationErr := versions.MigrateLegacyRepository(

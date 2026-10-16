@@ -204,8 +204,8 @@ function AgentChatConversationTabComponent({
     // A locally-owned turn already streams into this hook. Only external owners need a history
     // refresh and active-run inspection, otherwise a Project metadata poll could double-attach it.
     if (draft || !initializedRef.current || chat.isExecutionActive) return
-    void synchronize()
-  }, [chat.isExecutionActive, draft, syncRevision, synchronize])
+    void chat.synchronizeActiveChat()
+  }, [chat.isExecutionActive, chat.synchronizeActiveChat, draft, syncRevision])
 
   const send = useCallback(
     (message: string, options?: Parameters<typeof chat.send>[1]) => {

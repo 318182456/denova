@@ -431,7 +431,17 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 				available.DefaultBackground = old.GameDefaults.DefaultBackground
 			}
 		}
-		if _, err := available.Select(request.GameDefaultsFields); err != nil {
+		fields := request.GameDefaultsFields
+		if available != nil && available.DefaultBackground == nil && slices.Contains(fields, "default_background") && old.ID != "" && candidate.GameDefaults.DefaultBackground != nil {
+			bg := candidate.GameDefaults.DefaultBackground
+			if slices.ContainsFunc(selected, func(resource PreviewResource) bool { return resource.ID == bg.ResourceID }) {
+				// A retained or conflicted Lore item has no incoming asset mapping.
+				// Keep its review accessible without silently dropping adoption.
+				plan.GameDefaultsUnavailable = []string{"default_background"}
+				fields = slices.DeleteFunc(slices.Clone(fields), func(field string) bool { return field == "default_background" })
+			}
+		}
+		if _, err := available.Select(fields); err != nil {
 			return Plan{}, err
 		}
 	}
@@ -486,7 +496,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 				conflicts++
 			}
 		}
-		slog.InfoContext(ctx, "resource_update_planned", "installation", old.ID, "units", len(plan.Updates), "pending", conflicts)
+		slog.InfoContext(ctx, "resource_update_planned", "installation", old.ID, "units", len(plan.Updates), "pending", conflicts, "unavailable_defaults", plan.GameDefaultsUnavailable)
 	}
 	record, err := json.Marshal(plan.Installation)
 	if err != nil {

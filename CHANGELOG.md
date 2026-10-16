@@ -63,6 +63,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 修复包含 Denova 用户数据目录的代码项目被误识别为书籍、导致添加失败的问题；保留项目身份并支持重试。
+- Fix code projects containing a Denova user data directory being misclassified as Books and failing to add, preserving Project identity and allowing retries.
+
 - 降低长思考流式输出时的 CPU 占用与滚动、工具卡片卡顿；思考逐词动画默认关闭，可通过“完整”动效重新开启。
 - Reduce CPU usage and scrolling or tool-card stalls during long thinking streams; thinking word animations default to off and can be enabled with Full motion.
 

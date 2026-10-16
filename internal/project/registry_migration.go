@@ -65,8 +65,14 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 			if err := registry.normalizeRegistryData(&data); err != nil {
 				return registryData{}, false, err
 			}
-			registry.readCache = &registryReadCache{raw: raw, data: cloneRegistryData(data)}
-			return data, false, nil
+			changed, err := registry.repairIncompleteBookRegistrations(&data, raw)
+			if err != nil {
+				return registryData{}, false, err
+			}
+			if !changed {
+				registry.readCache = &registryReadCache{raw: raw, data: cloneRegistryData(data)}
+			}
+			return data, changed, nil
 		case legacyProjectStateRegistryVersion:
 			if err := registry.normalizeRegistryData(&data); err != nil {
 				return registryData{}, false, err
