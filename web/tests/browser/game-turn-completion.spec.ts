@@ -52,7 +52,7 @@ for (const { theme, width, motion } of [
     await page.setViewportSize({ width, height: 900 })
     // The initial shell can precede the selected story's hydrated stage.
     // Bind the journey to that stage before editing its conversation draft.
-    await expect(page.getByTestId('story-stage').getByText(snapshot.current_turn.narrative, { exact: true })).toBeVisible()
+    await expect(page.getByTestId('story-stage-card').getByText(snapshot.current_turn.narrative, { exact: true })).toBeVisible()
     const input = page.getByPlaceholder(/你要做什么/)
     await input.fill('走向城门')
     await expect(input).toHaveText('走向城门')
