@@ -1,8 +1,8 @@
 const settings = {
   'settings.analytics.enabled': '分享使用统计',
   'settings.analytics.noticeTitle': '使用统计不包含创作内容',
-  'settings.analytics.noticeDescription': 'Denova 默认开启使用统计，用于改进产品。你可以现在关闭，也可以随时在「设置 → 常规」中修改。',
-  'settings.analytics.settingsDescription': '向 Umami Cloud 分享活跃、功能使用、留存、版本、平台和执行结果。此设置属于当前电脑用户，对写作和游戏统一生效。',
+  'settings.analytics.noticeDescription': 'Denova 默认开启使用统计，用于改进产品，包括活跃、功能触达、留存、执行结果和耗时。你可以现在关闭，也可以随时在「设置 → 常规」中修改。',
+  'settings.analytics.settingsDescription': '向 Umami Cloud 分享活跃、功能触达、留存、版本、平台、执行结果和耗时。此设置属于当前电脑用户，对写作和游戏统一生效。',
   'settings.analytics.privacyDescription': '不会发送正文、提示词、AI 回答、图片、项目名称、文件路径、API 密钥或原始错误信息。随机本地标识用于关联留存；云端服务会接触连接 IP 地址。',
   'settings.analytics.acknowledge': '知道了',
   'settings.analytics.disable': '关闭统计',

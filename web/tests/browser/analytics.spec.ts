@@ -43,6 +43,7 @@ for (const { theme, locale, width } of [
     const dialog = page.getByRole('dialog', { name: chinese ? '使用统计不包含创作内容' : 'Usage statistics without creative content' })
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText(chinese ? '默认开启' : 'enabled by default')
+    await expect(dialog).toContainText(chinese ? '执行结果和耗时' : 'execution outcomes and duration')
     await expect(dialog).toContainText(chinese ? '不会发送正文' : 'No creative text')
     expect(activities).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -53,6 +54,9 @@ for (const { theme, locale, width } of [
     await selectDestination(chinese ? '设置' : 'Settings')
     const toggle = page.getByRole('switch', { name: chinese ? '分享使用统计' : 'Share usage statistics', exact: true })
     await expect(toggle).toBeChecked()
+    await expect(page.getByText(chinese
+      ? '向 Umami Cloud 分享活跃、功能触达、留存、版本、平台、执行结果和耗时。'
+      : 'Share activity, feature reach, return visits, app version, platform, execution outcomes and duration with Umami Cloud.', { exact: false })).toBeVisible()
     await toggle.click()
     await expect(toggle).not.toBeChecked()
     await page.screenshot({ path: test.info().outputPath(`analytics-settings-${locale}-${theme}-${width}.png`) })

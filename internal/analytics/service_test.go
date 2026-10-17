@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -86,10 +88,13 @@ func TestNoticeDefaultAndHostWideActivityDeduplication(t *testing.T) {
 		s.Activity(Game)
 	}
 	events := awaitEvents(t, c, 6)
-	wantNames := []string{"app.first_active", "app.active_day", "app.active_week", "app.active_month", "app.feature_used", "app.feature_used"}
+	wantNames := []string{"app.first_active", "app.active_day", "app.active_week", "app.active_month", "app.feature_active", "app.feature_active"}
 	for i, e := range events {
 		if e.Payload.Name != wantNames[i] {
 			t.Fatalf("events=%+v", events)
+		}
+		if e.Payload.Data.Version != "0.6.0" || e.Payload.Data.Platform != runtime.GOOS {
+			t.Fatalf("missing event metadata: %+v", e.Payload)
 		}
 		if e.Payload.Website != WebsiteID || e.Payload.Tag != "app" || e.Payload.Hostname != "app.denova-ai.com" || !strings.HasPrefix(e.Payload.ID, "app_") {
 			t.Fatalf("payload=%+v", e.Payload)
@@ -124,7 +129,7 @@ func TestCalendarActivityAndExactRetention(t *testing.T) {
 	}
 	// An event after all date mutations is a queue ordering barrier.
 	s.mu.Lock()
-	s.enqueueLocked(s.newEvent("app.action_completed", Projects, eventData{Action: ProjectCreated}, first))
+	s.enqueueLocked(s.newEvent("app.action_completed", Projects, eventData{Action: BookCreated}, first))
 	s.mu.Unlock()
 	deadline := time.Now().Add(2 * time.Second)
 	var events []event
@@ -138,6 +143,9 @@ func TestCalendarActivityAndExactRetention(t *testing.T) {
 	counts := map[string]int{}
 	for _, e := range events {
 		counts[e.Payload.Name]++
+		if e.Payload.Data.Version != "0.6.0" || e.Payload.Data.Platform != runtime.GOOS {
+			t.Fatalf("missing event metadata: %+v", e.Payload)
+		}
 		if strings.HasPrefix(e.Payload.Name, "app.retained_") && e.Payload.Data.CohortDate != "2026-12-31" {
 			t.Fatalf("cohort=%s", e.Payload.Data.CohortDate)
 		}
@@ -149,6 +157,66 @@ func TestCalendarActivityAndExactRetention(t *testing.T) {
 	}
 	if counts["app.active_day"] != 7 || counts["app.active_week"] != 3 || counts["app.active_month"] != 2 {
 		t.Fatalf("calendar counts=%v", counts)
+	}
+}
+
+func TestCompletedActionsReportTheirActualScope(t *testing.T) {
+	s, c := openCollector(t, filepath.Join(t.TempDir(), "analytics.json"))
+	if _, err := s.SetEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	s.ActionCompleted(BookCreated)
+	s.ActionCompleted(ContentExported)
+	s.ActionCompleted(VersionRestored)
+	var actions []string
+	for _, e := range awaitEvents(t, c, 10) {
+		if e.Payload.Name == "app.action_completed" {
+			actions = append(actions, string(e.Payload.Data.Action)+":"+e.Payload.URL)
+		}
+	}
+	want := []string{"book_created:/app/projects", "content_exported:/app/writing", "version_restored:/app/versions"}
+	if !slices.Equal(actions, want) {
+		t.Fatalf("actions=%v, want %v", actions, want)
+	}
+}
+
+func TestRunPayloadRecordsNumericMillisecondsIncludingZero(t *testing.T) {
+	s, c := openCollector(t, filepath.Join(t.TempDir(), "analytics.json"))
+	if _, err := s.SetEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	for i, duration := range []time.Duration{42 * time.Millisecond, 6 * time.Minute, 25 * time.Hour} {
+		run := s.BeginRun(Automation, Codex, Scheduled)
+		run.started = time.Now().Add(-duration)
+		run.Finish(Success)
+		elapsed := time.Since(run.started).Milliseconds()
+		e := awaitEvents(t, c, i+1)[i]
+		var data map[string]any
+		encoded, err := json.Marshal(e.Payload.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(encoded, &data); err != nil {
+			t.Fatal(err)
+		}
+		ms, ok := data["duration_ms"].(float64)
+		if !ok || ms < float64(duration.Milliseconds()) || ms > float64(elapsed) {
+			t.Fatalf("invalid execution duration: %s", encoded)
+		}
+		delete(data, "duration_ms")
+		want := map[string]any{"version": "0.6.0", "platform": runtime.GOOS, "feature": "automation", "runtime": "codex", "trigger": "automation", "outcome": "success"}
+		if !reflect.DeepEqual(data, want) {
+			t.Fatalf("unexpected execution fields: %s", encoded)
+		}
+	}
+	// An execution shorter than one millisecond must still include its duration.
+	var zero eventData
+	if err := json.Unmarshal([]byte(`{"duration_ms":0}`), &zero); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(zero)
+	if err != nil || string(encoded) != `{"duration_ms":0}` {
+		t.Fatalf("zero duration was omitted: %s, error=%v", encoded, err)
 	}
 }
 
@@ -164,7 +232,7 @@ func TestBackgroundRunsDoNotCreateUserActivityAndHaveBoundedPayloads(t *testing.
 	if len(events) != 1 || len(s.queue) != 0 {
 		t.Fatal("duplicate run result")
 	}
-	want := eventData{Feature: Automation, Runtime: Native, Trigger: Scheduled, Outcome: Failure, Duration: "under_10s"}
+	want := eventData{Version: "0.6.0", Platform: runtime.GOOS, Feature: Automation, Runtime: Native, Trigger: Scheduled, Outcome: Failure, DurationMS: events[0].Payload.Data.DurationMS}
 	if events[0].Payload.Data != want || events[0].Payload.Name != "app.run_finished" || s.state.FirstActive != "" {
 		t.Fatalf("events=%+v; state=%+v", events, s.state)
 	}

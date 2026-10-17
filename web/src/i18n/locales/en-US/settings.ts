@@ -1,8 +1,8 @@
 const settings = {
   'settings.analytics.enabled': 'Share usage statistics',
   'settings.analytics.noticeTitle': 'Usage statistics without creative content',
-  'settings.analytics.noticeDescription': 'Usage statistics are enabled by default to help improve Denova. You can turn them off now or anytime in Settings → General.',
-  'settings.analytics.settingsDescription': 'Share activity, feature usage, return visits, app version, platform and execution outcomes with Umami Cloud. This preference applies to this computer’s user, across writing and games.',
+  'settings.analytics.noticeDescription': 'Usage statistics are enabled by default to help improve Denova, including activity, feature reach, return visits, execution outcomes and duration. You can turn them off now or anytime in Settings → General.',
+  'settings.analytics.settingsDescription': 'Share activity, feature reach, return visits, app version, platform, execution outcomes and duration with Umami Cloud. This preference applies to this computer’s user, across writing and games.',
   'settings.analytics.privacyDescription': 'No creative text, prompts, AI replies, images, project names, file paths, API keys or raw error messages are sent. A random local ID links return visits; the cloud service receives the connection IP address.',
   'settings.analytics.acknowledge': 'Got it',
   'settings.analytics.disable': 'Turn off statistics',

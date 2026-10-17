@@ -2115,22 +2115,14 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 .editor-content .tiptap p {
   margin: 0;
   line-height: var(--nova-editor-line-height, 1.9);
-  text-indent: 2em;
+  text-indent: var(--nova-editor-first-line-indent, 2em);
 }
 
-/* hardBreak 缩进：让 br 换行后的行也有 2em 缩进 */
+/* Match paragraph indentation after explicit line breaks. */
 .editor-content .tiptap .nova-hard-break::after {
   content: '';
   display: inline-block;
-  width: 2em;
-}
-
-/* 文本自带缩进时，关闭 CSS 缩进避免双重缩进 */
-.editor-content.native-indent .tiptap p {
-  text-indent: 0;
-}
-.editor-content.native-indent .tiptap .nova-hard-break::after {
-  width: 0;
+  width: var(--nova-editor-first-line-indent, 2em);
 }
 
 .editor-content .tiptap h1 {

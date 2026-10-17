@@ -188,7 +188,7 @@ func (s *Service) activityLocked(feature Feature, now time.Time) {
 	}
 	if next.Day != day {
 		next.Day, next.Features = day, nil
-		add("app.active_day", eventData{Version: s.version, Platform: runtime.GOOS})
+		add("app.active_day", eventData{})
 	}
 	if next.Week != week {
 		next.Week = week
@@ -200,7 +200,7 @@ func (s *Service) activityLocked(feature Feature, now time.Time) {
 	}
 	if !slices.Contains(next.Features, feature) {
 		next.Features = append(next.Features, feature)
-		add("app.feature_used", eventData{Feature: feature})
+		add("app.feature_active", eventData{Feature: feature})
 	}
 	first, err := time.Parse("2006-01-02", next.FirstActive)
 	if err == nil {
@@ -258,9 +258,10 @@ func (s *Service) recordRun(r Run, result Result) {
 		return
 	}
 	now := time.Now().UTC()
+	durationMS := now.Sub(r.started).Milliseconds()
 	s.enqueueLocked(s.newEvent("app.run_finished", r.feature, eventData{
 		Feature: r.feature, Runtime: r.engine, Trigger: r.trigger, Outcome: result,
-		Duration: durationBucket(now.Sub(r.started)),
+		DurationMS: &durationMS,
 	}, now))
 }
 
@@ -270,7 +271,7 @@ func (s *Service) ActionCompleted(action Action) {
 	}
 	var feature Feature
 	switch action {
-	case ProjectCreated:
+	case BookCreated:
 		feature = Projects
 	case ContentExported:
 		feature = Writing
@@ -290,6 +291,7 @@ func (s *Service) ActionCompleted(action Action) {
 }
 
 func (s *Service) newEvent(name string, feature Feature, data eventData, now time.Time) event {
+	data.Version, data.Platform = s.version, runtime.GOOS
 	return event{Type: "event", Payload: payload{Website: WebsiteID, Hostname: "app.denova-ai.com", Tag: "app",
 		ID: s.state.ID, URL: "/app/" + string(feature), Name: name, Timestamp: now.Unix(), Data: data}}
 }

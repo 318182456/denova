@@ -65,7 +65,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeError(c, status, err.Error())
 		return
 	}
-	h.app.Analytics().ActionCompleted(analytics.ProjectCreated)
+	h.app.Analytics().ActionCompleted(analytics.BookCreated)
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
 		"project_id": created.ProjectID,
 		"workspace":  created.Workspace,

@@ -57,7 +57,7 @@ const (
 type Action string
 
 const (
-	ProjectCreated  Action = "project_created"
+	BookCreated     Action = "book_created"
 	ContentExported Action = "content_exported"
 	VersionRestored Action = "version_restored"
 )
@@ -111,19 +111,7 @@ type eventData struct {
 	Runtime    Engine  `json:"runtime,omitempty"`
 	Trigger    Trigger `json:"trigger,omitempty"`
 	Outcome    Result  `json:"outcome,omitempty"`
-	Duration   string  `json:"duration_bucket,omitempty"`
-	Action     Action  `json:"action,omitempty"`
-}
-
-func durationBucket(d time.Duration) string {
-	switch {
-	case d < 10*time.Second:
-		return "under_10s"
-	case d < time.Minute:
-		return "10s_to_1m"
-	case d < 5*time.Minute:
-		return "1m_to_5m"
-	default:
-		return "over_5m"
-	}
+	// Non-execution events omit duration; executions retain a measured zero.
+	DurationMS *int64 `json:"duration_ms,omitempty"`
+	Action     Action `json:"action,omitempty"`
 }
