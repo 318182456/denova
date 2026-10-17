@@ -51,7 +51,7 @@ for (const projectType of ['book', 'general'] as const) {
       await attached
       // Stop aborts during recovery. Exercise pause only after the existing
       // display stream has attached and the composer leaves recovery mode.
-      await expect(page.getByText('正在从持久化状态恢复已接受的 Agent 运行…', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('正在从持久化状态恢复已接受的 Agent 运行…', { exact: true }).filter({ visible: true })).toHaveCount(0)
       const running = await readActive()
       expect(running.active_operation_id).toBeTruthy()
       const pauseCommand = page.waitForRequest(request => request.method() === 'POST'
