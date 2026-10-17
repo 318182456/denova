@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	agentattachment "denova/internal/agents/attachment"
 	agentrun "denova/internal/agents/run"
 	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/session"
@@ -82,6 +83,7 @@ func (operation *Operation) Wait(ctx context.Context) agentrun.Outcome {
 			operation.send(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{
 				"id": operation.id + "-output", "command_id": operation.request.CommandID,
 				"run_started_at": time.Now().UTC().Format(time.RFC3339Nano),
+				"attachments":    agentattachment.Descriptors(operation.request.Message.Attachments),
 			}})
 			if effect := operation.request.InputCommitEffect; effect != nil {
 				runErr = effect.Apply(runCtx, agentrun.InputCommitEffectRequest{CommandID: operation.request.CommandID,

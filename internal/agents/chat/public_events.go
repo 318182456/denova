@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	agentattachment "denova/internal/agents/attachment"
 	agentplan "denova/internal/agents/plan"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
@@ -756,6 +757,9 @@ func (projector *PublicEventProjector) ProjectRunStarted(runID string, cycle int
 		"command_id": strings.TrimSpace(commandID), "delivery": delivery,
 		"message": projector.request.Message, "operation_id": strings.TrimSpace(runID),
 		"run_id": strings.TrimSpace(runID), "cycle": cycle,
+	}
+	if files := agentattachment.Descriptors(projector.request.AttachedFiles); len(files) > 0 {
+		data["attachments"] = files
 	}
 	if !projector.runStartedAt.IsZero() {
 		data["run_started_at"] = projector.runStartedAt.Format(time.RFC3339Nano)

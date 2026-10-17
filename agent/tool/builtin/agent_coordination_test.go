@@ -83,8 +83,7 @@ func TestAgentControlsKeepRunIdentityAndReceipts(t *testing.T) {
 }
 
 func TestListAgentsReplaysWithoutWriterLeaseAndPagesWithinScope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	store, err := filesession.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +106,9 @@ func TestListAgentsReplaysWithoutWriterLeaseAndPagesWithinScope(t *testing.T) {
 	defer cold.Close(context.Background())
 	reader := newTaskExecutor(t, cold)
 	reader.self = TaskRef{Agent: "parent", Session: "parent-session"}
+	// Fixture startup must not consume the deadline that bounds cold reads.
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	page, err := reader.ListAgents(ctx, ListAgentsInput{Limit: 1})
 	if err != nil || len(page.Agents) != 1 || page.NextCursor == "" || page.Agents[0].LastSettledRun == nil {
 		t.Fatalf("page=%#v err=%v", page, err)

@@ -50,7 +50,12 @@ for (const { theme, width, motion } of [
     await page.goto('/')
     await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
     await page.setViewportSize({ width, height: 900 })
-    await page.getByPlaceholder(/你要做什么/).fill('走向城门')
+    // The initial shell can precede the selected story's hydrated stage.
+    // Bind the journey to that stage before editing its conversation draft.
+    await expect(page.getByTestId('story-stage').getByText(snapshot.current_turn.narrative, { exact: true })).toBeVisible()
+    const input = page.getByPlaceholder(/你要做什么/)
+    await input.fill('走向城门')
+    await expect(input).toHaveText('走向城门')
     await page.locator('[data-action="send"]').filter({ visible: true }).click()
     const prose = page.locator('.nova-streamdown').filter({ hasText: '第 24 段。' })
     await expect(prose).toBeVisible()

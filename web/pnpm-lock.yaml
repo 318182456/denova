@@ -5,7 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  monaco-editor>dompurify: 3.4.13
+  monaco-editor>dompurify: 3.4.16
+  katex: 0.18.2
 
 patchedDependencies:
   '@monaco-editor/react@4.7.0': 41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b
@@ -130,8 +131,8 @@ importers:
         specifier: ^3.3.1
         version: 3.3.1
       katex:
-        specifier: ^0.16.27
-        version: 0.16.47
+        specifier: 0.18.2
+        version: 0.18.2
       lucide-react:
         specifier: ^1.16.0
         version: 1.16.0(react@19.2.6)
@@ -779,6 +780,12 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@loadable/component@5.16.7':
+    resolution: {integrity: sha512-XvkFixLUOTEaj8lI7uwc4nf8Wmq3IulYG7SZHCWcPm/Li5gjJDFfIkgWOLPnD7jqPJVtAG9bEz4SCek+SpHYYg==}
+    engines: {node: '>=8'}
+    peerDependencies:
+      react: ^16.3.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
@@ -2591,6 +2598,9 @@ packages:
   '@types/katex@0.16.8':
     resolution: {integrity: sha512-trgaNyfU+Xh2Tc+ABIb44a5AYUpicB3uwirOioeOkNPPbmgRNtcWyDeeFRzjPZENO9Vq8gvVqfhaaXWLlevVwg==}
 
+  '@types/loadable__component@5.13.10':
+    resolution: {integrity: sha512-2/LjmgG1JcGPj7T3NViq7BB5cvOA0s63gL3Gv+FPULj2L+3ExWfsNQcsFPUIOoGsVUJeZxgNPf320JZDyxjtCQ==}
+
   '@types/mdast@4.0.4':
     resolution: {integrity: sha512-kGaNbPh1k7AFzgpud/gMdvIm5xuECykRR+JnWKQno9TAXVa6WIVCGTPvYGekIDL4uwCZQSYbUxNBSb1aUo79oA==}
 
@@ -3049,8 +3059,8 @@ packages:
   dom-accessibility-api@0.6.3:
     resolution: {integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==}
 
-  dompurify@3.4.13:
-    resolution: {integrity: sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==}
+  dompurify@3.4.16:
+    resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
 
   dot-prop@6.0.1:
     resolution: {integrity: sha512-tE7ztYzXHIeyvc7N+hR3oi7FIbf/NIjVP9hmAt3yMXzrQ072/fpjGLx2GxNxGxUl5V73MEqYzioOMoVhGMJ5cA==}
@@ -3198,11 +3208,11 @@ packages:
   fast-string-width@3.0.2:
     resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
-  fast-uri@3.1.2:
-    resolution: {integrity: sha512-rVjf7ArG3LTk+FS6Yw81V1DLuZl1bRbNrev6Tmd/9RaroeeRRJhAt7jg/6YFxbvAQXUCavSoZhPPj6oOx+5KjQ==}
+  fast-uri@3.1.8:
+    resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
 
-  fast-uri@4.1.4:
-    resolution: {integrity: sha512-dODXrIxlS9JSdgAnhIUKOosKV1oMtU2VtVw87QRaHzyl5jxO290Ii5tEZfCfzfWNHi3jKWwBSdQj0qIyshdZdQ==}
+  fast-uri@4.2.2:
+    resolution: {integrity: sha512-EwVpUMzLVNOmcWW0zi5G3JJwkopB6XXjnVvNBGfqrMMsVew2hkQWl5e/pe/CfYUeS6jt4cIO2MnamEW7v/7wPw==}
 
   fast-wrap-ansi@0.2.2:
     resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
@@ -3384,6 +3394,9 @@ packages:
 
   headers-polyfill@5.0.1:
     resolution: {integrity: sha512-1TJ6Fih/b8h5TIcv+1+Hw0PDQWJTKDKzFZzcKOiW1wJza3XoAQlkCuXLbymPYB8+ZQyw8mHvdw560e8zVFIWyA==}
+
+  hoist-non-react-statics@3.3.2:
+    resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
   hono@4.12.27:
     resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
@@ -3620,8 +3633,8 @@ packages:
     resolution: {integrity: sha512-p/nXbhSEcu3pZRdkW1OfJhpsVtW1gd4Wa1fnQc9YLiTfAjn0312eMKimbdIQzuZl9aa9xUGaRlP9T/CJE/ditQ==}
     engines: {node: '>=0.10.0'}
 
-  katex@0.16.47:
-    resolution: {integrity: sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg==}
+  katex@0.18.2:
+    resolution: {integrity: sha512-3snve4y0SXTMequLim1FMiPvLGElySam0blN5xQZBqEY3lOJz1TnuaaiugnBZBqHzlSAGmFTYL7MCQkORuLKCA==}
     hasBin: true
 
   kleur@3.0.3:
@@ -4427,6 +4440,9 @@ packages:
       typescript:
         optional: true
 
+  react-is@16.12.0:
+    resolution: {integrity: sha512-rPCkf/mWBtKc97aLL9/txD8DZdemK0vkA3JMLShjlJB3Pj3s+lpf1KaBzMfQrAmhMQB0n1cU/SUGgKKBCe837Q==}
+
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
@@ -5184,21 +5200,6 @@ packages:
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
-  '@loadable/component@5.16.7':
-    resolution: {integrity: sha512-XvkFixLUOTEaj8lI7uwc4nf8Wmq3IulYG7SZHCWcPm/Li5gjJDFfIkgWOLPnD7jqPJVtAG9bEz4SCek+SpHYYg==}
-    engines: {node: '>=8'}
-    peerDependencies:
-      react: ^16.3.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
-  '@types/loadable__component@5.13.10':
-    resolution: {integrity: sha512-2/LjmgG1JcGPj7T3NViq7BB5cvOA0s63gL3Gv+FPULj2L+3ExWfsNQcsFPUIOoGsVUJeZxgNPf320JZDyxjtCQ==}
-
-  hoist-non-react-statics@3.3.2:
-    resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
-
-  react-is@16.12.0:
-    resolution: {integrity: sha512-rPCkf/mWBtKc97aLL9/txD8DZdemK0vkA3JMLShjlJB3Pj3s+lpf1KaBzMfQrAmhMQB0n1cU/SUGgKKBCe837Q==}
-
 snapshots:
 
   '@adobe/css-tools@4.5.0': {}
@@ -5736,6 +5737,13 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@loadable/component@5.16.7(react@19.2.6)':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      hoist-non-react-statics: 3.3.2
+      react: 19.2.6
+      react-is: 16.12.0
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
@@ -7061,7 +7069,7 @@ snapshots:
     dependencies:
       '@x0k/json-schema-merge': 1.0.5
       fast-equals: 6.0.3
-      fast-uri: 4.1.4
+      fast-uri: 4.2.2
       jsonpointer: 5.0.1
       react: 19.2.6
       react-is: 18.3.1
@@ -7209,7 +7217,7 @@ snapshots:
 
   '@streamdown/math@1.0.3(react@19.2.6)':
     dependencies:
-      katex: 0.16.47
+      katex: 0.18.2
       react: 19.2.6
       rehype-katex: 7.0.1
       remark-math: 6.0.0
@@ -7569,6 +7577,10 @@ snapshots:
 
   '@types/katex@0.16.8': {}
 
+  '@types/loadable__component@5.13.10':
+    dependencies:
+      '@types/react': 19.2.14
+
   '@types/mdast@4.0.4':
     dependencies:
       '@types/unist': 3.0.3
@@ -7694,7 +7706,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.2
+      fast-uri: 3.1.8
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -7972,7 +7984,7 @@ snapshots:
 
   dom-accessibility-api@0.6.3: {}
 
-  dompurify@3.4.13:
+  dompurify@3.4.16:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -8142,9 +8154,9 @@ snapshots:
       fast-string-truncated-width: 3.0.3
     optional: true
 
-  fast-uri@3.1.2: {}
+  fast-uri@3.1.8: {}
 
-  fast-uri@4.1.4: {}
+  fast-uri@4.2.2: {}
 
   fast-wrap-ansi@0.2.2:
     dependencies:
@@ -8398,6 +8410,10 @@ snapshots:
       set-cookie-parser: 3.1.0
     optional: true
 
+  hoist-non-react-statics@3.3.2:
+    dependencies:
+      react-is: 16.12.0
+
   hono@4.12.27: {}
 
   html-encoding-sniffer@6.0.0:
@@ -8582,7 +8598,7 @@ snapshots:
 
   jsonpointer@5.0.1: {}
 
-  katex@0.16.47:
+  katex@0.18.2:
     dependencies:
       commander: 8.3.0
 
@@ -8951,15 +8967,15 @@ snapshots:
       micromark-factory-space: 2.1.0
       micromark-factory-title: 2.0.1
       micromark-factory-whitespace: 2.0.1
-      micromark-util-character: 2.0.0
+      micromark-util-character: 2.1.1
       micromark-util-chunked: 2.0.1
-      micromark-util-classify-character: 2.0.0
+      micromark-util-classify-character: 2.0.1
       micromark-util-edit-map: 1.0.0
-      micromark-util-html-tag-name: 2.0.0
-      micromark-util-normalize-identifier: 2.0.0
+      micromark-util-html-tag-name: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
       micromark-util-resolve-all: 2.0.1
       micromark-util-subtokenize: 2.1.0
-      micromark-util-symbol: 2.0.0
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
 
   micromark-extension-cjk-friendly-gfm-strikethrough@2.0.1(micromark-util-types@2.0.3)(micromark@4.0.3):
@@ -9056,7 +9072,7 @@ snapshots:
     dependencies:
       '@types/katex': 0.16.8
       devlop: 1.1.0
-      katex: 0.16.47
+      katex: 0.18.2
       micromark-factory-space: 2.1.0
       micromark-util-character: 2.0.0
       micromark-util-symbol: 2.0.0
@@ -9064,15 +9080,15 @@ snapshots:
 
   micromark-factory-destination@2.0.1:
     dependencies:
-      micromark-util-character: 2.0.0
-      micromark-util-symbol: 2.0.0
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
 
   micromark-factory-label@2.0.1:
     dependencies:
       devlop: 1.1.0
-      micromark-util-character: 2.0.0
-      micromark-util-symbol: 2.0.0
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
 
   micromark-factory-space@2.0.1:
@@ -9082,21 +9098,21 @@ snapshots:
 
   micromark-factory-space@2.1.0:
     dependencies:
-      micromark-util-character: 2.0.0
+      micromark-util-character: 2.1.1
       micromark-util-types: 2.0.3
 
   micromark-factory-title@2.0.1:
     dependencies:
       micromark-factory-space: 2.1.0
-      micromark-util-character: 2.0.0
-      micromark-util-symbol: 2.0.0
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
 
   micromark-factory-whitespace@2.0.1:
     dependencies:
       micromark-factory-space: 2.1.0
-      micromark-util-character: 2.0.0
-      micromark-util-symbol: 2.0.0
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
 
   micromark-util-character@2.0.0:
@@ -9111,7 +9127,7 @@ snapshots:
 
   micromark-util-chunked@2.0.1:
     dependencies:
-      micromark-util-symbol: 2.0.0
+      micromark-util-symbol: 2.0.1
 
   micromark-util-classify-character@2.0.0:
     dependencies:
@@ -9169,15 +9185,15 @@ snapshots:
 
   micromark-util-sanitize-uri@2.0.1:
     dependencies:
-      micromark-util-character: 2.0.0
+      micromark-util-character: 2.1.1
       micromark-util-encode: 2.0.1
-      micromark-util-symbol: 2.0.0
+      micromark-util-symbol: 2.0.1
 
   micromark-util-subtokenize@2.1.0:
     dependencies:
       devlop: 1.1.0
       micromark-util-chunked: 2.0.1
-      micromark-util-symbol: 2.0.0
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
 
   micromark-util-symbol@2.0.0: {}
@@ -9218,17 +9234,17 @@ snapshots:
       devlop: 1.1.0
       micromark-core-commonmark: 2.0.4
       micromark-factory-space: 2.1.0
-      micromark-util-character: 2.0.0
+      micromark-util-character: 2.1.1
       micromark-util-chunked: 2.0.1
       micromark-util-combine-extensions: 2.0.1
-      micromark-util-decode-numeric-character-reference: 2.0.0
+      micromark-util-decode-numeric-character-reference: 2.0.2
       micromark-util-edit-map: 1.0.0
       micromark-util-encode: 2.0.1
-      micromark-util-normalize-identifier: 2.0.0
+      micromark-util-normalize-identifier: 2.0.1
       micromark-util-resolve-all: 2.0.1
       micromark-util-sanitize-uri: 2.0.1
       micromark-util-subtokenize: 2.1.0
-      micromark-util-symbol: 2.0.0
+      micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.3
     transitivePeerDependencies:
       - supports-color
@@ -9260,7 +9276,7 @@ snapshots:
 
   monaco-editor@0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865):
     dependencies:
-      dompurify: 3.4.13
+      dompurify: 3.4.16
       marked: 14.0.0
 
   motion-dom@12.40.0:
@@ -9697,6 +9713,8 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
       typescript: 6.0.3
 
+  react-is@16.12.0: {}
+
   react-is@17.0.2: {}
 
   react-is@18.3.1: {}
@@ -9796,7 +9814,7 @@ snapshots:
       '@types/katex': 0.16.8
       hast-util-from-html-isomorphic: 2.0.0
       hast-util-to-text: 4.0.2
-      katex: 0.16.47
+      katex: 0.18.2
       unist-util-visit-parents: 6.0.2
       vfile: 6.0.3
 
@@ -10529,20 +10547,3 @@ snapshots:
       use-sync-external-store: 1.6.0(react@19.2.6)
 
   zwitch@2.0.4: {}
-
-  '@loadable/component@5.16.7(react@19.2.6)':
-    dependencies:
-      '@babel/runtime': 7.29.2
-      hoist-non-react-statics: 3.3.2
-      react: 19.2.6
-      react-is: 16.12.0
-
-  '@types/loadable__component@5.13.10':
-    dependencies:
-      '@types/react': 19.2.14
-
-  hoist-non-react-statics@3.3.2:
-    dependencies:
-      react-is: 16.12.0
-
-  react-is@16.12.0: {}

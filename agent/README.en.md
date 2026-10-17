@@ -6,7 +6,7 @@ An Agent runtime you can embed in Go applications. Start with one call, then add
 
 ## 1. Quickstart: complete one task
 
-Requires Go 1.26.6 or later. Install in your own Go module:
+Requires Go 1.26.9 or later. Install in your own Go module:
 
 ```sh
 go get github.com/alfredxw/denova/agent

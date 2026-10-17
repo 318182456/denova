@@ -1,6 +1,7 @@
 package agentui
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -125,12 +126,9 @@ func TestMessagesFromHistoryProjectsAttachmentMetadataWithoutLocalPath(t *testin
 	if len(messages) != 1 || len(messages[0].Parts) != 1 || messages[0].Parts[0]["text"] != "" {
 		t.Fatalf("attachment-only message was not projected: %#v", messages)
 	}
-	attachments, ok := messages[0].Metadata["attachments"].([]map[string]any)
-	if !ok || len(attachments) != 1 || attachments[0]["name"] != "notes.md" {
-		t.Fatalf("unexpected attachment metadata: %#v", messages[0].Metadata)
-	}
-	if _, leaked := attachments[0]["path"]; leaked {
-		t.Fatalf("local attachment path leaked to UI metadata: %#v", attachments[0])
+	encoded, err := json.Marshal(messages[0].Metadata["attachments"])
+	if err != nil || string(encoded) != `[{"id":"att-1","name":"notes.md","media_type":"text/markdown","size":42}]` {
+		t.Fatalf("attachment metadata changed or exposed storage details: %s, error = %v", encoded, err)
 	}
 }
 

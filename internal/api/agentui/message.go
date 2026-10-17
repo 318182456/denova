@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	agentattachment "denova/internal/agents/attachment"
 	appsvc "denova/internal/app"
 )
 
@@ -77,16 +78,7 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			if metadata == nil {
 				metadata = map[string]any{}
 			}
-			attachments := make([]map[string]any, 0, len(entry.Attachments))
-			for _, attachment := range entry.Attachments {
-				attachments = append(attachments, map[string]any{
-					"id":         attachment.ID,
-					"name":       attachment.Name,
-					"media_type": attachment.MediaType,
-					"size":       attachment.Size,
-				})
-			}
-			metadata["attachments"] = attachments
+			metadata["attachments"] = agentattachment.Descriptors(entry.Attachments)
 		}
 		return Message{
 			ID:       historyMessageID(entry, index),

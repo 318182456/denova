@@ -63,6 +63,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 修复写作与通用对话发送图片后消息中的预览入口消失的问题，无需刷新即可查看已发送图片。
+- Fix image previews disappearing from sent messages in Writing and General conversations, without requiring a refresh.
+
 - 修复包含 Denova 用户数据目录的代码项目被误识别为书籍、导致添加失败的问题；保留项目身份并支持重试。
 - Fix code projects containing a Denova user data directory being misclassified as Books and failing to add, preserving Project identity and allowing retries.
 
@@ -132,6 +135,11 @@ Denova records only major user-visible features, important compatibility or data
 
 - 旧 Skill 来源和自动更新选择迁入统一安装记录，正文不变，旧来源文件在移除前保留事务备份；降级 v0.5.0 需恢复这些文件才能继续使用原来源和自动更新信息。
 - Skill sources and existing update preferences move into shared installation records without changing content. Old source files are backed up before removal; downgrading to v0.5.0 requires restoring them to recover source and automatic-update information.
+
+### Security / 安全
+
+- 更新构建工具链与运行依赖，修复网络请求、文件访问及内容渲染相关的已知安全问题。
+- Update the build toolchain and runtime dependencies to fix known security issues in network requests, file access and content rendering.
 
 ## [v0.5.1] - 2026-09-28
 

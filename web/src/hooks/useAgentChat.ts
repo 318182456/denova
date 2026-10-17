@@ -35,7 +35,7 @@ import {
   type WritingTaskStatus,
 } from './use-agent-runtime-recovery'
 import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
-import { attachmentDescriptors, attachmentUploadsRetryIdentity, filesToAttachmentUploads, type ChatAttachmentUpload } from '@/lib/chat-attachments'
+import { attachmentDescriptors, attachmentUploadsRetryIdentity, filesToAttachmentUploads, type ChatAttachmentDescriptor, type ChatAttachmentUpload } from '@/lib/chat-attachments'
 
 interface ChatOptions {
   projectId?: string
@@ -121,6 +121,15 @@ export function useAgentChat(options: ChatOptions = {}) {
           return
         }
         if (data.event === 'agent_cycle_started') {
+          const commandID = typeof data.command_id === 'string' ? data.command_id.trim() : ''
+          const attachments = data.attachments as ChatAttachmentDescriptor[] | undefined
+          if (commandID && Array.isArray(attachments) && attachments.length > 0) {
+            // Acceptance supplies persisted IDs; match the exact optimistic
+            // input so replay or another queued cycle cannot rebind its files.
+            setUIMessages(current => current.map(message => message.role === 'user' && message.id === commandID
+              ? { ...message, metadata: { ...message.metadata, attachments } }
+              : message))
+          }
           const operationID = typeof data.operation_id === 'string' ? data.operation_id.trim() : ''
           const cycle = typeof data.cycle === 'number' ? data.cycle : Number(data.cycle)
           projectStreamCycleRef.current(operationID, Number.isSafeInteger(cycle) ? cycle : undefined)
@@ -529,6 +538,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       try {
         const pendingRequest = sendMessage(
           {
+            id: initialCommandID,
             role: 'user',
             metadata: {
               ...(sendOptions.hideUserMessage ? { display_hidden: true } : {}),

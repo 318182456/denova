@@ -59,7 +59,9 @@ patchedDependencies:
   monaco-editor@0.55.1: patches/monaco-editor@0.55.1.patch
 # Monaco pins an older sanitizer; keep its browser content sanitization patched.
 overrides:
-  monaco-editor>dompurify: 3.4.13
+  monaco-editor>dompurify: 3.4.16
+  # Keep math plugins on the same patched renderer and CSS as the application.
+  katex: 0.18.2
 allowBuilds:
   # The test dependency's optional browser-worker installer is not used here.
   msw: false

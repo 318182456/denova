@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	agentattachment "denova/internal/agents/attachment"
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -392,6 +393,7 @@ func TestPublicEventProjectorRestoresCycleBoundaryAndUsesRunIDForPlanEvents(t *t
 	var events []agentrun.Event
 	projector := NewPublicEventProjector(nil, ChatRequest{
 		CommandID: "command-2", Message: "continue", PlanMode: true,
+		AttachedFiles: []agentschema.Attachment{{ID: "att-reference", Name: "reference.png", MediaType: "image/png", Size: 5, Path: "attachments/private.png", RuntimePath: "C:/private/reference.png"}},
 	}, agentrun.Options{
 		AgentKind: "ide", TaskID: "display-task", RootAgentName: "root",
 	}, func(event agentrun.Event) { events = append(events, event) })
@@ -404,6 +406,16 @@ func TestPublicEventProjectorRestoresCycleBoundaryAndUsesRunIDForPlanEvents(t *t
 		t.Fatalf("projected events = %#v", events)
 	}
 	cycle := events[0]
+	encoded, err := json.Marshal(cycle.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var accepted struct {
+		Attachments []agentattachment.Descriptor `json:"attachments"`
+	}
+	if err := json.Unmarshal(encoded, &accepted); err != nil || len(accepted.Attachments) != 1 || accepted.Attachments[0] != (agentattachment.Descriptor{ID: "att-reference", Name: "reference.png", MediaType: "image/png", Size: 5}) {
+		t.Fatalf("accepted attachment descriptors = %s, error = %v", encoded, err)
+	}
 	if cycle.DataString("operation_id") != "run-2" || cycle.DataString("command_id") != "command-2" ||
 		cycle.DataString("delivery") != "follow_up" || cycle.DataString("message") != "continue" || eventDataInt(cycle.Data, "cycle") != 2 {
 		t.Fatalf("cycle event = %#v", cycle.Data)

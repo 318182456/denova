@@ -6,7 +6,7 @@
 
 ## 1. Quickstart：完成一次任务
 
-需要 Go 1.26.6 或更新版本。在自己的 Go module 中安装：
+需要 Go 1.26.9 或更新版本。在自己的 Go module 中安装：
 
 ```sh
 go get github.com/alfredxw/denova/agent

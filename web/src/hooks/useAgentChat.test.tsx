@@ -114,6 +114,28 @@ describe('useAgentChat', () => {
     })
   })
 
+  it('binds persisted attachments to the exact submitted user message while streaming', async () => {
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => {
+      await result.current.send('Inspect the reference.', { attachments: [new File(['image'], 'reference.png', { type: 'image/png' })] })
+    })
+    const [submitted, request] = chatMock.sendMessage.mock.calls[0]
+    expect(submitted.id).toBe(request.body.command_id)
+    const persisted = [{ id: 'att-persisted', name: 'reference.png', media_type: 'image/png', size: 5 }]
+    const earlier = { ...submitted, id: 'earlier-input' }
+    const later = { ...submitted, id: 'later-input' }
+    chatMock.setMessages.mockClear()
+    act(() => chatMock.options?.onData?.({ type: 'data-agent-activity', data: {
+      event: 'agent_cycle_started', command_id: submitted.id, attachments: persisted,
+      operation_id: 'operation-image', cycle: 1,
+    } }))
+    const updates = chatMock.setMessages.mock.calls.reduce((messages, [update]) => typeof update === 'function' ? update(messages) : update, [earlier, submitted, later])
+    expect(updates).toEqual([earlier, { ...submitted, metadata: { ...submitted.metadata, attachments: persisted } }, later])
+    expect(updates[0]).toBe(earlier)
+    expect(updates[2]).toBe(later)
+    expect(getMessagesPage).not.toHaveBeenCalled()
+  })
+
   it('restores every pending external question from the active projection', async () => {
     const questions = ['tone', 'length'].map((id) => ({
       schema: 'ask.pending.v1', id, tool_call_id: `original-${id}`, agent_kind: 'ide', status: 'pending' as const,

@@ -4,7 +4,7 @@ Thanks for helping improve Denova. This project is in beta, so contribution work
 
 ## Setup
 
-Denova requires Go 1.26.6+, Node.js 22.13+, and pnpm.
+Denova requires Go 1.26.9+, Node.js 22.13+, and pnpm.
 
 ```bash
 corepack enable

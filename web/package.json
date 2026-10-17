@@ -78,7 +78,7 @@
     "diff": "8.0.4",
     "i18next": "^26.3.1",
     "jsonc-parser": "^3.3.1",
-    "katex": "^0.16.27",
+    "katex": "0.18.2",
     "lucide-react": "^1.16.0",
     "marked": "17.0.6",
     "mdast-util-from-markdown": "^2.0.3",

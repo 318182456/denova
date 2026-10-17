@@ -14,7 +14,7 @@
   <a href="https://discord.gg/BM6dRmyvvZ"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Denova Discord" /></a>
   <a href="https://github.com/alfredxw/denova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/denova?style=flat-square"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/denova?style=flat-square"></a>
-  <img alt="Go" src="https://img.shields.io/badge/Go-1.26.6%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.26.9%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
   <img alt="Node.js" src="https://img.shields.io/badge/Node.js-22.13%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white">
 </p>
 
@@ -101,7 +101,7 @@ For stable use, choose a Release. The `master` branch may contain unreleased cha
 
 ### Run from Source
 
-You need Go 1.26.6+, Node.js 22.13+, pnpm, ripgrep, and Bash. On Windows, run these commands from Git Bash or WSL.
+You need Go 1.26.9+, Node.js 22.13+, pnpm, ripgrep, and Bash. On Windows, run these commands from Git Bash or WSL.
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
