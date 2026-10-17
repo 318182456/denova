@@ -131,6 +131,9 @@ async function openAnalysis(page: Page): Promise<Locator> {
 async function openComposer(page: Page, mode: 'Writing' | 'Game'): Promise<Locator> {
   if (mode === 'Writing') return openWritingAgent(page)
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+  // The editable shell can precede the restored story. Start the compaction
+  // journey only once its saved narrative is available in the selected stage.
+  await expect(page.getByTestId('story-stage-card').locator('.nova-streamdown').first()).toBeVisible()
   const composer = page.getByPlaceholder(/你要做什么/)
   await expect(composer).toBeVisible()
   return composer
@@ -140,6 +143,7 @@ async function send(composer: Locator, text: string): Promise<void> {
   const page = composer.page()
   await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0, { timeout: 30_000 })
   await composer.fill(text)
+  await expect(composer).toHaveText(text)
   const send = page.locator('[data-action="send"]').filter({ visible: true })
   await expect(send).toBeEnabled()
   await send.click()
