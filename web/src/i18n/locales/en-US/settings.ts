@@ -166,6 +166,7 @@ const settings = {
   'settings.bool.false': 'Off',
   'settings.bool.true': 'On',
   'settings.error.save': 'Failed to save configuration',
+  'settings.error.load': 'Could not refresh settings. Your current values are still available.',
   'settings.debug.llmInputLog': 'Log Full LLM Inputs',
   'settings.debug.llmInputLogHelp': 'Available only in development mode. When enabled, Denova asynchronously writes the full model-visible context, tool schemas, and non-secret model parameters to log/llm-inputs.jsonl. The file can be large and may contain user text; use it only for diagnostics.',
   'settings.debug.traceCaptureLevel': 'Trace Capture Level',

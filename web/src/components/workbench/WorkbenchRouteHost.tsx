@@ -90,12 +90,12 @@ export function useWorkbenchRouteHost({
 
   useEffect(() => {
     setMountedRoutes((current) => {
-      if (current.has(selectedRoute)) return current
+      if (current.has(presentedRoute)) return current
       const next = new Set(current)
-      next.add(selectedRoute)
+      next.add(presentedRoute)
       return next
     })
-  }, [selectedRoute])
+  }, [presentedRoute])
 
   return useMemo(() => ({
     route: presentedRoute,

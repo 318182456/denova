@@ -13,8 +13,12 @@ import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 
 type UpdateOperation = 'idle' | 'checking' | 'installing' | 'uploading' | 'applying' | 'restarting' | 'waiting'
 
-// Keep update state in SettingsView so collapsing the section cannot discard
-// an upload in progress or its staged result.
+/** Isolates status polling from the rest of the settings form. Keep this mounted
+ * so collapsing the update details cannot discard an upload or staged result. */
+export function UpdateSettings() {
+  return <UpdatePanel {...useUpdateSettings()} />
+}
+
 export function useUpdateSettings() {
   const { t } = useTranslation()
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)

@@ -4,7 +4,8 @@ import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { createSettingsMergePatch, fetchSettingsTarget, patchSettingsTarget, refreshSettingsTarget } from './api'
-import { subscribeSettingsTarget } from './query'
+import { queryClient } from '@/lib/query-client'
+import { settingsQueryOptions, subscribeSettingsTarget } from './query'
 import type { SettingsTarget } from './query'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
@@ -39,17 +40,23 @@ export function useLayeredSettingsDraft({
 }: UseLayeredSettingsDraftOptions) {
   const targetKind = target.kind
   const projectId = target.kind === 'project' ? target.projectId : ''
-  const [layered, setLayered] = useState<LayeredSettings | null>(null)
-  const [drafts, setDrafts] = useState<LayerValues<Settings>>(emptyDrafts)
-  const [ready, setReady] = useState(false)
+  // Reuse the canonical snapshot on the first render instead of flashing an
+  // empty form while the same cached data resolves through a Promise.
+  const [layered, setLayered] = useState<LayeredSettings | null>(() => loadSettings
+    ? null
+    : queryClient.getQueryData<LayeredSettings>(settingsQueryOptions(target).queryKey) ?? null)
+  const [drafts, setDrafts] = useState<LayerValues<Settings>>(() => layered
+    ? { user: layered.user, workspace: layered.workspace }
+    : emptyDrafts())
+  const [ready, setReady] = useState(Boolean(layered))
   const [syncVersions, setSyncVersions] = useState<LayerValues<number>>({ user: 0, workspace: 0 })
   const [savingLayers, setSavingLayers] = useState<LayerValues<boolean>>({ user: false, workspace: false })
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
-  const readyRef = useRef(false)
-  const layeredRef = useRef<LayeredSettings | null>(null)
-  const draftsRef = useRef<LayerValues<Settings>>(emptyDrafts())
-  const baselinesRef = useRef<LayerValues<Settings>>(emptyDrafts())
+  const readyRef = useRef(ready)
+  const layeredRef = useRef(layered)
+  const draftsRef = useRef(drafts)
+  const baselinesRef = useRef(drafts)
   const loadSequenceRef = useRef(0)
   const applySequenceRef = useRef(0)
   const suppressQuerySyncRef = useRef(0)
@@ -57,6 +64,9 @@ export function useLayeredSettingsDraft({
   const applySnapshot = useCallback(async (next: LayeredSettings, source: SettingsSnapshotSource) => {
     const applySequence = applySequenceRef.current + 1
     applySequenceRef.current = applySequence
+    // Query structural sharing preserves identity when revalidation finds no
+    // change. Do not rebase drafts or reset autosave for the same snapshot.
+    if (source.kind === 'load' && next === layeredRef.current) return draftsRef.current
     const nextBaselines: LayerValues<Settings> = { user: next.user, workspace: next.workspace }
     const previousSnapshot = layeredRef.current
     const capturedBaselines = baselinesRef.current

@@ -166,6 +166,7 @@ const settings = {
   'settings.bool.false': '关闭',
   'settings.bool.true': '开启',
   'settings.error.save': '配置保存失败',
+  'settings.error.load': '设置刷新失败，仍可使用当前内容。',
   'settings.debug.llmInputLog': '记录完整 LLM 输入',
   'settings.debug.llmInputLogHelp': '仅开发模式可用。开启后会把完整模型可见上下文、工具 schema 和非密钥模型参数异步写入 log/llm-inputs.jsonl，内容可能很大且包含用户文本，仅用于诊断。',
   'settings.debug.traceCaptureLevel': 'Trace 采集级别',
