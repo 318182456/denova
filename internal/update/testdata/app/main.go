@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"denova/config"
 	"denova/internal/buildinfo"
 	"denova/internal/update"
 )
@@ -29,7 +30,8 @@ func main() {
 	if recovering {
 		return
 	}
-	port := flag.Int("port", 0, "test server port")
+	// Use the application's real defaults without loading user configuration.
+	port := flag.Int("port", *config.DefaultSettings().BackendPort, "test server port")
 	_ = flag.Bool("no-open", false, "no browser")
 	flag.Parse()
 	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(*port))

@@ -12,6 +12,25 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+## [v0.6.1] - 2026-10-19
+
+### Brief / 简要说明
+
+#### 中文
+
+- 修复从 v0.5.1 自动更新后页面无法重连，以及部分 Windows 环境无法自动打开浏览器的问题。
+- 已遇到连接失败的用户，可保持 Denova 运行，按终端显示的地址重新打开页面后再更新。
+
+#### English
+
+- Fixes page reconnection after automatic updates from v0.5.1 and browser opening in affected Windows environments.
+- If an old page is already disconnected, keep Denova running and reopen the address printed in its terminal before updating.
+
+### Fixed / 修复
+
+- 修复从 v0.5.1 自动更新时默认端口变化导致旧页面无法重连，以及 Windows 环境无法找到 `cmd` 时不能自动打开浏览器的问题。
+- Fixed reconnection after automatic updates from v0.5.1 when the default port changes, and browser opening on Windows when `cmd` is unavailable through the environment.
+
 ## [v0.6.0] - 2026-10-18
 
 ### Brief / 简要说明

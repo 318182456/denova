@@ -6,11 +6,56 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"denova/internal/hostruntime"
 )
+
+func TestRelaunchScopesUpdateOriginToTheCurrentHandoff(t *testing.T) {
+	t.Setenv("DENOVA_UPDATE_FROM_VERSION", "0.5.1")
+	t.Setenv("DENOVA_UPDATE_ID", "previous-update")
+	t.Setenv("DENOVA_UPDATE_MANIFEST", "previous-manifest")
+	for _, test := range []struct {
+		name, previousVersion string
+		state                 Phase
+		wantOrigin            string
+	}{
+		{"legacy update", "0.5.1", PhaseStarting, "0.5.1"},
+		{"subsequent update", "0.6.0", PhaseStarting, "0.6.0"},
+		{"rollback", "0.5.1", PhaseFailed, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manifest := ApplyManifest{ID: "next-update", State: test.state, PreviousVersion: test.previousVersion, TargetExecutable: "denova", RelaunchArgs: []string{"denova", "--port=18080", "--no-open"}}
+			err := startRelaunch(context.Background(), "next-manifest", manifest, UpdaterOptions{
+				StartProcess: func(executable string, args, env []string) error {
+					if executable != "denova" || !slices.Equal(args, manifest.RelaunchArgs) {
+						t.Fatalf("explicit launch arguments changed: %s %v", executable, args)
+					}
+					var origin []string
+					for _, item := range env {
+						key, value, _ := strings.Cut(item, "=")
+						if strings.EqualFold(key, "DENOVA_UPDATE_FROM_VERSION") {
+							origin = append(origin, value)
+						}
+					}
+					if test.wantOrigin == "" {
+						if len(origin) != 0 {
+							t.Fatalf("rollback inherited update origin: %v", origin)
+						}
+					} else if !slices.Equal(origin, []string{test.wantOrigin}) {
+						t.Fatalf("update origin = %v, want %s", origin, test.wantOrigin)
+					}
+					return nil
+				},
+			}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
 	installDir := t.TempDir()

@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -190,23 +189,10 @@ func hasVersionArg(args []string) bool {
 	return false
 }
 
-// openBrowser 打开默认浏览器
+// openBrowser reports launch failures without stopping the HTTP server.
 func openBrowser(url string) {
 	finishStage := observability.StartStartupStage(context.Background(), "browser_launch")
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
-	}
-	if cmd != nil {
-		finishStage(cmd.Start())
-	} else {
-		finishStage(fmt.Errorf("browser launch is unsupported on %s", runtime.GOOS))
-	}
+	finishStage(launchBrowser(url))
 }
 
 // startViteDev 启动 Vite 前端开发服务器

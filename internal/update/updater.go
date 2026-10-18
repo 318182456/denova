@@ -319,10 +319,13 @@ func startRelaunch(ctx context.Context, manifestPath string, manifest ApplyManif
 	logger.InfoContext(ctx, "updater_starting_denova", "executable", manifest.TargetExecutable, "args", len(args))
 	env := slices.DeleteFunc(os.Environ(), func(item string) bool {
 		key, _, _ := strings.Cut(item, "=")
-		return strings.EqualFold(key, "DENOVA_UPDATE_MANIFEST") || strings.EqualFold(key, "DENOVA_UPDATE_ID")
+		return strings.EqualFold(key, "DENOVA_UPDATE_MANIFEST") || strings.EqualFold(key, "DENOVA_UPDATE_ID") || strings.EqualFold(key, "DENOVA_UPDATE_FROM_VERSION")
 	})
 	if manifest.State == PhaseStarting {
-		env = append(env, "DENOVA_UPDATE_MANIFEST="+manifestPath, "DENOVA_UPDATE_ID="+manifest.ID)
+		// Origin is a launch-only compatibility hint, not a user port override.
+		// v0.5.1 did not record its effective port; the new app must resolve its
+		// settings with that release's default before reserving a listener.
+		env = append(env, "DENOVA_UPDATE_MANIFEST="+manifestPath, "DENOVA_UPDATE_ID="+manifest.ID, "DENOVA_UPDATE_FROM_VERSION="+manifest.PreviousVersion)
 	}
 	return start(manifest.TargetExecutable, args, env)
 }

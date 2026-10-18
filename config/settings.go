@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -179,6 +180,13 @@ const (
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
+	backendPort := 7789
+	// Only the v0.5.1 updater handoff needs the former default. Keep this in
+	// the lowest configuration layer so explicit ports still win. The updater
+	// scopes this origin to one launch and clears it before subsequent updates.
+	if os.Getenv("DENOVA_UPDATE_ID") != "" && strings.TrimPrefix(os.Getenv("DENOVA_UPDATE_FROM_VERSION"), "v") == "0.5.1" {
+		backendPort = 8080
+	}
 	return Settings{
 		Market:                      MarketSettings{RegistryURL: DefaultMarketRegistryURL},
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
@@ -188,7 +196,7 @@ func DefaultSettings() Settings {
 		SkillsDir:                   "./skills",
 		DenovaDir:                   "./" + workspacelayout.DataDirName,
 		NovaDir:                     "./" + workspacelayout.DataDirName,
-		BackendPort:                 intPtr(7789),
+		BackendPort:                 intPtr(backendPort),
 		FrontendPort:                intPtr(7788),
 		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),

@@ -5,6 +5,7 @@ package update
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -33,10 +34,11 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 		}
 	}
 	for _, scenario := range []struct {
-		name   string
-		phase  Phase
-		move   bool
-		legacy bool
+		name          string
+		phase         Phase
+		move          bool
+		legacy        bool
+		legacyDefault bool
 	}{
 		{name: "normal", phase: PhaseStaged},
 		{name: "interrupted", phase: PhaseApplying},
@@ -44,8 +46,18 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 		{name: "moved completed", phase: PhaseSucceeded, move: true},
 		{name: "moved interrupted", phase: PhaseApplying, move: true},
 		{name: "v0.5.1 handoff", phase: PhaseStaged, legacy: true},
+		{name: "v0.5.1 default port", phase: PhaseStaged, legacy: true, legacyDefault: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
+			if scenario.legacyDefault {
+				// This regression specifically needs the released default address.
+				// Never interfere with another application's listener on that port.
+				probe, err := net.Listen("tcp", "127.0.0.1:8080")
+				if err != nil {
+					t.Skipf("legacy default port is occupied: %v", err)
+				}
+				_ = probe.Close()
+			}
 			recovering := scenario.phase == PhaseApplying
 			completed := scenario.phase == PhaseSucceeded
 			install := t.TempDir()
@@ -62,6 +74,7 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			m := ApplyManifest{ID: "process-test", State: scenario.phase, Version: "0.2.0", InstallDir: install, SourceDir: source, BackupDir: filepath.Join(filepath.Dir(source), "backup"), TargetExecutable: target, UpdaterExecutable: filepath.Join(source, updaterExecutableName()), LogPath: filepath.Join(filepath.Dir(source), "apply.log")}
+			m.RelaunchArgs = []string{target, "--port", "0", "--no-open"}
 			path := filepath.Join(filepath.Dir(source), manifestFileName)
 			if recovering {
 				if err := backupUpdate(&m); err != nil {
@@ -84,6 +97,9 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 				// v0.5.1 launches the staged helper directly with absolute paths
 				// and no transaction state or readiness protocol in the old app.
 				legacy := map[string]any{"source_dir": source, "install_dir": install, "backup_dir": filepath.Join(updateDataDir(install), "backup-legacy"), "target_executable": target, "updater_executable": m.UpdaterExecutable, "version": m.Version, "relaunch_args": []string{target, "--port", "0", "--no-open"}, "log_path": m.LogPath}
+				if scenario.legacyDefault {
+					legacy["relaunch_args"] = []string{target, "--no-open"}
+				}
 				if err := writeJSONFile(path, legacy, 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -167,6 +183,9 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 			}
 			if baseURL == "" {
 				t.Fatal("app never started")
+			}
+			if scenario.legacyDefault && baseURL != "http://127.0.0.1:8080" {
+				t.Fatalf("legacy browser origin changed after update: %s", baseURL)
 			}
 			if !recovering && !completed && !scenario.legacy {
 				resp, err := client.Post(baseURL+"/apply", "application/json", nil)

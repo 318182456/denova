@@ -74,6 +74,7 @@ func readManifest(path string) (ApplyManifest, error) {
 			manifest.ExecutableName = filepath.Base(legacy.TargetExecutable)
 		}
 		manifest.State = PhaseStaged
+		manifest.PreviousVersion = "0.5.1"
 	}
 	if manifest.ID == "" {
 		manifest.ID = rand.Text()
