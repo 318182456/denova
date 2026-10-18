@@ -32,6 +32,7 @@ const {
 vi.mock('@/features/settings/api', () => ({
   fetchProjectSettings: vi.fn().mockResolvedValue({ effective: {} }),
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
+  refreshProjectSettings: vi.fn().mockResolvedValue({ effective: {} }),
 }))
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({

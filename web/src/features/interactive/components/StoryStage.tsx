@@ -45,6 +45,7 @@ import { useStoryHistoryWindow } from './story-stage/use-story-history-window'
 import { useStoryImages } from './story-stage/use-story-images'
 import { useStoryStageRuntime } from './story-stage/use-story-stage-runtime'
 import { StoryStageComposer } from './story-stage/StoryStageComposer'
+import { StoryOpeningSummary } from './story-stage/StoryOpeningSummary'
 import { StoryStageHeader } from './story-stage/StoryStageHeader'
 import { buildStoryStageCommandMenu } from './story-stage/story-stage-commands'
 import { branchCreationSourceFromMessage, branchCreationSourceFromTurn } from './branching/model'
@@ -685,7 +686,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
             {storySetupVisible ? (
               <GameStorySetup enabled={creatingStory || !story || (story.title_source === 'pending' && committedTurnCount === 0 && !openingRuntimeActive)}>
               <NewStorySetupPanel
-                key={creatingStory ? 'new-story' : story?.id || 'new-story'}
+                key={`${projectId}:${creatingStory ? 'new-story' : story?.id || 'new-story'}`}
                 projectId={projectId}
                 tellers={tellers}
 				planningTemplates={planningTemplates}
@@ -694,7 +695,6 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 bookOpeningPresets={bookOpeningPresets}
                 conversationConfig={conversationConfig}
                 story={creatingStory ? undefined : story}
-                recentStory={story}
                 onRequestLoreInit={onRequestLoreInit}
                 onOpenPresets={onOpenDirectorConfig}
                 onCancel={() => setCreatingStory(false)}
@@ -744,6 +744,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 activityContent={stageRun.runtime.recoveryPaused ? t('storyStage.activity.recoveryPaused') : activityContent}
                 highlightDialogue
                 contentClassName="nova-story-reading-column"
+                beforeContent={story && <StoryOpeningSummary key={story.id} story={story} />}
                 onScrollerChange={setMessageScroller}
                 scrollResetKey={scrollResetKey}
                 bottomPaddingClassName="pb-36"
@@ -812,7 +813,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
             )}
             <StoryStageComposer
               taskControls={<AgentTaskControls suspended={stageRun.runtime.phase === 'suspended'} pending={commandSubmitting || stageRun.runtime.abortPending} onResume={() => void resumeTask()} onAbort={() => void stop()} />}
-              layout={{ projectId, creatingStory: storySetupVisible || (waitingToStartOpening && (!isMobile || !streaming)), isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
+              layout={{ projectId, creatingStory: storySetupVisible, isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
               editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
               story={{ storyId, branchTerminal, hotChoices, showHotChoices, canUseHotChoices }}
               runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, pendingInterruptionId: stageRun.runtime.pendingInterruptionId, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}

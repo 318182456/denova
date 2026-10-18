@@ -28,7 +28,7 @@ for (const theme of ['dark', 'light']) {
     await page.goto('/')
     await page.getByRole('button', { name: '新建', exact: true }).filter({ visible: true }).click()
     await expect(page.getByRole('heading', { name: '新故事线', exact: true })).toBeVisible()
-    await expect(page.getByText('已预填本书默认资源；这里的调整只影响当前故事。')).toBeVisible()
+    await expect(page.getByText('已使用本书默认资源；成功创建后会记住本次配置。')).toBeVisible()
     const background = page.getByRole('button', { name: '当前背景', exact: true })
     await expect(background).toHaveAttribute('title', `${longName}.png`)
     await page.getByRole('button', { name: '保存资源搭配为本书默认', exact: true }).click()

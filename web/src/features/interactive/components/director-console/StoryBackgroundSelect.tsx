@@ -58,7 +58,7 @@ export function StoryBackgroundSelect({ projectId, value, disabled, onChange }: 
           <span className="truncate">{value?.name || t('storyStage.presentation.noBackground')}</span>
         </Button>
       </TuningRow>
-      {value && projectId && <div className="relative mx-2.5 mb-2.5">
+      {value?.path && projectId && <div className="relative mx-2.5 mb-2.5">
         <MaterialImage key={value.path} src={projectFileAssetURL(projectId, value.path)} alt={value.name} focus={value.focus} className="aspect-[3/1] max-h-36 w-full rounded-md object-cover object-center" />
         <Button type="button" variant="secondary" size="icon-sm" disabled={disabled} className="absolute right-1 bottom-1" title={t('storyStage.presentation.focus')} aria-label={t('storyStage.presentation.focus')} onClick={() => setFocusOpen(true)}><Crosshair /></Button>
       </div>}

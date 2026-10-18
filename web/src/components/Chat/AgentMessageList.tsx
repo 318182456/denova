@@ -52,6 +52,8 @@ interface MessageListProps {
   contentClassName?: string
   /** Exposes the scrollport so floating controls can share its content width. */
   onScrollerChange?: (element: HTMLElement | null) => void
+  /** Display-only introduction, shown at the beginning of fully loaded history. */
+  beforeContent?: ReactNode
   afterContent?: ReactNode
   /** Generic controls follow output; confirmed result panels only reveal their marked heading. */
   afterContentScroll?: 'follow' | 'reveal-heading'
@@ -119,6 +121,7 @@ interface MessageListVirtuosoContext {
   bottomPaddingClassName: string
   bottomPaddingPx?: number
   contentClassName?: string
+  beforeContent?: ReactNode
   afterContent?: ReactNode
   afterContentKey?: string
   onAfterContentInteractionStart: () => void
@@ -134,7 +137,7 @@ export function MessageList(props: MessageListProps) {
   return <VirtualizedMessageState key={props.scrollResetKey || 'default'}><MessageListContent {...props} /></VirtualizedMessageState>
 }
 
-function MessageListContent({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, onScrollerChange, afterContent, afterContentScroll = 'follow', afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, autoLoadEarlierMessages = false, onLoadExecutionDetails, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+function MessageListContent({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, onScrollerChange, beforeContent, afterContent, afterContentScroll = 'follow', afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, autoLoadEarlierMessages = false, onLoadExecutionDetails, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -223,6 +226,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
       bottomPaddingClassName,
       bottomPaddingPx: scrollLock.streamingSpacerPx ?? bottomPaddingPx,
       contentClassName,
+      beforeContent,
       afterContent,
       afterContentKey,
       onAfterContentInteractionStart: scrollLock.beginAfterContentInteraction,
@@ -233,7 +237,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
       isLoadingEarlierMessages,
       onLoadEarlierMessages,
     }),
-    [afterContent, afterContentKey, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.beginAfterContentInteraction, scrollLock.releaseBottomLock, scrollLock.resetAfterContentInteraction, scrollLock.restoreAfterContentScrollPosition, scrollLock.streamingSpacerPx],
+    [beforeContent, afterContent, afterContentKey, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.beginAfterContentInteraction, scrollLock.releaseBottomLock, scrollLock.resetAfterContentInteraction, scrollLock.restoreAfterContentScrollPosition, scrollLock.streamingSpacerPx],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
   const anchorLatestInteractiveCardBottom = useCallback((element?: HTMLElement) => {
@@ -273,15 +277,6 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
     return undefined
   }, [bottomPaddingPx, latestInteractiveCardAnchor, scrollLock.scrollElementBottomIntoView, tailFollowActive])
 
-  useEffect(() => {
-    if (!turnScrollRequest?.anchorId) return
-    if (lastTurnScrollRequestIdRef.current === turnScrollRequest.requestId) return
-    lastTurnScrollRequestIdRef.current = turnScrollRequest.requestId
-    const targetIndex = listItems.findIndex((item) => chatListItemNavigationAnchor(item) === turnScrollRequest.anchorId)
-    if (targetIndex < 0) return
-    scrollLock.scrollToIndex(targetIndex, { align: 'start', behavior: 'auto' })
-  }, [listItems, scrollLock, turnScrollRequest])
-
   const notifyVisibleTurnAnchor = useCallback((renderedItems: ListItem<AgentChatListItem>[], viewportStartOverride?: number) => {
     if (!onVisibleTurnAnchorChange) return
     const viewportStart = viewportStartOverride ?? resolveMessageScroller()?.scrollTop ?? 0
@@ -319,6 +314,18 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
   }, [captureHistoryAnchor, notifyVisibleTurnAnchor, resolveMessageScroller])
 
   useLayoutEffect(() => {
+    if (turnScrollRequest?.anchorId && lastTurnScrollRequestIdRef.current !== turnScrollRequest.requestId) {
+      const targetIndex = listItems.findIndex(item => chatListItemNavigationAnchor(item) === turnScrollRequest.anchorId)
+      if (targetIndex < 0) return
+      // Explicit navigation takes precedence over preserving the previous row.
+      // Wait for Virtuoso to measure the prepended page and its opening header.
+      historyScrollAnchor.current = null
+      const frame = requestAnimationFrame(() => {
+        scrollLock.scrollToIndex(targetIndex, { align: 'start', behavior: 'auto' })
+        lastTurnScrollRequestIdRef.current = turnScrollRequest.requestId
+      })
+      return () => cancelAnimationFrame(frame)
+    }
     const anchor = historyScrollAnchor.current
     if (!anchor || anchor.firstKey === listItems[0]?.key) return
     const index = listItems.findIndex(item => item.key === anchor.key)
@@ -333,7 +340,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
       historyScrollAnchor.current = null
     })
     return () => cancelAnimationFrame(frame)
-  }, [listItems, scrollLock.scrollToIndex])
+  }, [listItems, scrollLock.scrollToIndex, turnScrollRequest])
   const handleMessageScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     scrollLock.onScroll(event)
     notifyVisibleTurnAnchor(renderedItemsRef.current, event.currentTarget.scrollTop)
@@ -511,6 +518,11 @@ function usePrependStableFirstItemIndex(items: AgentChatListItem[], resetKey?: s
 
 function MessageListHeader({ context }: ContextProp<MessageListVirtuosoContext>) {
   const { t } = useTranslation()
+  if (!context.hasEarlierMessages && context.beforeContent) return (
+    <div className={cn('nova-message-list-header px-3 pb-4 pt-5 sm:px-6', context.contentClassName)}>
+      {context.beforeContent}
+    </div>
+  )
   if (!context.hasEarlierMessages) return <div aria-hidden="true" className="nova-message-list-header h-5 shrink-0" />
   return (
     <div className="nova-message-list-header flex min-h-10 shrink-0 items-center justify-center px-4 py-2">

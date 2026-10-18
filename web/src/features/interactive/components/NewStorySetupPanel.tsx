@@ -23,8 +23,8 @@ import { StoryOpeningSelector } from './story-setup/StoryOpeningSelector'
 import { StoryProtagonistSelector } from './story-setup/StoryProtagonistSelector'
 import { StorySetupAdvanced, type StorySetupSettings } from './story-setup/StorySetupAdvanced'
 import { ConversationConfigError } from '@/features/conversation-config/ConversationConfigError'
-import { fetchProjectSettings } from '@/features/settings/api'
-import { gameDefaultPresentation, withGameDefaultModules, type GameCreationDefaults } from '../game-creation-defaults'
+import { refreshProjectSettings } from '@/features/settings/api'
+import { gameDefaultPresentation, withGameDefaultModules, type GameCreationDefaults, type GameCreationPreferences } from '../game-creation-defaults'
 import { GameDefaultsDialog } from './GameDefaultsDialog'
 
 interface NewStorySetupPanelProps {
@@ -34,7 +34,6 @@ interface NewStorySetupPanelProps {
   imagePresets: ImagePreset[]
   loreItems?: LoreItem[]
   bookOpeningPresets?: BookOpeningPreset[]
-  recentStory?: StorySummary
   conversationConfig: ConversationConfigController
   story?: StorySummary
   onRequestLoreInit?: () => void
@@ -50,7 +49,6 @@ export function NewStorySetupPanel({
   imagePresets,
   loreItems = [],
   bookOpeningPresets = [],
-  recentStory,
   conversationConfig,
   story,
   onRequestLoreInit,
@@ -60,12 +58,11 @@ export function NewStorySetupPanel({
 }: NewStorySetupPanelProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  const initialTemplate = planningTemplates.find((item) => item.id === story?.planning_template_id) || planningTemplates[0]
   const initialProtagonist = story?.protagonist || defaultStoryProtagonist(loreItems)
-  const [planningTemplateId, setPlanningTemplateId] = useState(initialTemplate?.id || 'default')
+  const [planningTemplateId, setPlanningTemplateId] = useState(story?.planning_template_id || 'default')
   const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
   const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'custom' })
-  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentStory, conversationConfig.snapshot))
+  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, conversationConfig.snapshot))
   const [advancedOpen, setAdvancedOpen] = useState(!isMobile)
   const [presentationSettings, setPresentationSettings] = useState<StoryPresentationSettings>(() => ({ background: true, characters: true, ...story?.presentation_settings }))
   const [creating, setCreating] = useState(false)
@@ -73,12 +70,13 @@ export function NewStorySetupPanel({
   const [defaultsLoaded, setDefaultsLoaded] = useState(story ? projectId : '')
   const [defaultsError, setDefaultsError] = useState(false)
   const [defaultsReload, setDefaultsReload] = useState(0)
-  const [hasBookDefaults, setHasBookDefaults] = useState(false)
+  const [prefillSource, setPrefillSource] = useState<'remembered' | 'prefilled' | 'newStoryHelp' | 'resetApplied'>('newStoryHelp')
+  const [resetting, setResetting] = useState(false)
   const [saveDefaultsOpen, setSaveDefaultsOpen] = useState(false)
   const initialProtagonistRef = useRef<StoryProtagonist>(initialProtagonist)
   const protagonistSelectionTouchedRef = useRef(false)
-  const defaultsLoading = !story && defaultsLoaded !== projectId
-  const planningTemplate = planningTemplates.find((item) => item.id === planningTemplateId) || planningTemplates[0]
+  const defaultsLoading = resetting || (!story && defaultsLoaded !== projectId)
+  const planningTemplate = planningTemplates.find((item) => item.id === planningTemplateId)
   const planningTemplateName = planningTemplate ? gamePlanningTemplateName(planningTemplate, t) : planningTemplateId
   const advancedSummary = useMemo(() => t('storyPicker.setup.advanced.summary', {
     planning: settings.planningEnabled ? t('storyPicker.setup.advanced.planningOn') : t('storyPicker.setup.advanced.planningOff'),
@@ -96,23 +94,54 @@ export function NewStorySetupPanel({
     if (conversationConfig.error) setAdvancedOpen(true)
   }, [conversationConfig.error])
 
+  const applyCreationPreferences = (defaults?: GameCreationDefaults, previous?: GameCreationPreferences) => {
+    const resources = previous?.resources || defaults || {}
+    setSettings(current => {
+      const base = initialSettings(undefined, null)
+      const moduleRefs = withGameDefaultModules(base.moduleRefs, resources)
+      for (const flag of previous?.disabled_modules || []) moduleRefs[flag] = true
+      return {
+        ...base,
+        // Loading/resetting story preferences must not write user model choices.
+        modelProfileId: current.modelProfileId, thinkingLevel: current.thinkingLevel,
+        moduleRefs,
+        imageSettings: normalizeStoryImageSettings(previous
+          ? { mode: previous.image_mode, interval_turns: previous.image_interval_turns, preset_id: previous.image_preset_id }
+          : { ...base.imageSettings, preset_id: resources.image_preset_id || base.imageSettings.preset_id }),
+        stateSchemaMode: previous?.state_schema_mode || (resources.actor_state_id === '' ? 'generate' : base.stateSchemaMode),
+        ...(previous ? {
+          customAgentId: previous.custom_agent_id,
+          planningEnabled: previous.planning_enabled,
+          replyTargetChars: previous.reply_target_chars,
+          choiceCount: previous.choice_count,
+          checkSettings: normalizeStoryCheckSettings({
+            difficulty_shift: previous.difficulty_shift, roll_modifier: previous.roll_modifier,
+            rule_state_consumption_mode: previous.rule_state_consumption_mode, rule_visibility_mode: previous.rule_visibility_mode,
+          }),
+        } : {}),
+      }
+    })
+    setPlanningTemplateId(resources.planning_template_id || 'default')
+    const presentation = gameDefaultPresentation(resources, loreItems, t('gameDefaults.unavailable'))
+    if (presentation.default_background && previous?.background_focus) {
+      presentation.default_background.focus = previous.background_focus
+    }
+    setPresentationSettings({
+      ...presentation,
+      ...(previous ? { background: previous.background, characters: previous.characters } : {}),
+    })
+  }
+
   useEffect(() => {
     if (story || !projectId) return
     let cancelled = false
     setDefaultsError(false)
-    void fetchProjectSettings(projectId).then(snapshot => {
+    void refreshProjectSettings(projectId).then(snapshot => {
       if (cancelled) return
       const defaults = snapshot.workspace?.game_creation_defaults
-      if (defaults) {
-        setHasBookDefaults(Object.keys(defaults).length > 0)
-        setSettings(current => ({ ...current,
-          moduleRefs: withGameDefaultModules(current.moduleRefs, defaults),
-          imageSettings: { ...current.imageSettings, preset_id: defaults.image_preset_id || current.imageSettings.preset_id },
-          stateSchemaMode: defaults.actor_state_id === '' ? 'generate' : current.stateSchemaMode,
-        }))
-        if (defaults.planning_template_id) setPlanningTemplateId(defaults.planning_template_id)
-        setPresentationSettings(gameDefaultPresentation(defaults, loreItems, t('gameDefaults.unavailable')))
-      }
+      const previous = snapshot.workspace?.game_last_creation
+      applyCreationPreferences(defaults, previous)
+      setPrefillSource(previous ? 'remembered' : defaults && Object.keys(defaults).length ? 'prefilled' : 'newStoryHelp')
       setDefaultsLoaded(projectId)
     }).catch(reason => {
       console.error('[story-setup] failed to load book defaults', reason)
@@ -122,6 +151,24 @@ export function NewStorySetupPanel({
     // Seed this form once. Catalog refreshes and later settings saves must not
     // replace choices the user has already made in the open form.
   }, [projectId, story?.id, defaultsReload])
+
+  const resetDefaults = async () => {
+    setResetting(true)
+    setError('')
+    try {
+      // Defaults may have been saved/imported since this form opened. Reset is
+      // local to the form and never clears the durable last-creation snapshot.
+      const snapshot = await refreshProjectSettings(projectId)
+      applyCreationPreferences(snapshot.workspace?.game_creation_defaults)
+      setPrefillSource('resetApplied')
+      console.info('[story-setup] restored creation defaults', { projectId })
+    } catch (reason) {
+      console.error('[story-setup] failed to restore creation defaults', reason)
+      setError(t('gameDefaults.loadFailed'))
+    } finally {
+      setResetting(false)
+    }
+  }
 
   useEffect(() => {
     setPresentationSettings(current => {
@@ -209,7 +256,7 @@ export function NewStorySetupPanel({
       const includeProtagonist = !story || !sameProtagonist(protagonist, initialProtagonistRef.current)
       await onCreate({
         title: story?.title_source === 'pending' ? '' : story?.title || '',
-        ...(!story && settings.customAgentId ? { custom_agent_id: settings.customAgentId } : {}),
+        ...(!story ? { custom_agent_id: settings.customAgentId } : {}),
         profile_id: settings.modelProfileId,
         thinking_level: settings.thinkingLevel,
         origin: story?.origin || '',
@@ -242,10 +289,6 @@ export function NewStorySetupPanel({
             <p className="mt-1 text-sm text-muted-foreground">{t('storyPicker.setup.description')}</p>
           </header>
 
-          {!story && <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">{t(hasBookDefaults ? 'gameDefaults.prefilled' : 'gameDefaults.newStoryHelp')}</p>
-            <Button type="button" variant="outline" size="sm" disabled={defaultsLoading || creating} onClick={() => setSaveDefaultsOpen(true)}>{t('gameDefaults.saveSelection')}</Button>
-          </div>}
           {defaultsError && <div role="alert" className="mb-3 text-sm text-destructive">{t('gameDefaults.loadFailed')} <Button variant="outline" onClick={() => setDefaultsReload(value => value + 1)}>{t('common.retry')}</Button></div>}
           <fieldset disabled={defaultsLoading || creating} className="flex min-w-0 flex-col gap-4">
             <ConversationConfigError controller={conversationConfig} agentKey="interactive_story" />
@@ -264,6 +307,13 @@ export function NewStorySetupPanel({
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent className="border-t border-border bg-muted/20 p-3 sm:p-4">
+                {!story && <div className="mb-4 flex min-w-0 flex-col gap-2" data-testid="story-creation-preferences">
+                  <p className="text-xs text-muted-foreground">{t(`gameDefaults.${prefillSource}`)}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" className="h-auto min-h-7 max-w-full whitespace-normal" disabled={defaultsLoading || defaultsError || creating} onClick={() => setSaveDefaultsOpen(true)}>{t('gameDefaults.saveSelection')}</Button>
+                    <Button type="button" variant="ghost" size="sm" disabled={defaultsLoading || defaultsError || creating || conversationConfig.saving} onClick={() => void resetDefaults()}>{t('gameDefaults.reset')}</Button>
+                  </div>
+                </div>}
                 <StorySetupAdvanced
                   planningControl={
                     <Field className="rounded-lg border border-border bg-background p-3">
@@ -274,6 +324,7 @@ export function NewStorySetupPanel({
                         </SelectTrigger>
                         <SelectContent position="popper">
                           <SelectGroup>
+                            {!planningTemplate && <SelectItem value={planningTemplateId}>{t('gameDefaults.resourceUnavailable', { id: planningTemplateId })}</SelectItem>}
                             {planningTemplates.map((item) => (
                               <SelectItem key={item.id} value={item.id}>
                                 {gamePlanningTemplateName(item, t)}
@@ -326,13 +377,11 @@ export function NewStorySetupPanel({
 
 function initialSettings(
   story: StorySummary | undefined,
-  recentStory: StorySummary | undefined,
   runtimeConfig: ConversationConfigSnapshot | null,
 ): StorySetupSettings {
-  const source = story || recentStory
   const moduleRefs = {
-    narrative_style_id: source?.module_refs?.narrative_style_id || source?.story_teller_id || DEFAULT_NARRATIVE_STYLE_ID,
-    narrative_style_disabled: source?.module_refs?.narrative_style_disabled,
+    narrative_style_id: story?.module_refs?.narrative_style_id || story?.story_teller_id || DEFAULT_NARRATIVE_STYLE_ID,
+    narrative_style_disabled: story?.module_refs?.narrative_style_disabled,
     event_package_ids: ['default'],
     rule_system_id: 'default',
     actor_state_id: 'default',

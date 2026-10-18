@@ -49,6 +49,7 @@ test('loads Game history progressively and fetches execution only when expanded'
     const timeline = page.locator('.nova-story-stage-content .nova-chat-canvas')
     await expect(timeline).toHaveAttribute('aria-busy', 'false')
     await expect(page.getByPlaceholder(/你要做什么/)).toBeVisible()
+    await expect(timeline.getByRole('region', { name: '故事开局', exact: true })).toHaveCount(0)
     await expect(timeline.getByText('行动 12', { exact: true })).toBeVisible()
     await expect(timeline.getByRole('region', { name: '当前状态', exact: true })).toBeVisible()
     expect(detailsRequested).toBe(0)
@@ -85,6 +86,7 @@ test('loads Game history progressively and fetches execution only when expanded'
     const retained = timeline.locator(`[data-nova-chat-row-key="${anchor.key}"]`)
     await expect.poll(async () => Math.abs((await retained.boundingBox())!.y - anchor.top)).toBeLessThan(3)
     await timeline.evaluate(element => { element.scrollTop = 0 })
+    await expect(timeline.getByRole('region', { name: '故事开局', exact: true })).toBeInViewport()
     await expect(timeline.getByText('暮色落在旧车站外，石门后的轨道传来遥远的回声。', { exact: true })).toBeInViewport()
     expect(historyRequested).toBe(1)
 

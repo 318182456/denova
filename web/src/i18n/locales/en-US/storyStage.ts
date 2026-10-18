@@ -1,4 +1,9 @@
 const storyStage = {
+  'storyStage.opening.title': 'Story setup',
+  'storyStage.opening.protagonist': 'Protagonist',
+  'storyStage.opening.autoProtagonist': 'Selected by AI from Lore',
+  'storyStage.opening.premise': 'Story premise',
+  'storyStage.opening.scene': 'Opening',
   'storyStage.presentation.lineHeight': 'Line height',
   'storyStage.presentation.characterLayout': 'Character layout',
   'storyStage.presentation.characterSize': 'Character size',

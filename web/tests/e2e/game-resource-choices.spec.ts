@@ -29,7 +29,7 @@ for (const theme of ['dark', 'light']) {
     await page.addInitScript(() => localStorage.setItem('nova:mode', 'interactive'))
     await page.goto('/')
     await page.getByRole('button', { name: '新建', exact: true }).filter({ visible: true }).click()
-    await expect(page.getByText('已预填本书默认资源；这里的调整只影响当前故事。')).toBeVisible()
+    await expect(page.getByText('已使用本书默认资源；成功创建后会记住本次配置。')).toBeVisible()
     await page.getByRole('tab', { name: 'AI 生成', exact: true }).click()
     await page.getByRole('combobox', { name: '状态结构', exact: true }).click()
     await page.getByRole('option', { name: '固定使用模板', exact: true }).click()

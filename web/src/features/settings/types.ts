@@ -13,6 +13,7 @@ export interface SpeechSettings {
 export interface Settings {
   market?: { registry_url?: string; github_token?: string }
   game_creation_defaults?: import('@/features/interactive/game-creation-defaults').GameCreationDefaults
+  game_last_creation?: import('@/features/interactive/game-creation-defaults').GameCreationPreferences
   speech?: SpeechSettings
   agent_runtimes?: Partial<Record<'ide' | 'general' | 'interactive_story', import('@/features/agent-runtime/types').RuntimePreferences>>
   openai_api_key?: string

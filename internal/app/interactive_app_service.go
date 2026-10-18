@@ -96,6 +96,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 	if store == nil {
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
+	projectStoreDir := s.cfg().ProjectStoreDir
 	var err error
 	req, err = s.withGameCreationDefaults(req)
 	if err != nil {
@@ -157,6 +158,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
+	rememberGameCreation(ctx, projectStoreDir, story, req.RuntimeConfig.CustomAgentID)
 	return story, nil
 }
 

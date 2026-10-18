@@ -20,9 +20,10 @@ import (
 // Settings 是用户设置的持久化模型。工作区文件只会从中取出 Agent 定制字段。
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
-	Market               MarketSettings        `toml:"market,omitempty" json:"market,omitempty"`
-	Extensions           *ExtensionSettings    `toml:"extensions,omitempty" json:"extensions,omitempty"`
-	GameCreationDefaults *GameCreationDefaults `toml:"game_creation_defaults,omitempty" json:"game_creation_defaults,omitempty"`
+	Market               MarketSettings           `toml:"market,omitempty" json:"market,omitempty"`
+	Extensions           *ExtensionSettings       `toml:"extensions,omitempty" json:"extensions,omitempty"`
+	GameCreationDefaults *GameCreationDefaults    `toml:"game_creation_defaults,omitempty" json:"game_creation_defaults,omitempty"`
+	GameLastCreation     *GameCreationPreferences `toml:"game_last_creation,omitempty" json:"game_last_creation,omitempty"`
 
 	// 模型
 	OpenAIAPIKey              string                  `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
@@ -808,6 +809,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	// Creation defaults are Project-owned, never inherited from another book
 	// or the user's last-used global resource selection.
 	eff.GameCreationDefaults = ws.GameCreationDefaults
+	eff.GameLastCreation = ws.GameLastCreation
 	inherited := SettingsInheritance{
 		User:      withResolvedLabs(Merge(Merge(def, global), ws)),
 		Workspace: withResolvedLabs(Merge(Merge(def, global), user)),
@@ -888,6 +890,7 @@ func withResolvedLabs(settings Settings) Settings {
 // the transition is reversible, but LoadLayered no longer applies them.
 func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings {
 	scoped := workspaceAgentSettings(incoming)
+	// Last-creation preferences are server-owned. Settings edits preserve them.
 	existing.GameCreationDefaults = scoped.GameCreationDefaults
 	existing.AgentRuntimes = scoped.AgentRuntimes
 	existing.AgentTools = scoped.AgentTools
@@ -908,6 +911,7 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 func workspaceAgentSettings(settings Settings) Settings {
 	return Settings{
 		GameCreationDefaults:     settings.GameCreationDefaults,
+		GameLastCreation:         settings.GameLastCreation,
 		AgentRuntimes:            settings.AgentRuntimes,
 		AgentTools:               settings.AgentTools,
 		AgentPrompts:             settings.AgentPrompts,

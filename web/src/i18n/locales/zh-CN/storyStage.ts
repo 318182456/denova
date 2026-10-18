@@ -1,4 +1,9 @@
 const storyStage = {
+  'storyStage.opening.title': '故事开局',
+  'storyStage.opening.protagonist': '主角',
+  'storyStage.opening.autoProtagonist': '由 AI 从资料库选择',
+  'storyStage.opening.premise': '故事前提',
+  'storyStage.opening.scene': '开局内容',
   'storyStage.presentation.lineHeight': '行间距',
   'storyStage.presentation.characterLayout': '角色布局',
   'storyStage.presentation.characterSize': '角色大小',

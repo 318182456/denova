@@ -16,6 +16,7 @@ const settingsMocks = vi.hoisted(() => ({
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: settingsMocks.fetchSettings,
   fetchProjectSettings: settingsMocks.fetchProjectSettings,
+  refreshProjectSettings: settingsMocks.fetchProjectSettings,
 }))
 
 vi.mock('../api', () => ({
@@ -30,7 +31,7 @@ vi.mock('@/features/agents/CustomAgentSelect', () => ({
 
 const planningTemplate: GamePlanningTemplate = {
   version: 1,
-  id: 'adventure',
+  id: 'default',
   name: '冒险',
   description: '',
   sections: [{ id: 'direction', title: '方向', description: '规划方向。' }],
@@ -327,7 +328,7 @@ describe('NewStorySetupPanel', () => {
     vi.mocked(getProjectLoreItems).mockResolvedValue([loreCharacter])
     const props = { projectId: 'project-1', tellers: [teller], planningTemplates: [planningTemplate], imagePresets: [], loreItems: [loreCharacter], conversationConfig: conversationConfigController(), onCancel: vi.fn(), onCreate }
     const { rerender } = render(<NewStorySetupPanel {...props} />)
-    await screen.findByText('已预填本书默认资源；这里的调整只影响当前故事。')
+    await screen.findByText('已使用本书默认资源；成功创建后会记住本次配置。')
     await user.click(screen.getByRole('button', { name: '当前背景' }))
     await user.click(screen.getByRole('button', { name: '无背景' }))
     // Late resource/settings refreshes must not replace edits in this open form.
