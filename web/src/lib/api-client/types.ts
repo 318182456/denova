@@ -755,6 +755,7 @@ export interface VersionRestoreResult {
 }
 
 export interface VersionDiff {
+  files_complete?: boolean
   version: VersionEntry
   base_version?: VersionEntry
   comparison: VersionDiffComparison

@@ -143,7 +143,7 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	assertChange(t, status.Changes, "chapters/ch0002.md", "added")
 	assertChange(t, status.Changes, "setting/progress.md", "deleted")
 
-	diff, err := service.Diff(first.Version.ID, "chapters/ch0001.md", VersionDiffComparisonWorkspace)
+	diff, err := service.Diff(first.Version.ID, VersionDiffOptions{Path: "chapters/ch0001.md", Comparison: VersionDiffComparisonWorkspace})
 	if err != nil {
 		t.Fatalf("Diff failed: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestVersionDiffAgainstParent(t *testing.T) {
 		t.Fatalf("Create second failed: %v", err)
 	}
 
-	summary, err := service.Diff(second.Version.ID, "", VersionDiffComparisonParent)
+	summary, err := service.Diff(second.Version.ID, VersionDiffOptions{Comparison: VersionDiffComparisonParent})
 	if err != nil {
 		t.Fatalf("Diff summary failed: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestVersionDiffAgainstParent(t *testing.T) {
 	assertVersionFileDiff(t, summary.Files, "chapters/added.md", "", "new", true, false)
 	assertVersionFileDiff(t, summary.Files, "chapters/deleted.md", "remove me", "", false, true)
 
-	diff, err := service.Diff(second.Version.ID, "chapters/changed.md", VersionDiffComparisonParent)
+	diff, err := service.Diff(second.Version.ID, VersionDiffOptions{Path: "chapters/changed.md", Comparison: VersionDiffComparisonParent})
 	if err != nil {
 		t.Fatalf("Diff file failed: %v", err)
 	}

@@ -39,7 +39,7 @@ func TestVersionDiffFiltersExcludedHistoricalFiles(t *testing.T) {
 	}
 	for _, comparison := range []VersionDiffComparison{VersionDiffComparisonParent, VersionDiffComparisonWorkspace} {
 		t.Run(string(comparison), func(t *testing.T) {
-			diff, err := service.Diff(hash.String(), "", comparison)
+			diff, err := service.Diff(hash.String(), VersionDiffOptions{Comparison: comparison})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +53,7 @@ func TestVersionDiffFiltersExcludedHistoricalFiles(t *testing.T) {
 				t.Fatalf("excluded files must not appear as workspace deletions: %#v", diff)
 			}
 			for _, path := range excluded {
-				if _, err := service.Diff(hash.String(), path, comparison); err == nil {
+				if _, err := service.Diff(hash.String(), VersionDiffOptions{Path: path, Comparison: comparison}); err == nil {
 					t.Fatalf("explicit access to excluded path %q must fail", path)
 				}
 			}

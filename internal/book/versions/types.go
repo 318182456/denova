@@ -105,6 +105,7 @@ type VersionRestoreChange struct {
 }
 
 type VersionDiff struct {
+	FilesComplete     bool                  `json:"files_complete"`
 	Version           VersionEntry          `json:"version"`
 	BaseVersion       *VersionEntry         `json:"base_version,omitempty"`
 	Comparison        VersionDiffComparison `json:"comparison"`
@@ -119,9 +120,18 @@ type VersionDiff struct {
 	MissingInModified bool                  `json:"missing_in_modified,omitempty"`
 }
 
+// VersionDiffOptions distinguishes a complete export from an initial viewport.
+// Initial includes the first file for large comparisons; Changes always lists
+// every path, and per-path/full reads retain the complete content contract.
+type VersionDiffOptions struct {
+	Path       string
+	Comparison VersionDiffComparison
+	Initial    bool
+}
+
 // VersionFileDiff is the complete content projection for one changed file.
-// Summary requests return these in change order so clients can render one
-// continuous review surface without repeating the workspace comparison.
+// Complete requests return these in change order. Initial requests can return
+// one file while retaining the complete path catalog for immediate navigation.
 type VersionFileDiff struct {
 	Path              string `json:"path"`
 	Status            string `json:"status"`

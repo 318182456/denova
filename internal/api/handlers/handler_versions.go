@@ -92,7 +92,9 @@ func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, consts.StatusBadRequest, "api.versions.invalidDiffComparison")
 		return
 	}
-	diff, err := h.app.ProjectVersionDiff(ctx, scope.ProjectID, id, c.Query("path"), comparison)
+	diff, err := h.app.ProjectVersionDiff(ctx, scope.ProjectID, id, book.VersionDiffOptions{
+		Path: c.Query("path"), Comparison: comparison, Initial: c.Query("view") == "initial",
+	})
 	if err != nil {
 		writeVersionError(c, err)
 		return

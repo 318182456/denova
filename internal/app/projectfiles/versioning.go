@@ -86,7 +86,7 @@ func (service *Service) CreateVersion(ctx context.Context, projectID, message, s
 	return result, err
 }
 
-func (service *Service) VersionDiff(ctx context.Context, projectID, versionID, path string, comparison book.VersionDiffComparison) (book.VersionDiff, error) {
+func (service *Service) VersionDiff(ctx context.Context, projectID, versionID string, options book.VersionDiffOptions) (book.VersionDiff, error) {
 	resources, changes, err := service.versionOperation(projectID)
 	if err != nil {
 		return book.VersionDiff{}, err
@@ -94,7 +94,7 @@ func (service *Service) VersionDiff(ctx context.Context, projectID, versionID, p
 	var diff book.VersionDiff
 	err = changes.WithConsistentWorkspaceSnapshot(ctx, func() error {
 		var diffErr error
-		diff, diffErr = resources.VersionService.Diff(versionID, path, comparison)
+		diff, diffErr = resources.VersionService.Diff(versionID, options)
 		return diffErr
 	})
 	return diff, err
