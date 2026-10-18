@@ -166,7 +166,7 @@ func writeVersionError(c *app.RequestContext, err error) {
 	case errors.Is(err, book.ErrVersionNotFound):
 		writeError(c, consts.StatusNotFound, err.Error())
 	case errors.Is(err, book.ErrVersionClean):
-		writeError(c, consts.StatusBadRequest, err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.versions.noChanges")
 	default:
 		writeError(c, consts.StatusBadRequest, err.Error())
 	}
