@@ -1,7 +1,26 @@
-import { createRef, useState } from 'react'
+import { createRef, useLayoutEffect, useState } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ComposerTokenInput, type ComposerTokenInputHandle } from './composer-token-input'
+
+it('preserves a new draft while a previous render synchronizes token suggestions', () => {
+  const ref = createRef<ComposerTokenInputHandle>()
+  const pendingSkills: string[] = []
+  const readySkills = ['outline']
+  function Composer({ suggestionsReady }: { suggestionsReady: boolean }) {
+    const [value, setValue] = useState('')
+    // Deliver an edit after commit but before that render's passive effects.
+    useLayoutEffect(() => {
+      if (suggestionsReady) ref.current!.replaceActiveTriggerText('草稿')
+    }, [suggestionsReady])
+    return <ComposerTokenInput ref={ref} value={value} onChange={setValue}
+      knownSkills={suggestionsReady ? readySkills : pendingSkills} />
+  }
+  const view = render(<Composer suggestionsReady={false} />)
+  view.rerender(<Composer suggestionsReady />)
+  expect(ref.current!.getValue()).toBe('草稿')
+  expect(screen.getByRole('textbox')).toHaveTextContent('草稿')
+})
 
 function mountComposer(initial: string, knownSkills: string[] = []) {
   const ref = createRef<ComposerTokenInputHandle>()

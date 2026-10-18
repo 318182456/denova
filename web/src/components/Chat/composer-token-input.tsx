@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { Node, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -247,7 +247,9 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
     else dom.removeAttribute('autocapitalize')
   }, [autoCapitalize, editor, enterKeyHint, inputMode, placeholder, rows])
 
-  useEffect(() => {
+  // Apply the committed value before another input can reach the editor. A
+  // delayed passive effect can otherwise overwrite a newly entered draft.
+  useLayoutEffect(() => {
     if (!editor || editor.isDestroyed) return
     const current = serializeComposerDoc(editor.state.doc)
     if (current === value) {
