@@ -5,12 +5,13 @@ import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { AgentTaskControls } from './AgentTaskControls'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { novaEase } from '@/features/motion/motion-tokens'
-import { answerSessionAsk, cancelSessionAsk, removeChatContextCompaction } from '@/lib/api'
+import { APIError, answerSessionAsk, cancelSessionAsk, createVersion, removeChatContextCompaction, versionQueryKeys } from '@/lib/api'
 import type {
   ActiveChatTask,
   AgentAskAnswer,
@@ -283,6 +284,7 @@ function AgentPanelComponent({
   onSubAgentSessionOpen,
 }: AgentPanelProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const dockedChrome = chrome === 'panel'
   const generalAgent = agentKind === 'general'
   const [internalView, setInternalView] = useState<AgentPanelView>('chat')
@@ -484,6 +486,26 @@ function AgentPanelComponent({
   )
 
   const sendWithWritingSkill = async (message: string, inputOptions?: InputAreaSendOptions) => {
+    // Snapshot only persisted Project files, using the same API as version management.
+    const snapshot = message.trim().match(/^\/snapshot(?:\s+([\s\S]*))?$/)
+    if (snapshot) {
+      const toastID = toast.loading(t('versions.saving'))
+      try {
+        const result = await createVersion(projectId, snapshot[1]?.trim())
+        toast.success(t('versions.saved', { message: result.version?.message || result.message }), { id: toastID })
+        console.info('[AgentPanel] Created workspace version', { projectId, versionId: result.version?.id })
+        await queryClient.invalidateQueries({ queryKey: versionQueryKeys.all })
+        return true
+      } catch (error) {
+        if (error instanceof APIError && error.code === 'api.versions.noChanges') {
+          toast.info(t('versions.noChanges'), { id: toastID })
+          return true
+        }
+        console.error('[AgentPanel] Failed to create workspace version', { projectId, error })
+        toast.error(error instanceof Error ? error.message : t('versions.createFailed'), { id: toastID })
+        return false
+      }
+    }
     // Session navigation belongs to the host, before feedback or model context is prepared.
     if (message.trim() === '/new') {
       if (sessionControlsDisabled) return false
@@ -545,7 +567,7 @@ function AgentPanelComponent({
   }
 
   const submitGoal = async (objective: string, inputOptions?: InputAreaSendOptions) => {
-    if (objective.trim() === '/new') return sendWithWritingSkill(objective, inputOptions)
+    if (objective.trim() === '/new' || /^\/snapshot(?:\s|$)/.test(objective.trim())) return sendWithWritingSkill(objective, inputOptions)
     if (planMode) onPlanModeChange(false)
     const next = await conversationGoal.set(objective)
     if (!next) {

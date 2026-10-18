@@ -677,6 +677,8 @@ const chat = {
   'chat.command.goal.hint': '直到完整完成',
   'chat.command.new.desc': '新建会话',
   'chat.command.new.hint': '保留当前会话',
+  'chat.command.snapshot.desc': '创建工作区版本',
+  'chat.command.snapshot.hint': '可附版本说明',
   'chat.command.compact.desc': '压缩上下文',
   'chat.command.compact.hint': '立即生效',
   'chat.command.status.desc': '查看状态',

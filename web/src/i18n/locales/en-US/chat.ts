@@ -677,6 +677,8 @@ const chat = {
   'chat.command.goal.hint': 'Continue until complete',
   'chat.command.new.desc': 'New conversation',
   'chat.command.new.hint': 'Keep the current conversation',
+  'chat.command.snapshot.desc': 'Create workspace version',
+  'chat.command.snapshot.hint': 'Optional description',
   'chat.command.compact.desc': 'Compact context',
   'chat.command.compact.hint': 'Apply immediately',
   'chat.command.status.desc': 'View status',

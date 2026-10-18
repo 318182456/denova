@@ -1,6 +1,93 @@
 import { expect, test, type Page } from '../support/fixtures'
 import type { Route } from '@playwright/test'
-import { createAndOpenBook, createProjectFile, readProjectFile, saveProjectFile } from '../support/api'
+import { mkdtemp } from 'node:fs/promises'
+import path from 'node:path'
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
+import { createAgentChatSession, createAndOpenBook, createProjectFile, readProjectFile, registerAgentChatProject, saveProjectFile } from '../support/api'
+import { openAgentChatSession, openAgentChatWorkbench, openWritingAgent } from '../support/agent-chat'
+
+for (const surface of ['writing', 'general'] as const) {
+  test(`creates workspace snapshots from the ${surface} composer without starting an Agent turn`, async ({ page, request, browserDiagnostics }, testInfo) => {
+    const book = await createAndOpenBook(request, `Snapshot ${surface}`)
+    const project = surface === 'general'
+      ? await registerAgentChatProject(request, await mkdtemp(path.join(runtimeRoot, 'snapshot-general-')))
+      : { id: book.projectId }
+    const filePath = 'snapshot.md'
+    await createProjectFile(request, project.id, filePath, 'Persisted workspace content')
+    const session = surface === 'general' ? await createAgentChatSession(request, project.id, 'Snapshot session') : null
+    const versionPath = `/api/projects/${project.id}/versions`
+    const agentRequests: string[] = []
+    page.on('request', sent => {
+      if (sent.method() !== 'GET' && /\/(?:chat|commands|goal)$/.test(new URL(sent.url()).pathname)) agentRequests.push(sent.url())
+    })
+    browserDiagnostics.allow(/console\.error: Failed to load resource:.*400 \(Bad Request\).*\/versions/)
+    const theme = surface === 'writing' ? 'dark' : 'light'
+    const themed = await request.patch('/api/settings', { data: { layer: 'user', changes: { theme } } })
+    expect(themed.ok(), await themed.text()).toBe(true)
+
+    await page.goto('/')
+    if (session) await openAgentChatWorkbench(page)
+    const composer = session
+      ? await openAgentChatSession(page, project.id, session.title)
+      : await openWritingAgent(page)
+    const send = page.locator('[data-action="send"]').filter({ visible: true })
+    await composer.fill('/snap')
+    await expect(page.getByRole('option', { name: /\/snapshot.*创建工作区版本/ })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath(`snapshot-${theme}.png`) })
+    await page.getByRole('option', { name: /\/snapshot.*创建工作区版本/ }).click()
+    await composer.pressSequentially(`Checkpoint ${surface}`)
+    const saved = page.waitForResponse(response => new URL(response.url()).pathname === versionPath && response.request().method() === 'POST')
+    await expect(send).toBeEnabled()
+    await send.press('Enter')
+    const response = await saved
+    expect(response.ok(), await response.text()).toBe(true)
+    expect((await response.json()).version).toMatchObject({ message: `Checkpoint ${surface}`, source: 'manual' })
+    await expect(page.getByText(`已保存版本：Checkpoint ${surface}`, { exact: true })).toBeVisible()
+    await expect(composer).toBeVisible()
+    await expect(composer).toHaveText('')
+    expect(agentRequests).toEqual([])
+
+    const clean = page.waitForResponse(response => new URL(response.url()).pathname === versionPath && response.request().method() === 'POST')
+    await composer.fill('/snapshot ')
+    await expect(send).toBeEnabled()
+    await send.press('Enter')
+    expect((await clean).status()).toBe(400)
+    await expect(page.getByText('暂无变更', { exact: true })).toBeVisible()
+    await expect(composer).toHaveText('')
+    const history = await (await request.get(versionPath)).json()
+    expect(history.versions).toHaveLength(1)
+    const englishClean = await request.post(versionPath, { data: {}, headers: { 'X-Denova-Locale': 'en-US' } })
+    expect(await englishClean.json()).toMatchObject({ code: 'api.versions.noChanges', error: 'The workspace has no changes to save.' })
+
+    await saveProjectFile(request, project.id, filePath, 'Updated persisted content')
+    let snapshotComposer = composer
+    if (surface === 'general') {
+      await composer.fill('/goal')
+      await page.getByRole('option', { name: /\/goal/ }).click()
+      snapshotComposer = page.getByPlaceholder('描述目标，并定义可衡量的完成结果')
+    }
+    const automatic = page.waitForResponse(response => new URL(response.url()).pathname === versionPath && response.request().method() === 'POST')
+    await snapshotComposer.fill('/snapshot ')
+    await expect(send).toBeEnabled()
+    await send.press('Enter')
+    const automaticResult = await (await automatic).json()
+    expect(automaticResult.version.message).toBeTruthy()
+    expect(automaticResult.version.id).not.toBe(history.versions[0].id)
+    await expect(composer).toHaveText('')
+    expect(agentRequests).toEqual([])
+
+    browserDiagnostics.allow(/console\.error: \[AgentPanel\] Failed to create workspace version/)
+    await page.route(`**${versionPath}`, route => route.fulfill({
+      status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'Snapshot request rejected' }),
+    }), { times: 1 })
+    await composer.fill('/snapshot Retry description')
+    await expect(send).toBeEnabled()
+    await send.press('Enter')
+    await expect(page.getByText('Snapshot request rejected', { exact: false }).first()).toBeVisible()
+    await expect(composer).toHaveText('/snapshot Retry description')
+    expect(agentRequests).toEqual([])
+  })
+}
 
 async function openVersionHistory(page: Page) {
   const saveVersion = page.getByRole('button', { name: '保存当前版本', exact: true })

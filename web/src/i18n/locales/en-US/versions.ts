@@ -49,6 +49,7 @@ const versions = {
   'versions.rollbackTitle': 'Confirm version rollback?',
   'versions.rollbackTo': 'Rollback to this version',
   'versions.saved': 'Saved version: {{message}}',
+  'versions.saving': 'Saving version…',
   'versions.restoreFailed': 'Restore failed',
   'versions.restoreFile': 'Restore this file',
   'versions.restoreFileConfirm': 'Restore File',
