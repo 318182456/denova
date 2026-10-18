@@ -37,6 +37,10 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
   const scrollerElementRef = useRef<HTMLElement | null>(null)
   const viewportScrollTopRef = useRef<number | null>(null)
   const lockedRef = useRef(true)
+  // Restoring history or explicitly returning to its end must follow late row
+  // measurements. Reveal-only footer behavior applies after a streamed reply,
+  // when preserving the reader's position takes precedence over the list end.
+  const followIdleBottomRef = useRef(!autoFollowEnabled && resetPosition === 'end')
   const afterContentRevealPendingRef = useRef(false)
   const afterContentInteractionRef = useRef(false)
   // Footer interactions follow the bottom only when they start there; otherwise
@@ -166,7 +170,7 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
     ) return
     const element = currentScrollerElement()
     if (!element || element.clientHeight <= 0) return
-    if (revealAfterContent) {
+    if (revealAfterContent && !followIdleBottomRef.current) {
       if (!afterContentRevealPendingRef.current) return
       const reveal = element.querySelector('[data-nova-chat-after-content-reveal]')
       // Virtuoso can mount its footer after the parent's layout effect. Consume
@@ -220,6 +224,7 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
   const scrollToBottom = useCallback(() => {
     resetAfterContentInteraction()
     lockedRef.current = true
+    followIdleBottomRef.current = !autoFollowEnabledRef.current
     schedulerRef.current.schedule(scrollToBottomNow, () => lockedRef.current)
   }, [resetAfterContentInteraction, scrollToBottomNow])
 
@@ -428,6 +433,7 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
       }
       return
     }
+    followIdleBottomRef.current = false
     if (wasEnabled) return
     resetAfterContentInteraction()
     const element = currentScrollerElement()

@@ -24,6 +24,13 @@ for (const mode of ['Writing', 'Game'] as const) {
     await expect(page.getByText('手动压缩', { exact: true })).toBeVisible()
     await page.reload()
     await openComposer(page, mode)
+    if (mode === 'Game') {
+      // Late row measurements must not strand the restored viewport in earlier
+      // history. The footer may occupy the screen, with compaction just above it.
+      const timeline = page.locator('.nova-story-stage-content .nova-chat-canvas')
+      await expect(timeline).toHaveAttribute('aria-busy', 'false')
+      await expect.poll(() => timeline.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThan(2)
+    }
     await expect(page.getByText('手动压缩', { exact: true })).toBeVisible()
   })
 }

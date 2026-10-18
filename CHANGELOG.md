@@ -1,145 +1,87 @@
 # Changelog
 
-Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据变更、安全更新，以及影响核心流程的关键修复。内部重构、测试调整、文案修改和细节级 UI 优化不再逐项列出，完整记录可查看 [Git history](https://github.com/alfredxw/denova/commits/master)。
+Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据变更、安全更新，以及影响核心流程的关键修复。完整记录可查看 [Git history](https://github.com/alfredxw/denova/commits/master)。
 
-Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
+Denova records major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. See [Git history](https://github.com/alfredxw/denova/commits/master) for the full history.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.5.1）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.5.1 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本为基线，只描述升级用户最终可感知的净变化，不记录内部重构或未发布中间格式。
 
-`Unreleased` compares against the latest release (currently v0.5.1) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.5.1 are excluded.
+`Unreleased` describes the final user-visible changes since the latest release, excluding internal refactors and unpublished intermediate formats.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-10-18
+
+### Brief / 简要说明
+
+#### 中文
+
+- 资料库支持自定义分类、文档式索引、关联引用与多媒体；游戏可用资料库背景和角色差分演出。
+- 新增资源市场、统一导入导出，以及可扩展创作页面、工具和游戏的插件平台。
+- 新增 Gemini 原生协议、会话正文搜索与导出、工作区快照，并改善长会话和大型项目性能。
+- 自动更新支持后台检查、断点续传与安装恢复；升级会备份并迁移受影响的旧数据，不支持程序降级。
+
+#### English
+
+- Lore gains custom categories, document-style indexes, linked references and multimedia, with backgrounds and character sprites for Game stages.
+- A resource marketplace and shared import/export support a plugin platform for creation pages, tools and custom games.
+- Adds native Gemini support, conversation search and export, and workspace snapshots, with better performance for long sessions and large projects.
+- Updates gain background checks, resumable downloads and installation recovery. Upgrades back up and migrate affected data; application downgrades are unsupported.
+
 ### Added / 新增
 
-- 新增不包含创作内容的使用统计，首次告知并默认开启，可在设置中随时关闭。
-- Adds usage statistics without creative content, disclosed on first use and enabled by default, with a setting to turn collection off anytime.
+- 资料库支持分类卡片、自定义分类、文档式分组索引、@ 引用与反向引用；可向写作和游戏按组提供上下文，管理多图、音频与网络图片，并批量生成封面或带恢复点删除资料。
+- Lore supports category cards, custom categories, grouped document indexes, @ references and backlinks, grouped context for Writing and Game, multiple images, audio and web images, and batch cover generation or deletion with recovery versions.
 
-- 更新支持后台定时检查、可选自动下载，以及等待活动任务完成后重启。
-- Updates add background checks, optional automatic downloads, and restart after active tasks finish.
+- 游戏舞台支持资料库背景、多角色差分和独立演出控制，演出随分支保存；新故事可选择已安装游戏，保留独立进度，并记住用户的开局偏好。
+- Game stages support Lore backgrounds, multiple character sprites and presentation controls saved with each branch. New stories can use installed games, retain separate progress and remember opening preferences.
 
-- 语言模型连接新增 Gemini 原生协议，支持工具调用、图片输入与会话恢复。
-- Language model connections add the native Gemini protocol with tool calls, image inputs and session recovery.
+- 新增资源市场与统一导入导出，支持发现、预览和组合创作方案、Skills、资料、插件与游戏，管理来源、更新和备份，并逐项采纳资源包推荐的开局配置。
+- Adds a resource marketplace and shared import/export for discovering, previewing and combining Creative Setups, Skills, Lore, plugins and games, with source tracking, updates, backups and optional package-recommended opening settings.
 
-- 插件可添加绑定当前 Project 的一级创作页面与宿主 Agent，支持 Project 作品目录、图像编辑、选区及多图参考；独立资源索引中的漫画示例复用 Agent、工具与 Skill，支持统一参考的整话生成、进度、中断续作和批量采用，作品保存于 comic/ 并保留图片历史。
-- Plugins can add Project-bound creation pages with a host Agent, Project content directories, image edits, regions and multiple references. The comic example in the separate resource index uses the existing Agent, tools and a Skill for episode generation with shared references, progress, continuation and bulk adoption, saving artwork under comic/ with image history.
+- 插件与游戏支持安装、配置、启停、开发、构建、独立预览和导出；插件可提供 Agent 工具、用户命令、独立面板和绑定 Project 的创作页面，支持图像编辑与多图参考等工作流。
+- Plugins and games support installation, configuration, enablement, development, builds, isolated previews and export. Plugins can provide Agent tools, user commands, panels and Project-bound creation pages for workflows such as image editing and multiple image references.
 
-- 资料库新增文档式资料索引，支持自定义与自动分组、逐项双向关联和实时预览；按组直接向写作与游戏 Agent 注入名称、简介或全文，并可按组名或全文关键词查询。
-- Lore adds a document-style index with custom and automatic groups, shared item associations and live previews. Groups directly inject names, briefs or full text into Writing and Game, with group queries and full-body keyword search.
+- 新增 Gemini 原生协议，支持工具调用、图片输入和会话恢复；写作与通用对话支持正文搜索、Markdown 导出和 `/snapshot` 工作区版本命令。
+- Adds native Gemini support with tool calls, image inputs and session recovery, plus conversation body search, Markdown export and the `/snapshot` workspace version command in Writing and General conversations.
 
-- 资料正文支持通过 @ 搜索插入名称引用、点击查看资料与反向引用；缺失引用和改名影响有明确提示，写作与游戏共用。
-- Lore bodies support @ search for name references, linked previews and backlinks, with missing-reference and rename notices shared across Writing and Game.
+- 更新支持后台检查、可选自动下载、活动任务结束后重启、断点续传和安装中断恢复；校验发布包并确认启动，失败保留诊断与程序备份。
+- Updates support background checks, optional automatic downloads, restart after active tasks, resumable downloads and interrupted-installation recovery, with package verification, startup confirmation, diagnostics and program backups.
 
-- 资料库默认分类统一为角色、地点、组织、物品和世界设定；支持作品内自定义分类、改名、排序和移入后删除。旧分类自动映射并先备份，正文、标签和素材关联保留。
-- Lore defaults to Characters, Locations, Organizations, Items and Worldbuilding, with project-local custom categories, renaming, ordering and deletion after moving entries. Upgrades back up and map old categories while preserving content, tags and media associations.
-
-- 资料库新增分类卡片总览，支持封面上传、生成与选择、批量补齐封面或追加图片，以及带版本恢复点的批量删除。
-- Lore adds a categorized card overview with cover upload, generation and selection, batch cover completion or image creation, and batch deletion protected by a recovery version.
-
-- 游戏舞台支持由 Agent 按回合选择资料库背景与角色差分，多角色并列显示，支持开局选择默认背景、独立控制动态背景与角色差分，并提供文字遮罩和隐藏文字按钮；演出随故事分支保存，素材错误不阻塞剧情。
-- Game stages support per-turn Lore backgrounds and character sprites selected by the Agent, multiple characters, an opening default background, independent dynamic-background and sprite controls, a reading scrim and text hiding. Presentation follows story branches, and invalid materials never block the story.
-- 资料项支持多图与音频素材、网络图片引用与按需保存到项目、独立说明、作品内复用和封面选择；生成图片追加保存，素材随资源包导入导出，版本恢复保留历史可能引用的媒体。旧版单图资料继续保留其属性与封面关系。
-- Lore items support multiple images and audio, web image references with optional local copies, per-item descriptions, project-local reuse and explicit covers. Generated images are appended, resource packs include materials, and version restores retain historical media. Existing single-image Lore retains its attributes and cover associations.
-- 新增市场与统一导入导出：从独立索引发现包含创作方案、Skills、资料、插件和游戏的资源包，支持 GitHub topic 自助发现并标注来源；预览并组合交付内容，统一管理来源、更新策略与备份恢复，保留各模块的编辑和使用入口。
-- Added a Marketplace and shared import/export: discover packages with creative setups, Skills, Lore, plugins and games through an independent index, including GitHub topic discovery with source labels; preview and bundle resources, and manage sources, update policies and backups while keeping editing in each module.
-- 资源包可推荐背景与创作方案，用户可逐项采纳为书籍的新故事默认值；已有故事、全局偏好与用户自行调整保持独立，资源更新不会重新应用推荐。
-- Packages can recommend backgrounds and creative setups for per-book new-story defaults, adopted field by field. Existing stories, global preferences and user choices remain independent; updates never reapply recommendations.
-- 新增统一扩展管理与工作台开发流程：支持从 GitHub 或本地安装游戏和插件、按提交检查更新，以及启停、独有设置表单、模板创建、构建、独立预览与导出。
-- Added unified extension management and workbench development: install games and plugins from GitHub or local files, check upstream updates, enable, configure through forms, create, build, preview and export.
-- 游戏页支持在新建故事线时选择已安装游戏、设置默认游戏，并按故事线保存和恢复各自的进度；游戏可使用工具插件与私有 NPC。
-- Games now supports installed game types and a default game during storyline creation, with separate persistent saves, shared tool plugins and private NPCs.
-- 插件支持按场景供 Agent 使用的工具、无需模型的用户命令和独立面板，可组合资料库、文本与图像生成、项目内容保存及导入导出；项目可独立停用插件并配置模型，关闭与撤权按使用范围停止任务。
-- Plugins support context-specific Agent tools, direct user commands and independent panels, combining Lore, text and image generation, and Project content persistence and transfer. Projects can disable plugins and bind models; closing or revoking access stops the owned work.
+- 新增不包含创作内容的使用统计，首次告知确认后开始采集，默认开启，可在设置中随时关闭。
+- Adds usage statistics without creative content, enabled by default after the first-use notice is acknowledged and configurable in Settings.
 
 ### Changed / 变更
 
-- 提升启动与页面切换、大资料库、版本比较、多项目自动化目录及历史全文搜索速度，保留编辑、批量操作、完整历史与外部变更同步。
-- Improve startup, navigation, large Lore libraries, version comparisons, multi-project Automation catalogs and full-history search while preserving editing, batch operations, complete history and external-change synchronization.
+- 改善启动、页面切换、编辑器恢复、大资料库、版本比较、自动化目录和长会话历史的加载性能，降低流式输出与大量工具结果的 CPU、内存和日志开销。
+- Improves startup, navigation, editor restoration, large Lore libraries, version comparisons, Automation catalogs and long-session history, reducing CPU, memory and journal overhead for streaming and large tool results.
 
-- 写作和通用对话用 `/new` 新建独立会话，替代 `/clear`；原会话的历史、目标和待办完整保留。
-- Writing and General conversations use `/new` to start an independent session instead of `/clear`, preserving the original history, Goal and Todo.
+- 写作和通用对话使用 `/new` 新建独立会话，替代 `/clear`，保留原会话历史、目标与待办。
+- Writing and General conversations use `/new` instead of `/clear` to start an independent session while preserving the original history, Goal and Todo.
+
+- 升级会先备份再迁移受影响的旧资料分类、素材路径、Skill 安装来源与外部运行时控制记录。素材按场景归属保存，版本恢复保留历史可能引用的媒体；备份用于迁移失败恢复，不支持程序降级。
+- Upgrades back up and migrate affected Lore categories, asset paths, Skill installation sources and external runtime control records. Assets are organized by use and ownership, and version restores retain media that history may reference. Backups support migration recovery; application downgrades are unsupported.
 
 ### Fixed / 修复
 
-- 修复写作与通用对话发送图片后消息中的预览入口消失的问题，无需刷新即可查看已发送图片。
-- Fix image previews disappearing from sent messages in Writing and General conversations, without requiring a refresh.
+- 修复已发送图片预览消失、流式正文截断或回退、思考重复，以及 Safari 输入框删除失效的问题。
+- Fixes disappearing sent-image previews, truncated or regressing streamed text, duplicated reasoning and broken deletion in the Safari composer.
 
-- 修复包含 Denova 用户数据目录的代码项目被误识别为书籍、导致添加失败的问题；保留项目身份并支持重试。
-- Fix code projects containing a Denova user data directory being misclassified as Books and failing to add, preserving Project identity and allowing retries.
+- 修复 Agent 中断恢复后持续重连、压缩阻塞其他会话、误删恢复状态与旧排队指令无法管理的问题，保留已接受任务及命令重试结果。
+- Fixes persistent reconnection after interrupted runs, compaction blocking other conversations, incorrectly cleared recovery state and stale queued controls, preserving accepted tasks and command retry results.
 
-- 降低长思考流式输出时的 CPU 占用与滚动、工具卡片卡顿；思考逐词动画默认关闭，可通过“完整”动效重新开启。
-- Reduce CPU usage and scrolling or tool-card stalls during long thinking streams; thinking word animations default to off and can be enabled with Full motion.
+- 修复 Gemini 连续工具调用与恢复时签名丢失、Native 历史压缩后被严格聊天模板拒绝，以及新版 Claude 流式事件导致任务中断的问题。
+- Fixes lost Gemini signatures across tool calls and recovery, strict chat templates rejecting compacted Native history, and newer Claude stream events interrupting tasks.
 
-- 修复 Agent 流式正文被通知事件截断、重连时文字回退和思考内容重复的问题，保留已接受任务并从会话历史恢复冲突内容。
-- Fix truncated Agent text around notification events, text regression and duplicate reasoning during replay, recovering conflicting content from session history while preserving accepted tasks.
-
-- 修复 Safari 中 Agent 输入框的退格和向前删除失效，完整保留 emoji、组合字符与撤销行为。
-- Fix Backspace and forward deletion in the Safari Agent composer, preserving complete emoji, combining characters and undo behavior.
-
-- 减少会话较多时的列表加载等待与超长 Agent 工具轮的历史分页开销，保留完整消息、后续补丁和会话恢复。
-- Reduce conversation-list loading delays in large libraries and history paging costs for long Agent tool runs, preserving complete messages, later patches and session recovery.
-
-- 减少 Agent 恢复时重复扫描历史子任务、写作、通用会话、游戏分支及 Native 子会话日志的等待；连接恢复支持自动退避重试和失败后的手动重试，保留已接受的运行。
-- Reduced Agent recovery delays from repeated scans of historical subtasks, Writing/General conversations, Game branches, and Native child-session journals. Connection recovery now retries with backoff and offers a manual retry while preserving accepted runs.
-
-- 修复 Agent 连续读取大量长文本时的内存与会话日志膨胀；历史分页与压缩后恢复保留完整内容。
-- Fix excessive memory and session-log growth during Agent runs with many large text results, preserving complete content through history paging and recovery after compaction.
-
-- 修复手动压缩 AgentChat 上下文时阻塞其他会话发送、配置和恢复请求的问题，并避免应用关闭等待压缩模型响应。
-- Fix manual AgentChat context compaction blocking message, configuration and recovery requests in other conversations and app shutdown waiting for the compaction provider.
-
-- 修复 Gemini Agent 工具调用后的签名丢失问题，支持连续工具调用与暂停后恢复。
-- Fix lost Gemini signatures after Agent tool calls, preserving successive calls and paused-task recovery.
-
-- 修复 Native Agent 历史压缩后被严格聊天模板以 400 错误拒绝、无法继续执行的问题。
-- Fix Native Agent continuation after history compaction being rejected with HTTP 400 by strict chat templates.
-
-- 修复长篇游戏故事刷新时的历史加载变慢：先显示近期回合，上翻或跳转时自动补取历史，执行详情按需展开，完整故事与 Agent 上下文保持保留。
-- Fixed slow history loading when refreshing long Game stories: show recent turns first, load earlier history on scroll or navigation, and fetch execution details on expansion while preserving the complete story and Agent context.
-
-- 修复任务中断后恢复冲突导致 Agent 界面持续卡在重连状态的问题。
-- Fix recovery conflicts leaving the Agent interface stuck reconnecting after a task is interrupted.
-- 旧任务遗留的排队指令可在空闲或新任务运行时删除，写作指令可退回编辑，不影响新任务。
-- Allow queued instructions from earlier tasks to be deleted while idle or running a new task, and returned to the writing editor without affecting the new task.
-
-- 修复远程 ZIP 与 Skill 下载绕过代理的问题，资源下载统一遵循环境变量和系统代理设置。
-- Fix remote ZIP and Skill downloads bypassing proxies; resource downloads consistently use environment and system proxy settings.
-
-- 修复删除项目唯一会话被拒绝后，Goal 和 Agent 恢复状态仍被清除的问题。
-- Fix rejected deletion of a project's only conversation clearing its Goal and Agent recovery state.
-- 修复子 Agent 刚启动时，相同命令重试可能被误判为输入冲突的问题。
-- Fix identical command retries being rejected as input conflicts while a child Agent is starting.
-- 修复外部运行时压缩上下文期间，状态查询可能连带阻塞其他会话控制操作的问题。
-- Fix status queries during external runtime context compaction blocking controls in other conversations.
-- 外部运行时逐条保存控制回执，避免长会话在追加指令、暂停和结束任务时反复保存全部历史回执；升级时备份并转换已有记录，保留未完成任务和命令重试结果。
-- External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
-- 修复打开或切换到包含大量整章写入的长会话时，页面长时间占满 CPU、无法操作的问题。
-- Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
-- 修复打开包含大量整章写入的长会话时，后端长时间占满 CPU、页面无法打开的问题。
-- Fix the backend pinning the CPU for minutes, leaving the page unable to load, when opening a long session with many whole-chapter writes.
-- 修复 Claude Code 2.1.286 及以上版本输出界面刷新事件时，Claude 运行时任务以 `decode Claude stream` 错误中断的问题。
-- Fix Claude runtime tasks failing with `decode Claude stream` when Claude Code 2.1.286 or later reports UI refresh events.
-
-- 自动更新固定发布包校验，支持断点续传、安装中断恢复和启动确认；失败保留诊断与程序备份，刷新页面后仍可继续已准备的更新。
-- Automatic updates pin package checksums, resume downloads, recover interrupted installation and verify startup. Failures retain diagnostics and program backups; staged updates survive page reloads.
-
-- 修复大型项目移除时长时间无响应的问题，减少版本状态查询的文件读取，并避免将源码 Git 仓库误当作创作版本历史。
-- Fix long stalls when removing large projects, reduce file reads for version status, and keep source Git repositories separate from creative version history.
-
-### Changed / 变更
-
-- 书籍素材按封面、资料库、写作、游戏分类，游戏素材按故事线分目录，文件名与业务身份解耦；属性与关联继续由资料记录和会话持有，仅无日志的生成保存额外来源信息。升级时先备份再迁移旧路径；恢复书籍历史版本时保留后来生成的媒体，并转换其中的旧路径。
-- Book assets are grouped by Covers, Lore, Writing and Game, with Game files scoped to each Story and filenames independent of business identity. Product records and journals retain attributes and references; only generation without a journal needs extra provenance. Upgrades back up and migrate old paths. Restoring book history retains newer media and converts restored legacy paths.
-
-- 旧 Skill 来源和自动更新选择迁入统一安装记录，正文不变，旧来源文件在移除前保留事务备份；降级 v0.5.0 需恢复这些文件才能继续使用原来源和自动更新信息。
-- Skill sources and existing update preferences move into shared installation records without changing content. Old source files are backed up before removal; downgrading to v0.5.0 requires restoring them to recover source and automatic-update information.
+- 修复包含用户数据目录的代码项目添加失败、大型项目移除卡顿，以及远程 ZIP 和 Skill 下载未遵循代理设置的问题。
+- Fixes failed registration of code projects containing a user data directory, stalls when removing large projects, and remote ZIP or Skill downloads bypassing proxy settings.
 
 ### Security / 安全
 
-- 更新构建工具链与运行依赖，修复网络请求、文件访问及内容渲染相关的已知安全问题。
-- Update the build toolchain and runtime dependencies to fix known security issues in network requests, file access and content rendering.
+- 更新构建工具链与运行依赖，修复网络请求、文件访问和内容渲染相关的已知安全问题。
+- Updates the build toolchain and runtime dependencies to fix known security issues in network requests, file access and content rendering.
 
 ## [v0.5.1] - 2026-09-28
 
