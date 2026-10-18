@@ -390,8 +390,8 @@ describe('ModeRouter autosave navigation policy', () => {
           {...modeRouterProps({
             rightPanel: 'ai',
             selectedFile,
-            openTabs: [{ kind: 'file', path: 'chapters/ch03.md' }],
-            activeTabKey: 'file:chapters/ch03.md',
+            openTabs: [{ kind: 'file', path: selectedFile }],
+            activeTabKey: `file:${selectedFile}`,
             onSelectFile: async (path) => {
               const navigated = await handleSelectFile(path)
               if (navigated !== false) setSelectedFile(path)
@@ -522,6 +522,7 @@ describe('ModeRouter autosave navigation policy', () => {
       projectVisible: false,
       selectedFile: chapter.path,
       currentChapter: chapter,
+      summary: { title: 'Book A', author: '', chapter_count: 1, total_words: chapter.words, chapters: [chapter], chapter_plans: [] },
       openTabs: [{ kind: 'file', path: chapter.path }],
       activeTabKey: `file:${chapter.path}`,
       onToggleProjectVisible,
@@ -581,7 +582,7 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(agentChatRoute).toHaveAttribute('data-project-id', baseProps.projectId)
   })
 
-  it('keeps the text editor mounted while switching files so per-file view positions survive', async () => {
+  it('retains each open editor across switches and releases it when its tab closes', async () => {
     const firstPath = 'chapters/ch01.md'
     const secondPath = 'chapters/ch02.md'
     const openTabs: Tab[] = [
@@ -590,7 +591,6 @@ describe('ModeRouter autosave navigation policy', () => {
     ]
     const { rerender } = render(withAppProviders(<ModeRouter {...modeRouterProps({
       selectedFile: firstPath,
-      fileContent: 'first',
       openTabs,
       activeTabKey: `file:${firstPath}`,
     })} />))
@@ -601,15 +601,26 @@ describe('ModeRouter autosave navigation policy', () => {
     await act(async () => {
       rerender(withAppProviders(<ModeRouter {...modeRouterProps({
         selectedFile: secondPath,
-        fileContent: 'second',
+        fileDocuments: new Map([
+          [firstPath, modeRouterProps({ selectedFile: firstPath }).fileDocument!],
+          [secondPath, modeRouterProps({ selectedFile: secondPath }).fileDocument!],
+        ]),
         openTabs,
         activeTabKey: `file:${secondPath}`,
       })} />))
     })
 
-    expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(`${secondPath}|none|0`)
-    expect(markdownEditorLifecycle.mounts).toBe(1)
+    expect(screen.getAllByTestId('markdown-editor-navigation').find(element => !element.closest('[hidden]'))).toHaveTextContent(`${secondPath}|none|0`)
+    expect(markdownEditorLifecycle.mounts).toBe(2)
     expect(markdownEditorLifecycle.unmounts).toBe(0)
+
+    rerender(withAppProviders(<ModeRouter {...modeRouterProps({
+      selectedFile: secondPath,
+      openTabs: [{ kind: 'file', path: secondPath }],
+      activeTabKey: `file:${secondPath}`,
+    })} />))
+    expect(markdownEditorLifecycle.mounts).toBe(2)
+    expect(markdownEditorLifecycle.unmounts).toBe(1)
   })
 
   it('delivers a global search reveal only after the target document is loaded', async () => {
@@ -630,22 +641,18 @@ describe('ModeRouter autosave navigation policy', () => {
     const { rerender } = render(withAppProviders(<ModeRouter {...modeRouterProps({
       selectedFile: secondPath,
       fileDocument: staleDocument,
-      fileContent: staleDocument.content,
-      fileRevision: staleDocument.revision,
       openTabs,
       activeTabKey: `file:${secondPath}`,
       editorSearchIntent: intent,
     })} />))
 
     await act(async () => { await Promise.resolve() })
-    expect(screen.getByTestId('markdown-search-navigation')).toHaveTextContent('none')
+    expect(screen.queryByTestId('markdown-search-navigation')).not.toBeInTheDocument()
 
     await act(async () => {
       rerender(withAppProviders(<ModeRouter {...modeRouterProps({
         selectedFile: secondPath,
         fileDocument: { ...staleDocument, path: secondPath, content: 'target', revision: 'r2' },
-        fileContent: 'target',
-        fileRevision: 'r2',
         openTabs,
         activeTabKey: `file:${secondPath}`,
         editorSearchIntent: intent,
@@ -695,8 +702,6 @@ describe('ModeRouter autosave navigation policy', () => {
         size: content.length,
         editable: true,
       },
-      fileContent: content,
-      fileRevision: 'r-source',
       openTabs: [{ kind: 'file', path }],
       activeTabKey: `file:${path}`,
     })} />))
@@ -730,9 +735,16 @@ function modeRouterProps(
     tree: [],
     loading: false,
     selectedFile: null,
-    fileDocument: null,
-    fileContent: '',
-    fileRevision: '',
+    fileDocument: overrides.selectedFile ? {
+      project_id: overrides.projectId || 'project-book-a',
+      path: overrides.selectedFile,
+      content: '',
+      revision: 'r1',
+      kind: 'text',
+      mime_type: 'text/markdown',
+      size: 0,
+      editable: true,
+    } : null,
     openTabs: [],
     activeTabKey: null,
     sidebarView: 'outline',

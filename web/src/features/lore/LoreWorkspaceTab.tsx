@@ -1,6 +1,6 @@
 import { useLoreCategories } from '@/features/lore/use-lore-categories'
 import { BookMarked, Database, LayoutGrid } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
@@ -35,6 +35,8 @@ import { LORE_INDEX_ID } from './LoreIndexDocument'
 import { LoreWorkspaceLibraryView } from './LoreWorkspaceLibraryView'
 
 interface LoreWorkspaceTabProps {
+  /** Retained tabs keep their drafts; only the active tab owns the host save guard. */
+  active?: boolean
   projectId: string
   documentReview: DocumentReviewController
   navigationIntent?: DocumentReviewNavigationIntent | null
@@ -49,6 +51,7 @@ interface LoreWorkspaceTabProps {
 
 /** Writing-side projection of the lore library: quick editing, review and Agent handoff. */
 export function LoreWorkspaceTab({
+  active = true,
   projectId,
   documentReview,
   navigationIntent,
@@ -77,12 +80,15 @@ export function LoreWorkspaceTab({
     if (itemFlush.current && !(await itemFlush.current())) return false
     return indexFlush.current ? indexFlush.current() : true
   }, [])
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active) return
+    // Use the editor registration phase so an outgoing tab cannot clear the new owner's handler.
     onEditorFlushHandlerChange(flush)
     return () => onEditorFlushHandlerChange(null)
-  }, [flush, onEditorFlushHandlerChange])
+  }, [active, flush, onEditorFlushHandlerChange])
   useEffect(() => { setFilters(EMPTY_LORE_FILTERS); setSearchQuery(''); setCreating(null); setCreatedId(''); setLibraryDestination(null) }, [projectId])
   const lore = useLoreWorkspace({
+    active,
     projectId,
     refreshSignal,
     onFlushHandlerChange: handleItemFlush,
@@ -115,20 +121,20 @@ export function LoreWorkspaceTab({
   }, [flush, lore.selectItem, projectId])
   useEffect(() => {
     const key = `${projectId}:${navigationIntent?.nonce}`
-    if (!navigationTargetID || handledReviewNavigation.current === key || !lore.items.some(item => item.id === navigationTargetID)) return
+    if (!active || !navigationTargetID || handledReviewNavigation.current === key || !lore.items.some(item => item.id === navigationTargetID)) return
     handledReviewNavigation.current = key
     void selectDestination(navigationTargetID)
-  }, [lore.items, navigationIntent?.nonce, navigationTargetID, projectId, selectDestination])
+  }, [active, lore.items, navigationIntent?.nonce, navigationTargetID, projectId, selectDestination])
   useEffect(() => {
     const key = `${projectId}:${toolNavigationIntent?.nonce}`
-    if (handledToolNavigation.current === key) return
+    if (!active || handledToolNavigation.current === key) return
     const target = toolNavigationIntent?.target
     if (!target || target.kind !== 'lore_item') return
     const targetID = target.id || lore.items.find((item) => item.name === target.name)?.id || ''
     if (!targetID || !lore.items.some(item => item.id === targetID)) return
     handledToolNavigation.current = key
     void selectDestination(targetID)
-  }, [lore.items, projectId, selectDestination, toolNavigationIntent])
+  }, [active, lore.items, projectId, selectDestination, toolNavigationIntent])
   const filteredItems = useMemo(() => filterLoreItems(lore.items, filters, searchQuery, projectId), [lore.items, filters, searchQuery, projectId])
   const sections = useMemo<ResourceDirectorySection[]>(
     () =>

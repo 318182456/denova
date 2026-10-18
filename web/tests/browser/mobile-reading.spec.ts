@@ -120,7 +120,7 @@ test('mobile Writing exposes touch tab actions and compact editing tools without
   await expect(strip.getByRole('tab')).toHaveCount(2)
   await expect(strip.getByRole('button')).toHaveCount(1)
   expect((await strip.boundingBox())!.height).toBeLessThanOrEqual(48.1)
-  expect((await page.locator('.nova-mobile-editor-toolbar').boundingBox())!.height).toBeLessThanOrEqual(44.1)
+  expect((await page.locator('.nova-mobile-editor-toolbar:visible').boundingBox())!.height).toBeLessThanOrEqual(44.1)
   for (const name of ['固定标签页', '取消固定', '向右移动']) {
     await strip.getByRole('button', { name: '当前标签页操作', exact: true }).click()
     await page.getByRole('menuitem', { name, exact: true }).click()

@@ -140,11 +140,12 @@ function App() {
     setLastCreationRoute(contentMode)
   }, [mode])
 
+  const retainedFilePaths = useMemo(() => openTabs.flatMap(tab => tab.kind === 'file' ? [tab.path] : []), [openTabs])
   const {
-    tree, loading, selectedFile, fileDocument, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, booksLoaded, bookSortMode,
+    tree, loading, selectedFile, fileDocument, fileDocuments, workspace, projectId, workspaceLoaded, summary, books, booksLoaded, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks,
-  } = useWorkspace()
+  } = useWorkspace({ retainedFilePaths })
   useAnalyticsActivity(settingsOpen || !analyticsReady, Boolean(selectedFile))
   // A late response stays with its Project instead of replacing another library.
   const loreQuery = useQuery({
@@ -919,8 +920,7 @@ function App() {
         loading={loading}
         selectedFile={selectedFile}
         fileDocument={fileDocument}
-        fileContent={fileContent}
-        fileRevision={fileRevision}
+        fileDocuments={fileDocuments}
         openTabs={openTabs}
         activeTabKey={activeTabKey}
         sidebarView={sidebarView}

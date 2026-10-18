@@ -1104,6 +1104,22 @@ describe('MarkdownEditor', () => {
     expect(toastMock.success).not.toHaveBeenCalled()
   })
 
+  it('releases navigation ownership while hidden and does not replay another tab save on activation', async () => {
+    const onSave = vi.fn(async () => true)
+    const onFlushHandlerChange = vi.fn()
+    const props = { fileName: 'chapters/ch01.md', content: 'Initial', onSave, onFlushHandlerChange, autoSaveEnabled: false }
+    const { rerender } = render(<MarkdownEditor {...props} active saveSignal={0} />)
+    expect(onFlushHandlerChange).toHaveBeenLastCalledWith(expect.any(Function))
+    rerender(<MarkdownEditor {...props} active={false} saveSignal={1} />)
+    expect(onFlushHandlerChange).toHaveBeenLastCalledWith(null)
+    expect(onSave).not.toHaveBeenCalled()
+    rerender(<MarkdownEditor {...props} active saveSignal={1} />)
+    expect(onFlushHandlerChange).toHaveBeenLastCalledWith(expect.any(Function))
+    expect(onSave).not.toHaveBeenCalled()
+    rerender(<MarkdownEditor {...props} active saveSignal={2} />)
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+  })
+
   it('关闭自动保存后用户修改不会自动写入文件', () => {
     vi.useFakeTimers()
     const onSave = vi.fn(() => Promise.resolve(true))

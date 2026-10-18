@@ -10,12 +10,13 @@ import type { WritingDocumentEditor } from '@/components/Editor/WritingDocumentE
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { ProjectFileExplorerNode } from '@/features/project-explorer/model'
-import type { ChapterSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { TextSelection, WorkspaceSummary } from '@/lib/api'
 import type { ProjectFileDocument } from '@/lib/api-client/project-files'
+import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import type { ReviewFeedbackNavigationTarget } from './use-review-feedback-navigation'
 import type { Tab } from './TabController'
 import { TabController } from './TabController'
-import { WorkbenchRouteLayer, workbenchLoadingOptions } from './WorkbenchRouteHost'
+import { RetainedWorkbenchRouteLayer, WorkbenchRouteLayer, workbenchLoadingOptions } from './WorkbenchRouteHost'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { Button } from '@/components/ui/button'
@@ -52,14 +53,11 @@ interface WritingMainRouteProps {
   subAgentConversation: AgentChatConversationState
   summary: WorkspaceSummary | null
   tabActions: ReactNode
-  activeFileKind: string | null
   fileDocument: ProjectFileDocument | null
-  fileContent: string
-  fileRevision: string
+  fileDocuments?: ReadonlyMap<string, ProjectFileDocument>
   saveSignal: number
   editorAutoSaveEnabled: boolean
   editorAutoSaveDelayMs: number
-  currentChapter?: ChapterSummary
   editorSearchIntent: EditorProps['searchIntent']
   illustrationInsertSignal: EditorProps['illustrationInsertSignal']
   documentReview: NonNullable<EditorProps['documentReview']>
@@ -109,14 +107,11 @@ export function WritingMainRoute({
   subAgentConversation,
   summary,
   tabActions,
-  activeFileKind,
   fileDocument,
-  fileContent,
-  fileRevision,
+  fileDocuments,
   saveSignal,
   editorAutoSaveEnabled,
   editorAutoSaveDelayMs,
-  currentChapter,
   editorSearchIntent,
   illustrationInsertSignal,
   documentReview,
@@ -162,7 +157,6 @@ export function WritingMainRoute({
     else onToggleAgent()
   }, [isMobile, onToggleAgent])
   const reviewVisible = Boolean(activeReviewThreadID)
-  const activeDocument = fileDocument?.path === selectedFile ? fileDocument : null
   return (
     <WorkbenchRouteLayer visible={visible} loadingLabel={loadingLabel}>
       <div
@@ -184,7 +178,75 @@ export function WritingMainRoute({
             onTogglePin={onToggleTabPin}
             onMoveTab={onMoveTab}
           />
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {tabs.some(tab => tab.kind === 'lore') && (
+              <RetainedWorkbenchRouteLayer visible={activeTab?.kind === 'lore'} loadingLabel={loadingLabel} retentionKey={projectId}>
+                <LoreWorkspaceTab
+                  key={projectId}
+                  active={activeTab?.kind === 'lore'}
+                  projectId={projectId}
+                  documentReview={documentReview}
+                  navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
+                  toolNavigationIntent={toolNavigationIntent}
+                  onEditorFlushHandlerChange={onEditorFlushHandlerChange}
+                  onOpenLibrary={onOpenLoreLibrary}
+                  onReferenceItem={onReferenceLoreItem ? referenceInAgent : undefined}
+                />
+              </RetainedWorkbenchRouteLayer>
+            )}
+            {tabs.flatMap(tab => {
+              if (tab.kind !== 'file') return []
+              const document = fileDocuments?.get(tab.path) ?? (fileDocument?.path === tab.path ? fileDocument : null)
+              if (!document || document.project_id !== projectId) return []
+              const active = activeTab?.kind === 'file' && activeTab.path === tab.path
+              const chapter = summary?.chapters?.find(chapter => chapter.path === tab.path)
+              return <WorkbenchRouteLayer key={`${projectId}:${tab.path}`} visible={active} loadingLabel={loadingLabel}>
+                {document.kind === 'image' ? (
+                  <StableImageFilePreview projectId={projectId} path={tab.path} revision={document.revision} />
+                ) : document.kind === 'binary' ? (
+                  <StableProjectBinaryPreview />
+                ) : workspaceFileKind(tab.path) !== 'markdown' ? (
+                  <StableWritingSourceEditor
+                    active={active}
+                    projectId={projectId}
+                    workspace={workspace}
+                    fileTree={fileTree}
+                    document={document}
+                    onSelectFile={onSelectFile}
+                    onSave={onSaveCurrentFile}
+                    onQuoteSelection={quoteInAgent}
+                    saveSignal={saveSignal}
+                    autoSaveEnabled={editorAutoSaveEnabled}
+                    autoSaveDelayMs={editorAutoSaveDelayMs}
+                    searchIntent={active ? editorSearchIntent : null}
+                    onFlushHandlerChange={onEditorFlushHandlerChange}
+                  />
+                ) : (
+                  <StableWritingDocumentEditor
+                    active={active}
+                    projectId={projectId}
+                    fileName={tab.path}
+                    content={document.content ?? ''}
+                    revision={document.revision}
+                    onSave={onSaveCurrentFile}
+                    onQuoteSelection={quoteInAgent}
+                    saveSignal={saveSignal}
+                    autoSaveEnabled={editorAutoSaveEnabled}
+                    autoSaveDelayMs={editorAutoSaveDelayMs}
+                    chapterSummary={chapter}
+                    onRevealChapter={onRevealChapter}
+                    searchIntent={active ? editorSearchIntent : null}
+                    onGenerateIllustration={onGenerateIllustration}
+                    generateIllustrationDisabled={isStreaming || !chapter}
+                    illustrationInsertSignal={active ? illustrationInsertSignal : null}
+                    onFlushHandlerChange={onEditorFlushHandlerChange}
+                    documentReview={documentReview}
+                    documentReviewNavigationIntent={active && documentReviewNavigationTarget?.target.kind === 'workspace_file' && documentReviewNavigationTarget.target.id === tab.path ? documentReviewNavigationTarget : null}
+                    readingTypography={readingTypography}
+                  />
+                )}
+              </WorkbenchRouteLayer>
+            })}
             {activeTab ? (
               activeTab.kind === 'subagent' ? (
                 <AgentSubAgentSessionPanel
@@ -194,58 +256,7 @@ export function WritingMainRoute({
                   sessionKey={activeTab.sessionKey}
                   onResolveAsk={subAgentConversation.onResolveAsk}
                 />
-              ) : activeTab.kind === 'lore' ? (
-                <LoreWorkspaceTab
-                  projectId={projectId}
-                  documentReview={documentReview}
-                  navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
-                  toolNavigationIntent={toolNavigationIntent}
-                  onEditorFlushHandlerChange={onEditorFlushHandlerChange}
-                  onOpenLibrary={onOpenLoreLibrary}
-                  onReferenceItem={onReferenceLoreItem ? referenceInAgent : undefined}
-                />
-              ) : activeFileKind === 'image' || activeDocument?.kind === 'image' ? (
-                <StableImageFilePreview projectId={projectId} path={selectedFile || activeTab.path} revision={fileRevision} />
-              ) : activeDocument?.kind === 'binary' ? (
-                <StableProjectBinaryPreview />
-              ) : activeFileKind !== 'markdown' && activeDocument?.kind === 'text' ? (
-                <StableWritingSourceEditor
-                  projectId={projectId}
-                  workspace={workspace}
-                  fileTree={fileTree}
-                  document={activeDocument}
-                  onSelectFile={onSelectFile}
-                  onSave={onSaveCurrentFile}
-                  onQuoteSelection={quoteInAgent}
-                  saveSignal={saveSignal}
-                  autoSaveEnabled={editorAutoSaveEnabled}
-                  autoSaveDelayMs={editorAutoSaveDelayMs}
-                  searchIntent={editorSearchIntent}
-                  onFlushHandlerChange={onEditorFlushHandlerChange}
-                />
-              ) : (
-                <StableWritingDocumentEditor
-                  projectId={projectId}
-                  fileName={selectedFile}
-                  content={fileContent}
-                  revision={fileRevision}
-                  onSave={onSaveCurrentFile}
-                  onQuoteSelection={quoteInAgent}
-                  saveSignal={saveSignal}
-                  autoSaveEnabled={editorAutoSaveEnabled}
-                  autoSaveDelayMs={editorAutoSaveDelayMs}
-                  chapterSummary={currentChapter}
-                  onRevealChapter={onRevealChapter}
-                  searchIntent={editorSearchIntent}
-                  onGenerateIllustration={onGenerateIllustration}
-                  generateIllustrationDisabled={isStreaming || !currentChapter}
-                  illustrationInsertSignal={illustrationInsertSignal}
-                  onFlushHandlerChange={onEditorFlushHandlerChange}
-                  documentReview={documentReview}
-                  documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'workspace_file' && documentReviewNavigationTarget.target.id === selectedFile ? documentReviewNavigationTarget : null}
-                  readingTypography={readingTypography}
-                />
-              )
+              ) : null
             ) : isMobile ? (
               <Empty className="nova-mobile-writing-empty h-full overflow-y-auto">
                 <EmptyHeader>

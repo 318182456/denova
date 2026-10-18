@@ -26,6 +26,7 @@ const SELECTION_STORAGE_PREFIX = 'nova.lore.project.selection:'
 let loreWorkspaceSourceSequence = 0
 
 interface UseLoreWorkspaceOptions {
+  active?: boolean
   projectId: string
   refreshSignal?: number
   onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
@@ -33,6 +34,7 @@ interface UseLoreWorkspaceOptions {
 
 /** State and persistence boundary for the focused writing-workspace lore tab. */
 export function useLoreWorkspace({
+  active = true,
   projectId,
   refreshSignal = 0,
   onFlushHandlerChange,
@@ -157,7 +159,6 @@ export function useLoreWorkspace({
         setLoading(false)
         return
       }
-      setLoading(true)
       setError('')
       try {
         const nextItems = await getProjectLoreItems(projectId)
@@ -246,12 +247,19 @@ export function useLoreWorkspace({
     setDraft(null)
     setTagDraft('')
     setBaseline(null)
+    setLoading(true)
     rebaseSequenceRef.current += 1
-    void reload()
     return () => {
       requestRef.current += 1
+      rebaseSequenceRef.current += 1
     }
-  }, [projectId, reload])
+  }, [projectId])
+
+  // A retained tab paints its existing draft immediately and reconciles fresh
+  // server data in the background whenever it becomes active again.
+  useEffect(() => {
+    if (active) void reload()
+  }, [active, reload])
 
   useEffect(() => {
     if (refreshSignalRef.current === refreshSignal) return

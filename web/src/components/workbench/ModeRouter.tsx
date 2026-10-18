@@ -17,7 +17,6 @@ import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { GLOBAL_SETTINGS_TARGET } from '@/features/settings/api'
 import { applyReadingTypographySettings } from '@/features/settings/font-variables'
-import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { isLoreItemsPath } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
 import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
@@ -91,8 +90,7 @@ export function ModeRouter(props: ModeRouterProps) {
     loading,
     selectedFile,
     fileDocument,
-    fileContent,
-    fileRevision,
+    fileDocuments,
     openTabs,
     activeTabKey,
     sidebarView,
@@ -216,7 +214,6 @@ export function ModeRouter(props: ModeRouterProps) {
     readingTypographyDraft.setDraft((current) => ({ ...current, reading_font_size: normalized }))
   }, [readingFontFamily, readingTypographyDraft.setDraft])
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
-  const activeFileKind = selectedFile ? workspaceFileKind(selectedFile) : null
   const projectFileTree = useMemo(() => buildProjectFileTreeFromNodes(tree), [tree])
   const ideContext = useMemo(() => ({
     currentFile: selectedFile || undefined,
@@ -705,6 +702,7 @@ export function ModeRouter(props: ModeRouterProps) {
         isStreaming={isStreaming}
         selectedFile={selectedFile}
         fileDocument={fileDocument}
+        fileDocuments={fileDocuments}
         agentVisible={aiVisible}
         tabs={openTabs}
         activeTabKey={activeTabKey}
@@ -712,13 +710,9 @@ export function ModeRouter(props: ModeRouterProps) {
         subAgentConversation={writingAgentConversation}
         summary={summary}
         tabActions={writingInfoActions}
-        activeFileKind={activeFileKind}
-        fileContent={fileContent}
-        fileRevision={fileRevision}
         saveSignal={saveSignal}
         editorAutoSaveEnabled={editorAutoSaveEnabled}
         editorAutoSaveDelayMs={editorAutoSaveDelayMs}
-        currentChapter={currentChapter}
         editorSearchIntent={editorSearchIntent?.path === selectedFile && fileDocument?.path === selectedFile
           ? editorSearchIntent
           : null}

@@ -53,8 +53,7 @@ export interface ModeRouterProps {
   loading: boolean
   selectedFile: string | null
   fileDocument: ProjectFileDocument | null
-  fileContent: string
-  fileRevision: string
+  fileDocuments?: ReadonlyMap<string, ProjectFileDocument>
   openTabs: Tab[]
   activeTabKey: string | null
   sidebarView: 'outline' | 'files' | 'search'
