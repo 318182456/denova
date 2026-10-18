@@ -71,8 +71,13 @@ for (const chinese of [true, false]) {
     await expect(page.locator('iframe')).toHaveCount(1)
     await closePanel(page, chinese)
     await expect(page.locator('iframe')).toHaveCount(0)
-    const active = await (await request.get('/api/platform/manage/runtimes')).json()
-    expect(active.filter((runtime: { context: { source: { package: { id: string } } } }) => runtime.context.source.package.id === release.manifest.id)).toHaveLength(0)
+    // The frame unmounts before the asynchronous runtime stop completes.
+    await expect.poll(async () => {
+      const response = await request.get('/api/platform/manage/runtimes')
+      expect(response.ok()).toBe(true)
+      const active = await response.json()
+      return active.filter((runtime: { context: { source: { package: { id: string } } } }) => runtime.context.source.package.id === release.manifest.id)
+    }).toHaveLength(0)
     dialog = await launcher(page, pluginName, project.name, chinese)
     await dialog.getByRole('button', { name, exact: true }).click()
     await expect(view.getByLabel(chinese ? '文本' : 'Text', { exact: true })).toHaveValue('Shared draft')
