@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import loadable from '@loadable/component'
+import { useTranslation } from 'react-i18next'
+import { LoadingState } from '@/components/common/LoadingState'
 import type { LoreItem } from '@/lib/api-client/types'
 import type {
   BranchSummary,
@@ -16,8 +19,9 @@ import { DirectorConsoleHeader } from './DirectorConsoleHeader'
 import { DirectorConsoleTabs } from './DirectorConsoleTabs'
 import { OverviewView } from './OverviewView'
 import { readStoredDirectorConsoleTab, writeStoredDirectorConsoleTab } from './persistence'
-import { StoryTuningView } from './StoryTuningView'
 import type { DirectorConsoleTab } from './types'
+
+const StoryTuningView = loadable(() => import('./StoryTuningView'), { resolveComponent: module => module.StoryTuningView })
 
 export interface DirectorConsoleProps {
   projectId?: string
@@ -66,6 +70,7 @@ export function DirectorConsole({
   onSwitchBranch,
   onOpenBranchTimeline,
 }: DirectorConsoleProps) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<DirectorConsoleTab>(() => readStoredDirectorConsoleTab(storyId) || 'overview')
 
   useEffect(() => {
@@ -97,6 +102,7 @@ export function DirectorConsole({
   } else if (activeTab === 'controls') {
     activeView = (
       <StoryTuningView
+        fallback={<LoadingState label={t('common.loading')} variant="panel" />}
         currentTurn={snapshot?.current_turn}
         onBackgroundChange={onBackgroundChange}
         backgroundDisabled={branchPlanEditingDisabled}
