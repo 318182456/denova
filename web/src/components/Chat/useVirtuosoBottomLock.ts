@@ -188,6 +188,9 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
 
   const unlockFromBottom = useCallback(() => {
     lockedRef.current = false
+    // A late at-bottom callback can precede the browser's wheel/touch scroll.
+    // User navigation still ends restoration following until an explicit jump.
+    followIdleBottomRef.current = false
     afterContentRevealPendingRef.current = false
     cancelScheduledScroll()
   }, [cancelScheduledScroll])

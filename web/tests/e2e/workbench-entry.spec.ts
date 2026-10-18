@@ -3,6 +3,7 @@ import path from 'node:path'
 import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createAgentChatSession, registerAgentChatProject } from '../support/api'
+import { revealAgentChatProject } from '../support/agent-chat'
 
 test('revalidates Project Agent choices when creating a conversation', async ({ page, request }) => {
   const book = await createAndOpenBook(request, 'Fresh Agent choices')
@@ -43,6 +44,11 @@ for (const [theme, language] of [['dark', 'zh-CN'], ['light', 'en-US']] as const
       secondary: 'Show secondary workspace', hideSecondary: 'Hide secondary workspace', files: 'Files',
     }
     const book = await createAndOpenBook(request, 'Workbench entry with a long project name for responsive navigation')
+    // Exercise deferred rows even when this file runs without the full catalog.
+    const catalog = await (await request.get('/api/agent-chat/projects')).json()
+    for (let index = catalog.projects.length; index < 35; index++) {
+      await registerAgentChatProject(request, await mkdtemp(path.join(runtimeRoot, 'workbench-neighbor-')))
+    }
     const project = await registerAgentChatProject(request, await mkdtemp(path.join(runtimeRoot, 'workbench-entry-')))
     const snapshot = await (await request.get(`/api/agent-chat/projects?project_id=${project.id}`)).json()
     const settings = await request.patch('/api/settings', { data: { layer: 'user', changes: { language, theme } } })
@@ -67,6 +73,7 @@ for (const [theme, language] of [['dark', 'zh-CN'], ['light', 'en-US']] as const
     await refresh
     await expect(primary.getByRole('tab')).toHaveCount(0)
 
+    await revealAgentChatProject(page, project.name)
     await page.locator(`[data-slot="agent-chat-project-toggle"][data-project-id="${project.id}"]`).click()
     await expect(page.locator(`[data-slot="agent-chat-project-toggle"][data-project-id="${project.id}"]`)).toHaveAttribute('aria-current', 'location')
     await expect(primary.getByRole('tab')).toHaveCount(1)

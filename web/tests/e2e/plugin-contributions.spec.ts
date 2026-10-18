@@ -3,6 +3,7 @@ import { cp, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
 import { createAndOpenBook, enablePlugin } from '../support/api'
+import { revealAgentChatProject } from '../support/agent-chat'
 
 // The plugin scaffold is copied outside the repository and installed through the
 // ordinary package API. Its view only receives the public scoped connection.
@@ -145,6 +146,7 @@ test('project entry points preserve panel ownership and transfer content through
   await archive.saveAs(archivePath)
   await page.keyboard.press('Escape')
   await page.getByLabel('Workbench sidebar').getByRole('button', { name: 'Workspace', exact: true }).click()
+  await revealAgentChatProject(page, project.name)
   await page.getByRole('button', { name: `Project actions for ${project.name}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Project plugins', exact: true }).click()
   dialog = page.getByRole('dialog', { name: 'Project plugins', exact: true })

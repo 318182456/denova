@@ -111,10 +111,13 @@ for (const theme of ['dark', 'light']) {
     await expect(page.getByTestId('story-stage-artwork')).toHaveCount(0)
     await expect(layout).toBeVisible()
 
+    // API fixture setup switches the foreground Project outside the UI. Close
+    // the old page first so its pending configuration reads retain their owner.
+    await page.goto('about:blank')
     const secondBook = await createAndOpenBook(request, `Shared character layout ${theme}`)
     await createStartedStory(request, '共享用户布局')
     castCount = 2
-    await page.reload()
+    await page.goto('/')
     await expect(cast).toHaveAttribute('data-layout', 'right')
     await page.getByRole('tab', { name: '控制', exact: true }).click()
     await expect(layout.getByRole('radio', { name: '靠右', exact: true })).toBeChecked()

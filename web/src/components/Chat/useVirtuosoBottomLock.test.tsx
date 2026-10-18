@@ -18,6 +18,8 @@ it('keeps restored history at the bottom while long rows are measured before a r
     expect(scroller.scrollTop).toBe(height - 500)
   }
   act(() => result.current.onWheel({ deltaY: -100 } as WheelEvent<HTMLDivElement>))
+  // Virtuoso may report the old bottom before the browser applies the wheel.
+  act(() => result.current.onAtBottomStateChange(true))
   scroller.scrollTop = 200_000
   Object.defineProperty(scroller, 'scrollHeight', { value: 301_000, configurable: true })
   act(() => result.current.syncIdleBottomLayout())
