@@ -151,6 +151,7 @@ export function AgentChatActivitySidebar({
               <SortableContext items={preferences.orderedProjects.map((project) => projectSortableID(project.id))} strategy={verticalListSortingStrategy}>
                 {preferences.orderedProjects.map((project) => (
                   <AgentChatSidebarProject
+                    deferContent={projects.length > 30}
                     key={project.id}
                     project={project}
                     active={project.id === activeProjectId}

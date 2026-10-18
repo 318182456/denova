@@ -1,12 +1,13 @@
 import { LORE_INDEX_ID } from "./LoreIndexDocument"
 import { useLoreCategories } from '@/features/lore/use-lore-categories'
 import { LoreCategoryManager } from './LoreCategoryManager'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCheck, ChevronsDownUp, ChevronsUpDown, Folder, ImagePlus, ListChecks, MoreHorizontal, Plus, Search, Sparkles, Tags, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { ScrollToTopButton } from '@/components/common/ScrollToTopButton'
+import { DeferredContent } from '@/components/common/DeferredContent'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -55,7 +56,7 @@ function readCardSize(): LoreCardSize {
 }
 
 /** Browsing state stays mounted while the existing editor handles a selected item. */
-export function LoreLibrary({
+export const LoreLibrary = memo(function LoreLibrary({
   projectId,
   items,
   filteredItems,
@@ -370,6 +371,13 @@ export function LoreLibrary({
             >
               {section.items.map((item) => (
                 <LoreIndexSortableCard key={item.id} id={item.id} name={item.name} disabled={busy || selecting || section.items.length < 2}>
+                  <DeferredContent eager={items.length <= 80} className="h-full [&>[data-slot=card]]:h-full"
+                    style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 360px' }}
+                    placeholder={<button type="button" onClick={() => selecting ? toggle(item.id) : onSelect(item.id)}
+                      className="flex w-full flex-col rounded-xl border bg-card p-4 text-left text-sm"
+                      style={{ minHeight: cardSize === 'small' ? 260 : cardSize === 'large' ? 440 : 360 }}>
+                      <span className="mb-4 block w-full flex-1 rounded-md bg-muted" />{item.name}
+                    </button>}>
                   <LoreCard
                     projectId={projectId}
                     item={item}
@@ -382,6 +390,7 @@ export function LoreLibrary({
                     onCover={(action) => setCoverTarget({ id: item.id, action })}
                     onChanged={onChanged}
                   />
+                  </DeferredContent>
                 </LoreIndexSortableCard>
               ))}
             </LoreLibrarySection>
@@ -466,4 +475,4 @@ export function LoreLibrary({
     <ScrollToTopButton scrollRef={scrollRef} />
     </div>
   )
-}
+})

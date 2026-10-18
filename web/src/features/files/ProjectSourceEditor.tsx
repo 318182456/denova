@@ -1,4 +1,4 @@
-import { type Monaco, type OnChange, type OnMount } from '@monaco-editor/react'
+import type { Monaco, OnChange, OnMount } from '@monaco-editor/react'
 import { FileWarning, Maximize2 } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'

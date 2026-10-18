@@ -103,7 +103,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
 
   useEffect(() => {
     const retained = new Set(options.retainedFilePaths)
-    if (selectedFile) retained.add(selectedFile)
+    // An older commit's passive effect can run after selectFile has published
+    // a new snapshot but before React commits its selection. Keep that pending
+    // active file so pruning cannot remove it from watcher invalidation.
+    if (selectedFileRef.current) retained.add(selectedFileRef.current)
     const documents = fileDocumentsRef.current
     if ([...documents.keys()].every(path => retained.has(path))) return
     fileDocumentsRef.current = new Map([...documents].filter(([path]) => retained.has(path)))

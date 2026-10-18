@@ -157,14 +157,14 @@ export function ResourceDirectory({
               key={item.id}
               item={item}
               active={activeId === item.id}
-              onSelect={() => onSelect(item.id)}
+              onSelect={onSelect}
             />
           ) : (
             <DirectoryItemRow
               key={item.id}
               item={item}
               active={activeId === item.id}
-              onSelect={() => onSelect(item.id)}
+              onSelect={onSelect}
             />
           ))
           return (
@@ -290,7 +290,7 @@ export function ResourceDirectory({
 interface DirectoryItemRowProps {
   item: ResourceDirectoryItem
   active: boolean
-  onSelect: () => void
+  onSelect: (id: string) => void
   nodeRef?: (node: HTMLButtonElement | null) => void
   attributes?: ReturnType<typeof useSortable>['attributes']
   listeners?: ReturnType<typeof useSortable>['listeners']
@@ -346,7 +346,7 @@ function SortableDirectorySection({ sectionId, items, onReorderItems, children }
   )
 }
 
-function SortableDirectoryItemRow({ item, active, onSelect }: DirectoryItemRowProps) {
+const SortableDirectoryItemRow = memo(function SortableDirectoryItemRow({ item, active, onSelect }: DirectoryItemRowProps) {
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
   // A stable ref avoids disconnecting and remeasuring every row as the pointer moves.
   const nodeRef = useCombinedRefs(setNodeRef, setActivatorNodeRef)
@@ -363,13 +363,13 @@ function SortableDirectoryItemRow({ item, active, onSelect }: DirectoryItemRowPr
       isDragging={isDragging}
     />
   )
-}
+})
 
 // Keep dnd-kit context updates outside the row's unchanged content and controls.
 const DirectoryItemRow = memo(function DirectoryItemRow({ item, active, onSelect, nodeRef, attributes, listeners, transform, transition, isDragging }: DirectoryItemRowProps) {
   const { t } = useTranslation()
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem style={{ contentVisibility: 'auto', containIntrinsicSize: item.summary ? 'auto 48px' : 'auto 32px' }}>
       <SidebarMenuButton
         ref={nodeRef}
         type="button"
@@ -377,7 +377,7 @@ const DirectoryItemRow = memo(function DirectoryItemRow({ item, active, onSelect
         style={{ transform, transition }}
         isActive={active}
         className={cn('cursor-default', item.disabled && 'opacity-50', isDragging && 'relative z-10 bg-sidebar-accent')}
-        onClick={onSelect}
+        onClick={() => onSelect(item.id)}
         onDragStart={event => event.preventDefault()}
         aria-current={active ? 'true' : undefined}
         title={item.summary ? `${item.title}\n${item.summary}` : item.title}
@@ -397,7 +397,7 @@ const DirectoryItemContent = memo(function DirectoryItemContent({ item }: { item
     <>
       {item.thumbnailUrl ? (
         <span className="flex size-5 shrink-0 overflow-hidden rounded-md border border-sidebar-border bg-sidebar">
-          <img src={item.thumbnailUrl} alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
+          <img src={item.thumbnailUrl} loading="lazy" decoding="async" alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
         </span>
       ) : (
         <span className="relative flex size-5 shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-sidebar">

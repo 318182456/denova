@@ -2,7 +2,7 @@ import { LoreIndexDocument, LORE_INDEX_ID } from "@/features/lore/LoreIndexDocum
 import { useLoreCategories } from '@/features/lore/use-lore-categories'
 import { ResourceExchangeActions } from '@/features/market/ResourceExchangeActions'
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { BookMarked, Bot, Database, LayoutGrid, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
@@ -633,14 +633,6 @@ function LoreSettingPanel({
     }
   }
 
-  const handleCreateLore = async (section: KnowledgeSection = categorySections[0]) => {
-    if (!(await flushActiveAutosave())) return
-    setCreating(section)
-    setCreatedId('')
-    setActiveId('')
-    closeMobilePanes()
-  }
-
   const handleDelete = () => {
     if (!draft) return
     setDeleteLoreTarget(draft)
@@ -712,6 +704,24 @@ function LoreSettingPanel({
     setItems((current) => current.map((item) => item.id === canonical.id ? canonical : item))
     return { content: canonical.content || '', revision: canonical.updated_at }
   }, [flushActiveAutosave, projectId])
+
+  const handleCreateLore = useCallback(async (section: KnowledgeSection = categorySections[0]) => {
+    if (!(await flushActiveAutosave())) return
+    setCreating(section)
+    setCreatedId('')
+    setActiveId('')
+    closeMobilePanes()
+  }, [categorySections, flushActiveAutosave])
+  const handleLibraryItemChanged = useCallback((saved: LoreItem) => {
+    setItems(current => current.map(item => item.id === saved.id ? saved : item))
+  }, [])
+  const organizeLoreTypes = useCallback(() => setLoreClassificationOpen(true), [])
+  const generateLibraryImages = useCallback<ComponentProps<typeof LoreLibrary>['onGenerate']>(async (ids, request, batchMode) => {
+    if (!(await flushActiveAutosave())) return false
+    setPendingLoreImageTask({ key: `lore-images-${Date.now()}`, instruction: loreImageTaskInstruction(ids, request, batchMode) })
+    setAgentOpen(true)
+    return true
+  }, [flushActiveAutosave, setAgentOpen])
 
   useEffect(() => {
     onFlushHandlerChange?.(flushActiveAutosave)
@@ -788,7 +798,7 @@ function LoreSettingPanel({
       : isOpeningPresetActive
         ? t('settingPanel.openingPreset.subtitle')
         : editorSubtitle(draft, t, categorySections.find((section) => section.id === draft?.type)?.name)
-  const loreDirectorySections = applyResourceDirectoryOrder(categorySections.filter((section) => filters.category === 'all' || section.id === filters.category).map((section): ResourceDirectorySection => ({
+  const loreDirectorySections = useMemo(() => applyResourceDirectoryOrder(categorySections.filter((section) => filters.category === 'all' || section.id === filters.category).map((section): ResourceDirectorySection => ({
     id: section.id,
     label: (section.name || t(section.labelKey)),
     icon: section.icon,
@@ -796,7 +806,7 @@ function LoreSettingPanel({
     items: sectionItems(filteredItems, section).map((item) => loreItemToDirectoryItem(item, projectId, t)),
     onCreate: () => void handleCreateLore(section),
     createLabel: `${t('chat.new')}${(section.name || t(section.labelKey))}`,
-  })), directoryOrder.order)
+  })), directoryOrder.order), [categorySections, filters.category, filteredItems, projectId, t, handleCreateLore, directoryOrder.order])
   const directoryPanel = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
       {activeMode === 'lore' ? (
@@ -940,20 +950,15 @@ function LoreSettingPanel({
                       filteredItems={filteredItems}
                       filters={filters}
                       onFiltersChange={setFilters}
-                      onOrganizeTypes={() => setLoreClassificationOpen(true)}
+                      onOrganizeTypes={organizeLoreTypes}
                       organizingDisabled={saving}
                       query={query}
                       onQueryChange={setQuery}
-                      onSelect={(id) => void handleSelectLore(id)}
-                      onCreate={(section) => void handleCreateLore(section)}
-                      onChanged={(saved) => setItems((current) => current.map((item) => item.id === saved.id ? saved : item))}
+                      onSelect={handleSelectLore}
+                      onCreate={handleCreateLore}
+                      onChanged={handleLibraryItemChanged}
                       onReload={refreshItems}
-                      onGenerate={async (ids, request, batchMode) => {
-                        if (!(await flushActiveAutosave())) return false
-                        setPendingLoreImageTask({ key: `lore-images-${Date.now()}`, instruction: loreImageTaskInstruction(ids, request, batchMode) })
-                        setAgentOpen(true)
-                        return true
-                      }}
+                      onGenerate={generateLibraryImages}
                     />
                   </div>}
 

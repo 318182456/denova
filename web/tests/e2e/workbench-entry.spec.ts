@@ -4,6 +4,34 @@ import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createAgentChatSession, registerAgentChatProject } from '../support/api'
 
+test('revalidates Project Agent choices when creating a conversation', async ({ page, request }) => {
+  const book = await createAndOpenBook(request, 'Fresh Agent choices')
+  const settingsPath = '/api/settings'
+  const setAgents = async (agents: unknown[]) => {
+    const response = await request.patch(settingsPath, { data: { layer: 'user', changes: { custom_agents: agents } } })
+    expect(response.ok(), await response.text()).toBe(true)
+  }
+  await setAgents([])
+  await page.addInitScript(() => localStorage.setItem('nova:mode', 'agentchat'))
+  await page.goto('/')
+  const create = page.getByRole('button', { name: `在 ${book.title} 中新建对话`, exact: true })
+  await create.click()
+  await expect(page.getByRole('tab', { name: /新会话/ }).first()).toBeVisible()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+  await setAgents([{ id: 'fresh-editor', name: 'Fresh Editor', enabled: true,
+    contract: 'writing.primary.v1', instructions: 'Keep the saved role.' }])
+  await create.click()
+  const created = page.waitForResponse(response => response.request().method() === 'POST'
+    && response.url().endsWith(`/api/projects/${book.projectId}/agent-chat/sessions`))
+  await page.getByRole('menuitem', { name: 'Fresh Editor', exact: true }).click()
+  const session = await (await created).json()
+  const config = await (await request.get(`/api/projects/${book.projectId}/conversation-config?mode=agent_chat&session_id=${session.id}`)).json()
+  expect(config.custom_agent_id).toBe('fresh-editor')
+  await setAgents([])
+  await create.click()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+})
+
 for (const [theme, language] of [['dark', 'zh-CN'], ['light', 'en-US']] as const) {
   test(`opens ephemeral workbench drafts and preserves restored tabs in ${theme}`, async ({ page, request }) => {
     const chinese = language === 'zh-CN'
