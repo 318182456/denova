@@ -248,7 +248,9 @@ if (!packageDir) {
   if (build.status !== 0) process.exit(build.status ?? 1)
 }
 
-const backend = spawn(binaryPath, ['--no-open', `--port=${backendPort}`], {
+// Release binaries must also leave host analytics preferences and telemetry
+// untouched. Diagnostics mode retains the embedded frontend; --dev starts Vite.
+const backend = spawn(binaryPath, ['--dev-mode', '--no-open', `--port=${backendPort}`], {
   cwd: runtimeRoot,
   env: {
     ...process.env,

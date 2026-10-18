@@ -2,6 +2,12 @@ import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 import { expectAgentChatReply } from '../support/agent-chat'
 
+test('keeps host analytics unavailable in isolated test servers', async ({ request }) => {
+  const response = await request.get('/api/analytics')
+  expect(response.ok(), await response.text()).toBe(true)
+  expect(await response.json()).toMatchObject({ available: false, notice_seen: true })
+})
+
 test('creates independent Projects when a scenario reuses its readable title', async ({ request }) => {
   const first = await createAndOpenBook(request, 'Repeated scenario')
   const second = await createAndOpenBook(request, 'Repeated scenario')
