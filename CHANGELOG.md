@@ -55,8 +55,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Changed / 变更
 
-- 提升工作台启动、页面切换和多项目自动化目录加载速度，保留编辑器功能、草稿和后台会话。
-- Improve workbench startup, page switching and multi-project Automation loading while preserving editor capabilities, drafts and background conversations.
+- 提升启动与页面切换、大资料库、版本比较、多项目自动化目录及历史全文搜索速度，保留编辑、批量操作、完整历史与外部变更同步。
+- Improve startup, navigation, large Lore libraries, version comparisons, multi-project Automation catalogs and full-history search while preserving editing, batch operations, complete history and external-change synchronization.
 
 - 写作和通用对话用 `/new` 新建独立会话，替代 `/clear`；原会话的历史、目标和待办完整保留。
 - Writing and General conversations use `/new` to start an independent session instead of `/clear`, preserving the original history, Goal and Todo.
