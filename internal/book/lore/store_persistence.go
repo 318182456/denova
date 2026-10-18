@@ -47,10 +47,9 @@ func (s *Store) loadOrCreate() (Collection, error) {
 	path, _ := s.readableItemsPath()
 	snapshot, err := revisionfile.Read(context.Background(), path)
 	if err == nil && snapshot.Exists {
-		data := snapshot.Content
 		// Reads project old categories without mutation. Ensure or the next typed
 		// write persists the new format after preserving the source snapshot.
-		collection, decodeErr := DecodeCollection(data)
+		collection, decodeErr := decodeCollectionSnapshot(snapshot)
 		if decodeErr != nil {
 			return Collection{}, fmt.Errorf("解析 Lore items 失败 path=%s: %w", path, decodeErr)
 		}

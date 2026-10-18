@@ -117,10 +117,10 @@ export function AutomationsView({
     loadSequenceRef.current = sequence
     try {
       const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN'
-      const projectDirectory = automationProjectOptions(await getAgentChatProjects())
-      const [taskTemplates, catalog] = await Promise.all([
-        getAutomationTemplates(locale), getAutomationCatalog(),
+      const [projectEntries, taskTemplates, catalog] = await Promise.all([
+        getAgentChatProjects(), getAutomationTemplates(locale), getAutomationCatalog(),
       ])
+      const projectDirectory = automationProjectOptions(projectEntries)
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       const groups = new Map(catalog.map(group => [group.project_id, group]))
       const failedProjects: AutomationProjectOption[] = []

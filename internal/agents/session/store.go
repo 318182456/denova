@@ -36,6 +36,10 @@ type Store struct {
 	sequence      uint64
 	metadata      map[string]cachedSessionMetadata
 	metadataDirty bool
+	searchMu      sync.Mutex
+	searchCache   map[string]searchDocument
+	searchBytes   int
+	searchClock   uint64
 }
 
 // NewStore 创建会话存储，目录不存在则自动创建。

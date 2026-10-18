@@ -58,11 +58,29 @@ func (s *Service) projectTasks(tasks []automation.Task, err error) ([]automation
 	if err != nil {
 		return nil, err
 	}
+	// Catalog reads do not initialize an Agent until there is a run to project.
+	// Reuse both successful and failed lookups within this read only; a later
+	// refresh must observe a recovered runtime and newly committed outcomes.
+	type runtimeResult struct {
+		snapshot *automationWorkspaceSnapshot
+		err      error
+	}
+	runtimes := make(map[automation.ExecutionTarget]runtimeResult)
 	for i := range tasks {
 		task := &tasks[i]
-		runtime, err := s.host.RuntimeForTarget(context.Background(), task.Target)
-		if err != nil {
-			slog.Warn("[automation] Project Agent runtime unavailable", "project_id", task.Target.ProjectID, "err", err)
+		if len(task.RecentRuns) == 0 && task.LastRun == nil {
+			continue
+		}
+		result, found := runtimes[task.Target]
+		if !found {
+			runtime, err := s.host.RuntimeForTarget(context.Background(), task.Target)
+			result = runtimeResult{snapshot: snapshotFromRuntime(runtime), err: err}
+			runtimes[task.Target] = result
+			if err != nil {
+				slog.Warn("[automation] Project Agent runtime unavailable", "project_id", task.Target.ProjectID, "err", err)
+			}
+		}
+		if result.err != nil {
 			for j := range task.RecentRuns {
 				if task.RecentRuns[j].DeliveryStatus != "" {
 					task.RecentRuns[j].Status = task.RecentRuns[j].DeliveryStatus
@@ -75,7 +93,7 @@ func (s *Service) projectTasks(tasks []automation.Task, err error) ([]automation
 			}
 			continue
 		}
-		snap := snapshotFromRuntime(runtime)
+		snap := result.snapshot
 		for j := range task.RecentRuns {
 			task.RecentRuns[j] = s.projectRun(context.Background(), snap, *task, task.RecentRuns[j])
 		}

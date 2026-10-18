@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
@@ -75,6 +77,7 @@ func (service *Service) Projects(projectID string) []Project {
 	if service.host != nil {
 		currentWorkspace = service.host.CurrentWorkspace()
 	}
+	currentWorkspaceKey := canonicalWorkspaceKey(currentWorkspace)
 	records, err := service.registry.List(false)
 	if err != nil {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] list projects failed err=%v", err))
@@ -89,7 +92,7 @@ func (service *Service) Projects(projectID string) []Project {
 		project := Project{
 			ID: record.ID, Type: record.Type, Path: record.WorkspacePath,
 			Name: record.Name, Status: record.Status,
-			Current: record.Type == projectdomain.TypeBook && canonicalWorkspaceKey(record.WorkspacePath) == canonicalWorkspaceKey(currentWorkspace),
+			Current: record.Type == projectdomain.TypeBook && canonicalWorkspaceKey(record.WorkspacePath) == currentWorkspaceKey,
 		}
 		layout, layoutErr := service.registry.Layout(record)
 		if layoutErr != nil {
@@ -162,7 +165,14 @@ func (service *Service) History(ctx context.Context, query HistoryQuery) (Histor
 	projectID := strings.TrimSpace(query.ProjectID)
 	runningBindings := service.runningBindingKeys()
 	items := make([]HistoryItem, 0)
-	records, _ := service.registry.List(false)
+	var records []projectdomain.Record
+	if projectID != "" {
+		if record, err := service.registry.Get(projectID); err == nil && record.Status != projectdomain.StatusArchived {
+			records = []projectdomain.Record{record}
+		}
+	} else {
+		records, _ = service.registry.List(false)
+	}
 	for _, record := range records {
 		if projectID != "" && record.ID != projectID {
 			continue
@@ -177,30 +187,44 @@ func (service *Service) History(ctx context.Context, query HistoryQuery) (Histor
 			continue
 		}
 		projectSearchText := strings.ToLower(record.Name + " " + record.WorkspacePath)
-		for _, meta := range metas {
+		bodyMatches := make([]string, len(metas))
+		searchBody := make([]bool, len(metas))
+		if normalizedQuery != "" && !strings.Contains(projectSearchText, normalizedQuery) {
+			store, err := service.projectSessionStore(record.ID, layout.SessionsDir(), false)
+			if err != nil {
+				return HistoryPage{}, err
+			}
+			group, searchContext := errgroup.WithContext(ctx)
+			// Independent journals can be read concurrently, with a fixed I/O
+			// budget rather than one goroutine per saved conversation.
+			group.SetLimit(8)
+			for index, meta := range metas {
+				if strings.Contains(strings.ToLower(meta.Title+" "+meta.ID), normalizedQuery) {
+					continue
+				}
+				searchBody[index] = true
+				group.Go(func() (err error) {
+					defer func() {
+						if recovered := recover(); recovered != nil {
+							err = fmt.Errorf("history search panic for %s: %v", meta.ID, recovered)
+							slog.ErrorContext(searchContext, "History search failed", "session_id", meta.ID, "err", err)
+						}
+					}()
+					bodyMatches[index], err = store.SearchHistoryContent(searchContext, meta.ID, normalizedQuery)
+					return err
+				})
+			}
+			if err := group.Wait(); err != nil {
+				return HistoryPage{}, err
+			}
+		}
+		for index, meta := range metas {
 			if err := ctx.Err(); err != nil {
 				return HistoryPage{}, err
 			}
-			excerpt := ""
-			if normalizedQuery != "" {
-				sessionSearchText := strings.ToLower(meta.Title + " " + meta.ID)
-				if !strings.Contains(sessionSearchText, normalizedQuery) && !strings.Contains(projectSearchText, normalizedQuery) {
-					store, err := service.projectSessionStore(record.ID, layout.SessionsDir(), false)
-					if err != nil {
-						return HistoryPage{}, err
-					}
-					sess, err := store.Get(meta.ID)
-					if err != nil {
-						return HistoryPage{}, err
-					}
-					excerpt, err = searchHistoryContent(ctx, sess, normalizedQuery)
-					if err != nil {
-						return HistoryPage{}, fmt.Errorf("search conversation %s: %w", meta.ID, err)
-					}
-					if excerpt == "" {
-						continue
-					}
-				}
+			excerpt := bodyMatches[index]
+			if searchBody[index] && excerpt == "" {
+				continue
 			}
 			items = append(items, HistoryItem{
 				ProjectID: record.ID, ProjectName: record.Name,

@@ -17,6 +17,38 @@ func (catalogReadHost) RuntimeForTarget(context.Context, automation.ExecutionTar
 	return Runtime{}, errors.New("Project runtime is unavailable")
 }
 
+type countingCatalogHost struct {
+	catalogReadHost
+	calls int
+}
+
+func (h *countingCatalogHost) RuntimeForTarget(context.Context, automation.ExecutionTarget) (Runtime, error) {
+	h.calls++
+	return Runtime{}, errors.New("Project runtime is unavailable")
+}
+
+func TestProjectTasksOnlyLoadsRuntimesWithRuns(t *testing.T) {
+	host := &countingCatalogHost{}
+	service := NewService(host)
+	target := automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: "one"}
+	tasks := []automation.Task{{Target: target}, {Target: target}}
+	if _, err := service.projectTasks(tasks, nil); err != nil || host.calls != 0 {
+		t.Fatalf("idle tasks loaded execution runtimes: calls=%d err=%v", host.calls, err)
+	}
+	for i := range tasks {
+		tasks[i].LastRun = &automation.RunRecord{DeliveryStatus: automation.RunStatusSuccess}
+	}
+	projected, err := service.projectTasks(tasks, nil)
+	if err != nil || host.calls != 1 {
+		t.Fatalf("tasks did not share their Project lookup: calls=%d err=%v", host.calls, err)
+	}
+	for _, task := range projected {
+		if task.LastRun.Status != automation.RunStatusSuccess {
+			t.Fatalf("delivery fallback lost: %#v", task.LastRun)
+		}
+	}
+}
+
 func BenchmarkAutomationCatalog(b *testing.B) {
 	root := b.TempDir()
 	catalog := Catalog{DataDir: root}

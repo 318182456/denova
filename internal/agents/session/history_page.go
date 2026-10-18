@@ -39,6 +39,12 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 	if err := s.refreshCanonicalTailLocked(); err != nil {
 		return HistoryPage{}, fmt.Errorf("refresh session history page: %w", err)
 	}
+	return s.readHistoryPageLocked(ctx, before, limit)
+}
+
+// The caller owns the projection. Search opens a read snapshot without
+// materializing an execution Session or replaying its model context.
+func (s *Session) readHistoryPageLocked(ctx context.Context, before, limit int) (HistoryPage, error) {
 	if s.journal == nil || s.projection == nil {
 		return HistoryPage{}, fmt.Errorf("session history index is unavailable")
 	}

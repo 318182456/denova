@@ -12,7 +12,7 @@ import { AgentChatHistoryProjectSelect, AgentChatHistoryProjectSidebar, currentP
 import { AgentChatHistoryRow } from './AgentChatHistoryRow'
 
 const HISTORY_PAGE_SIZE = 80
-const HISTORY_SEARCH_DELAY_MS = 180
+const HISTORY_SEARCH_DELAY_MS = 100
 const HISTORY_SEARCH_MAX_LENGTH = 200
 
 interface AgentChatSessionHistoryDialogProps {

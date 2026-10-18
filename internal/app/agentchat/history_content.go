@@ -6,57 +6,12 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"denova/internal/agents/session"
 	"denova/internal/i18n"
 )
 
 const historyContentPageSize = 100
-
-// Search the durable display transcript, including messages outside the resident
-// UI window. Metadata matches need no body scan; the first body hit supplies one
-// bounded excerpt, with whitespace collapsed only for its single-line display.
-func searchHistoryContent(ctx context.Context, sess *session.Session, query string) (string, error) {
-	for before := -1; ; {
-		page, err := sess.ReadHistoryPage(ctx, before, historyContentPageSize)
-		if err != nil {
-			return "", err
-		}
-		for index := len(page.Entries) - 1; index >= 0; index-- {
-			entry := page.Entries[index]
-			if !isTranscriptMessage(entry) {
-				continue
-			}
-			text := strings.Join(strings.Fields(entry.Content), " ")
-			lower := strings.ToLower(text)
-			if match := strings.Index(lower, query); match >= 0 {
-				runes := []rune(text)
-				position := utf8.RuneCountInString(lower[:match])
-				start := max(0, position-8)
-				end := min(len(runes), position+utf8.RuneCountInString(query)+80)
-				excerpt := string(runes[start:end])
-				if start > 0 {
-					excerpt = "…" + excerpt
-				}
-				if end < len(runes) {
-					excerpt += "…"
-				}
-				return excerpt, nil
-			}
-		}
-		if !page.HasMore {
-			return "", nil
-		}
-		before = page.NextBefore
-	}
-}
-
-func isTranscriptMessage(entry session.HistoryEntry) bool {
-	return entry.Type == "message" && !entry.SubAgent && entry.Status != "discarded" &&
-		(entry.Content != "" || len(entry.Attachments) > 0) &&
-		(entry.Role == "user" || entry.Role == "assistant")
-}
 
 // ExportMarkdown exports the saved creator-facing conversation without tools,
 // reasoning or model-only context. Reading backwards from the first page fixes
@@ -93,7 +48,7 @@ func (service *Service) ExportMarkdown(ctx context.Context, binding Binding, loc
 		}
 		var block strings.Builder
 		for _, entry := range page.Entries {
-			if !isTranscriptMessage(entry) {
+			if !session.IsTranscriptMessage(entry) {
 				continue
 			}
 			role := localizer.T("api.agentChat.exportAssistant")
