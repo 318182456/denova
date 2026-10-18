@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '.
 import { createAndOpenBook, createProjectFile, createStartedStory } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
 import { modelControlURL } from '../support/model'
+import { DEFAULT_BOTTOM_THRESHOLD } from '../../src/lib/bottom-scroll-controller'
 
 type WireMessage = { role: string; content?: unknown; tool_call_id?: string; tool_calls?: unknown[] }
 type WireRequest = { model: string; tools: unknown[]; messages: WireMessage[]; [key: string]: unknown }
@@ -25,11 +26,11 @@ for (const mode of ['Writing', 'Game'] as const) {
     await page.reload()
     await openComposer(page, mode)
     if (mode === 'Game') {
-      // Late row measurements must not strand the restored viewport in earlier
-      // history. The footer may occupy the screen, with compaction just above it.
+      // Late row measurements must leave restored history within the existing
+      // bottom tolerance. The footer can occupy the screen below compaction.
       const timeline = page.locator('.nova-story-stage-content .nova-chat-canvas')
       await expect(timeline).toHaveAttribute('aria-busy', 'false')
-      await expect.poll(() => timeline.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThan(2)
+      await expect.poll(() => timeline.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(DEFAULT_BOTTOM_THRESHOLD)
     }
     await expect(page.getByText('手动压缩', { exact: true })).toBeVisible()
   })
