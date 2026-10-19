@@ -16,6 +16,8 @@ Denova records major user-visible features, important compatibility or data chan
 
 - 修复游戏回合补齐状态与选项时丢失已接受正文上下文的问题，并保持正常续轮与冷恢复的消息顺序。
 - Fixed lost accepted narrative context while completing Game turn state and choices, preserving message order during continuation and cold recovery.
+- 修复通过局域网 HTTP 地址访问时，浏览器缺少 `crypto.randomUUID` 导致页面崩溃及部分功能不可用的问题。
+- Fixed page crashes and affected features when accessing Denova over LAN HTTP in browsers without `crypto.randomUUID`.
 
 ## [v0.6.1] - 2026-10-19
 

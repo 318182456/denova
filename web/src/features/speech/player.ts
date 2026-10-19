@@ -1,3 +1,4 @@
+import { randomUUID } from '@/lib/uuid'
 import { APIError, fetchAPI, responseAPIError } from '@/lib/api-client'
 import i18n from '@/i18n'
 import type { SpeechSettings } from '@/features/settings/types'
@@ -130,7 +131,7 @@ export class SpeechPlayer {
     try {
       let url = task.urls.get(index)
       if (!url) {
-        this.requestID = crypto.randomUUID()
+        this.requestID = randomUUID()
         const response = await fetchAPI('/api/speech', { method: 'POST', signal: abort.signal, suppressBackendUnavailableToast: true,
           headers: { 'Content-Type': 'application/json', 'X-Denova-Locale': i18n.language },
           body: JSON.stringify({ id: this.requestID, input: task.chunks[index], ...(task.preview ? { preview: task.preview } : {}) }) })
