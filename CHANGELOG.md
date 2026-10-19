@@ -12,6 +12,11 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+### Fixed / 修复
+
+- 修复游戏回合补齐状态与选项时丢失已接受正文上下文的问题，并保持正常续轮与冷恢复的消息顺序。
+- Fixed lost accepted narrative context while completing Game turn state and choices, preserving message order during continuation and cold recovery.
+
 ## [v0.6.1] - 2026-10-19
 
 ### Brief / 简要说明
