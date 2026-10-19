@@ -151,10 +151,18 @@ for (const theme of ['dark', 'light']) {
       await player.getByRole('button', { name: '播放环境音' }).click()
       await expect(player).toHaveAttribute('data-status', 'playing')
 
-      const main = await readSnapshot()
-      const branchResponse = await request.post(`/api/interactive/stories/${story.id}/branches`, { data: { parent_event_id: main.current_turn!.id, title: 'Side scene' } })
+      // Create through the UI so reload restores the selected branch instead of
+      // the previously remembered main branch.
+      await page.getByRole('button', { name: '从此处创建分支', exact: true }).last().click()
+      const branchDialog = page.getByRole('dialog')
+      await branchDialog.getByLabel('剧情线名称').fill('Side scene')
+      const branchCreated = page.waitForResponse(response => response.request().method() === 'POST'
+        && new URL(response.url()).pathname === `/api/interactive/stories/${story.id}/branches`)
+      await branchDialog.getByRole('button', { name: '创建并切换', exact: true }).click()
+      const branchResponse = await branchCreated
       expect(branchResponse.ok(), await branchResponse.text()).toBe(true)
       const branch: { id: string } = await branchResponse.json()
+      await expect(branchDialog).toBeHidden()
       await page.reload()
       await submitAgentChatMessage(page, page.getByPlaceholder(/你要做什么/), `E2E_AMBIENT_SELECT:station:${rain.id}`)
       await expect.poll(async () => (await readSnapshot(branch.id)).current_turn?.turn_result?.presentation?.ambient?.asset_id).toBe(rain.id)
