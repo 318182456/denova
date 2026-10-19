@@ -167,7 +167,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.PUT("/interactive/stories/:id/branches/:branch/plan", apiHandlers.HandleInteractiveBranchPlanUpdate)
 		api.POST("/interactive/stories/:id/switch-branch", apiHandlers.HandleInteractiveBranchSwitch)
 		api.POST("/interactive/stories/:id/switch-turn-version", apiHandlers.HandleInteractiveTurnVersionSwitch)
-		api.PATCH("/interactive/stories/:id/turns/:turn_id/background", apiHandlers.HandleInteractiveTurnBackgroundUpdate)
+		api.PATCH("/interactive/stories/:id/turns/:turn_id/presentation", apiHandlers.HandleInteractiveTurnPresentationUpdate)
 		api.PATCH("/interactive/stories/:id/turns/:turn_id/narrative", apiHandlers.HandleInteractiveTurnNarrativeUpdate)
 		api.POST("/interactive/stories/:id/images/generate", apiHandlers.HandleInteractiveImageGenerate)
 		api.POST("/interactive/stories/:id/context-compaction", apiHandlers.HandleInteractiveContextCompaction)

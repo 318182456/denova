@@ -177,7 +177,7 @@ describe('NewStorySetupPanel', () => {
     await user.click(screen.getByRole('button', { name: '开始故事' }))
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1))
     expect(onCreate.mock.calls[0][0].presentation_settings).toEqual({
-      background: false, characters: false,
+      background: false, characters: false, ambient: false,
       default_background: { item_id: 'station', asset_id: 'day', path: 'assets/day.png', name: '白昼' },
     })
   })

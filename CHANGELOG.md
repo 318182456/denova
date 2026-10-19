@@ -12,6 +12,11 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+### Added / 新增
+
+- 游戏舞台支持选择资料库音频作为循环环境音，随回合与分支保存；可手动控制播放或允许 Agent 随场景切换。
+- Game stages can loop Lore audio as scene ambience saved with turns and branches, with manual playback and optional Agent selection.
+
 ### Fixed / 修复
 
 - 修复游戏回合补齐状态与选项时丢失已接受正文上下文的问题，并保持正常续轮与冷恢复的消息顺序。

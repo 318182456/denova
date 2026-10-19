@@ -87,9 +87,10 @@ var catalogZH = map[string]string{
 	"lore.index.invalid":                       "章节名称不能为空或重复（最多 256 UTF-8 字节），导航摘要最多 1024 字节；最多 256 个章节，总说明最多 64 KiB。",
 	"lore.index.previewFailed":                 "预览暂不可用，请检查分组名称和说明。",
 	"interactive.contextTooLarge":              "游戏上下文超过完整载入上限（{{bytes}} / {{limit}} 字节），已在生成正文前停止。请检查状态或分支计划中是否有冗长、重复内容；状态手册不会被截断。",
-	"api.interactive.backgroundUpdateFailed":   "无法切换当前背景，请刷新后重试，并选择资料库中已启用的本地图片。",
+	"api.interactive.presentationUpdateFailed": "无法保存舞台素材，请刷新后选择资料库中已启用的本地图片或音频。",
 	"api.interactive.executionDetailsFailed":   "无法加载执行详情，请刷新后重试。",
 	"api.interactive.invalidDefaultBackground": "背景不可用，请重新选择资料库中已启用并保存到本地的图片素材。",
+	"api.interactive.invalidDefaultAmbient":    "环境音不可用，请重新选择资料库中已启用的本地音频素材。",
 
 	"market.errors.resourceOwned":       "此资源属于另一个正在跟踪的安装，请先管理或停止该来源跟踪，再替换内容。",
 	"market.errors.creatorInvalid":      "创作规则必须是非空 UTF-8 文本，且不能超过目标项目的 Agent 上下文片段容量上限。",
@@ -333,9 +334,10 @@ var catalogEN = map[string]string{
 	"lore.index.invalid":                       "Use unique, nonempty section names (up to 256 UTF-8 bytes), short purposes (1024 bytes), at most 256 sections and a 64 KiB introduction.",
 	"lore.index.previewFailed":                 "Preview unavailable. Check group names and notes.",
 	"interactive.contextTooLarge":              "Game context exceeds the complete-input limit ({{bytes}} / {{limit}} bytes). Generation stopped before prose. Check state or the branch plan for lengthy, redundant content; the state handbook will not be truncated.",
-	"api.interactive.backgroundUpdateFailed":   "Could not change the current background. Reload and select an enabled local Lore image.",
+	"api.interactive.presentationUpdateFailed": "Could not save stage media. Reload and select enabled local Lore images or audio.",
 	"api.interactive.executionDetailsFailed":   "Could not load execution details. Reload and try again.",
 	"api.interactive.invalidDefaultBackground": "Background unavailable. Select an enabled Lore image saved locally.",
+	"api.interactive.invalidDefaultAmbient":    "Ambience unavailable. Select an enabled local Lore audio file.",
 
 	"market.errors.resourceOwned":       "This resource belongs to another tracked installation. Manage or detach its source before replacing it.",
 	"market.errors.creatorInvalid":      "Creative instructions must be non-empty UTF-8 text within the target Project’s Agent context fragment limits.",
