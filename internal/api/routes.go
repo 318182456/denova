@@ -264,6 +264,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.PATCH("/analytics", apiHandlers.HandleAnalyticsPatch)
 		api.POST("/analytics/activity", apiHandlers.HandleAnalyticsActivity)
 		api.PATCH("/settings", apiHandlers.HandleSettingsPatch)
+		api.POST("/settings/web-search/test", apiHandlers.HandleWebSearchTest)
 		api.DELETE("/settings/agent-approval-rules/:id", apiHandlers.HandleAgentApprovalRuleDelete)
 		api.GET("/models/catalog", apiHandlers.HandleModelCatalog)
 		api.POST("/models/discover", apiHandlers.HandleModelList)

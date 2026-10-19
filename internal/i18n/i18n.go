@@ -77,6 +77,15 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"settings.webAccess.error.configuration":    "请填写所选搜索服务的 API 密钥或实例地址，并检查搜索模式。",
+	"settings.webAccess.error.invalid_request":  "搜索请求无效，请调整关键词或搜索选项。",
+	"settings.webAccess.error.query_too_long":   "DeepSeek 查询最多 128 个字符，包含时间筛选（占用 17 个字符），请缩短关键词。",
+	"settings.webAccess.error.authentication":   "搜索服务认证失败，请检查 API 密钥和账户权限。",
+	"settings.webAccess.error.quota":            "搜索服务余额或配额不足，请检查服务账户。",
+	"settings.webAccess.error.rate_limit":       "搜索服务请求过于频繁，请稍后重试。",
+	"settings.webAccess.error.unavailable":      "搜索服务暂时不可用或请求超时，请检查网络后重试。",
+	"settings.webAccess.error.invalid_response": "搜索服务返回了无效响应，请稍后重试。",
+
 	"api.agentChat.searchFailed":               "搜索对话历史失败，请重试。",
 	"api.agentChat.exportFailed":               "导出对话失败，请重试。",
 	"api.agentChat.untitled":                   "未命名会话",
@@ -324,6 +333,15 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"settings.webAccess.error.configuration":    "Enter the selected search service's API key or instance URL and check its search mode.",
+	"settings.webAccess.error.invalid_request":  "Invalid search request. Adjust the query or search options.",
+	"settings.webAccess.error.query_too_long":   "DeepSeek queries allow up to 128 characters, including time filters (17 characters). Shorten the query.",
+	"settings.webAccess.error.authentication":   "Search authentication failed. Check the API key and account permissions.",
+	"settings.webAccess.error.quota":            "Search service balance or quota is exhausted. Check the service account.",
+	"settings.webAccess.error.rate_limit":       "Search rate limit reached. Try again later.",
+	"settings.webAccess.error.unavailable":      "Search is unavailable or timed out. Check connectivity and try again.",
+	"settings.webAccess.error.invalid_response": "The search service returned an invalid response. Try again later.",
+
 	"api.agentChat.searchFailed":               "Failed to search conversation history. Please try again.",
 	"api.agentChat.exportFailed":               "Failed to export the conversation. Please try again.",
 	"api.agentChat.untitled":                   "Untitled conversation",
