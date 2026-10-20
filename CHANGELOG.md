@@ -12,6 +12,11 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+### Added
+
+- 资料详情新增「作品提及」：查找作品文件与指定故事分支的正文提及，定位文件或只读查看历史回合。
+- Lore details now find text mentions in project files and a selected story branch, with file navigation and read-only historical narrative.
+
 ## [v0.6.2] - 2026-10-19
 
 ### Brief / 简要说明
