@@ -14,6 +14,8 @@ Denova records major user-visible features, important compatibility or data chan
 
 ### Added
 
+- 可选决策模型支持游戏舞台素材选择、资料库语义分类和自动化语义触发，不确定或服务不可用时由语言模型兜底。
+- Optional decision models handle Game stage media, Lore semantic classification, and automation semantic triggers, with language-model fallback for uncertain results or service failures.
 - 资料详情新增「作品提及」：查找作品文件与指定故事分支的正文提及，定位文件或只读查看历史回合。
 - Lore details now find text mentions in project files and a selected story branch, with file navigation and read-only historical narrative.
 
