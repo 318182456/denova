@@ -235,7 +235,9 @@ jobs:
           curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/proxy | jq -e '.proxy == "http://proxy.invalid:3128"'
           curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":""}' http://localhost:8082/claude/api/proxy
           docker compose exec -T denova sh -c '! grep -q PROXY /data/.claude/settings.json'
-          docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -f /opt/denova/web/index.html'
+          # Current builds embed the frontend; HTTP checks above verify it is served.
+          # The web directory remains for v0.5.1 package compatibility.
+          docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -d /opt/denova/web'
           docker compose exec -T denova sh -c 'printf persisted > /data/.denova/container-smoke'
           docker compose exec -T denova sha256sum /data/.denova/config.toml > /tmp/config-before
           docker compose restart
