@@ -19,7 +19,7 @@ import (
 // registerRoutes 注册 HTTP API 和静态文件路由。
 func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 	apiHandlers := handlers.New(s.app)
-	h.Any("/api/platform/manage/*path", localHostEffectMiddleware, apiHandlers.HandlePlatformManagement)
+	h.Any("/api/platform/manage/*path", platformManagementMiddleware, apiHandlers.HandlePlatformManagement)
 	api := h.Group("/api")
 	{
 		api.POST("/autosave-conflicts", apiHandlers.HandleAutosaveConflictCreate)

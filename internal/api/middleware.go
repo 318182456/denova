@@ -55,6 +55,17 @@ func localHostEffectMiddleware(ctx context.Context, c *app.RequestContext) {
 	c.Next(ctx)
 }
 
+// Installed page descriptors are navigation metadata, so authenticated remote
+// App browsers need them too. The server's access gate enforces authentication
+// and same-origin checks; all other platform management remains local-only.
+func platformManagementMiddleware(ctx context.Context, c *app.RequestContext) {
+	if string(c.Method()) == "GET" && string(c.Path()) == "/api/platform/manage/plugin-pages" {
+		c.Next(ctx)
+		return
+	}
+	localHostEffectMiddleware(ctx, c)
+}
+
 func abortWithLocalizedError(c *app.RequestContext, status int, key string) {
 	message := i18n.FromHeader(localeHeader(c)).T(key)
 	c.AbortWithStatusJSON(status, map[string]string{"error": message})
