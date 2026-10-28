@@ -8,7 +8,7 @@
 
 Consumer API 使用普通 HTTP + JSON，事件使用 SSE。每个游戏开局或显式插件目标拥有独立运行来源；baseUrl 和 bearer token 通过受验证页面握手或后台 stdin 提供。SDK 是可选封装。
 
-请求使用 Authorization: Bearer <token>。凭证绑定包身份、准确发行、Project/Session/游戏实例范围与已授予权限；body 不能选择其他范围。可信 App 的 /api/platform/manage/* 仅允许本机宿主管理，第三方页面不能借用该路由或历史内部 API。第一版第三方作品在本机桌面使用，不承诺 LAN 远程运行。
+请求使用 Authorization: Bearer <token>。凭证绑定包身份、准确发行、Project/Session/游戏实例范围与已授予权限；body 不能选择其他范围。可信 App 的 /api/platform/manage/* 允许已登录、同源的远程浏览器读取目录、实例、偏好及配置，并保存默认游戏；安装、运行时启动等管理写操作仍仅允许本机执行。GET development/:id/check 会创建源码目录快照，仍按本机操作保护。第三方页面不能借用这些路由或历史内部 API。第一版第三方运行实例仍在本机桌面使用，不承诺 LAN 远程执行。
 
 同一 Project 插件的面板与命令共享激活，但 `connection` 为每个消费者提供独立的 `{ baseUrl, token, consumerId }`。请求附带 `X-Denova-Consumer: <consumerId>`；浏览器 SDK 自动添加，后端向宿主转发时必须保留此 header。消费者令牌即使省略 header 也绑定原消费者，关闭后失效。异步 Agent 与图像操作可以超过发起请求的 HTTP 生命周期，但不能超过所属消费者的生命周期；关闭不自动重放未知副作用。
 

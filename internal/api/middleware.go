@@ -55,13 +55,27 @@ func localHostEffectMiddleware(ctx context.Context, c *app.RequestContext) {
 	c.Next(ctx)
 }
 
-// Installed page descriptors are navigation metadata, so authenticated remote
-// App browsers need them too. The server's access gate enforces authentication
-// and same-origin checks; all other platform management remains local-only.
+// Platform reads serve normal Writing/Game navigation and configuration. The
+// access gate already enforces authentication and same-origin checks. Source
+// checks create directory snapshots despite using GET, so they stay local-only,
+// as do installation, runtime activation and other management mutations.
 func platformManagementMiddleware(ctx context.Context, c *app.RequestContext) {
-	if string(c.Method()) == "GET" && string(c.Path()) == "/api/platform/manage/plugin-pages" {
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(string(c.Path()), "/api/platform/manage"), "/"), "/")
+	switch string(c.Method()) {
+	case "GET":
+		if len(parts) == 3 && parts[0] == "development" && parts[2] == "check" {
+			localHostEffectMiddleware(ctx, c)
+			return
+		}
 		c.Next(ctx)
 		return
+	case "PATCH":
+		// Choosing the default for new stories is an ordinary user preference,
+		// not an installation or a native-host operation.
+		if len(parts) == 1 && parts[0] == "game-preferences" {
+			c.Next(ctx)
+			return
+		}
 	}
 	localHostEffectMiddleware(ctx, c)
 }

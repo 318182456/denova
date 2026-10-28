@@ -44,8 +44,8 @@ Denova records major user-visible features, important compatibility or data chan
 
 ### Fixed / 修复
 
-- 修复已登录的远程浏览器无法读取插件页面导航列表的问题；插件管理操作仍仅允许本机执行。
-- Fix authenticated remote browsers being unable to read plugin page navigation; plugin management operations remain local-only.
+- 修复已登录的远程浏览器无法读取游戏目录、实例、偏好和插件配置等平台信息的问题，并支持保存默认游戏；安装、运行时启动和源码检查仍仅允许本机执行。
+- Fix authenticated remote browsers being unable to read Game catalogs, instances, preferences and plugin configuration, and allow saving the default game. Installation, runtime activation and source checks remain local-only.
 - 修复单个 Agent 回合包含大量整章编辑时，历史页面响应过大导致加载缓慢的问题；历史响应按传输量分页，可继续加载更早消息。
 - Fix slow history loading when one Agent turn contains many whole-chapter edits by bounding history response size while keeping earlier messages pageable.
 
