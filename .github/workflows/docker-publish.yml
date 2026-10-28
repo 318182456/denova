@@ -137,11 +137,6 @@ jobs:
           # Fork versions name the last application commit, which needs history.
           # A string '0': the number 0 is falsy and would always yield 1.
           fetch-depth: ${{ matrix.target.cache == 'fork' && '0' || '1' }}
-      - name: Check Claude page script syntax
-        run: |
-          set -euo pipefail
-          node -e "const s = require('fs').readFileSync('overlay/docker/claude-page/index.html', 'utf8'); require('fs').writeFileSync('/tmp/claude-page.js', s.slice(s.indexOf('<script>') + 8, s.lastIndexOf('</script>')))"
-          node --check /tmp/claude-page.js
       - name: Apply container files and read toolchain versions
         id: versions
         run: |
@@ -163,7 +158,6 @@ jobs:
             echo "go=$go_version"
             echo "pnpm=$pnpm_version"
             echo "node=$node_version"
-            echo "claude=$(npm view @anthropic-ai/claude-code version)"
             echo "revision=$(git -C src rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
@@ -184,7 +178,6 @@ jobs:
             NODE_VERSION=${{ steps.versions.outputs.node }}
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
             DENOVA_VERSION=${{ env.VERSION }}
-            CLAUDE_CODE_VERSION=${{ steps.versions.outputs.claude }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.versions.outputs.revision }}
@@ -204,6 +197,8 @@ jobs:
           curl -fsS http://localhost:8082/ > /tmp/home.html
           grep -q '<html' /tmp/home.html
           curl -fsS http://localhost:8082/api/auth/status | jq -e '.local == false and .authenticated == false'
+          curl -fsS -H 'Referer: http://localhost:8082/' http://localhost:8082/api/auth/status | jq -e '.local == false and .authenticated == false'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Referer: https://attacker.invalid/' http://localhost:8082/api/auth/status)" = 403
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8082/api/agent-chat/projects)" = 401
           jq -n '{username:env.DENOVA_USERNAME,password:env.DENOVA_PASSWORD}' > /tmp/login.json
           curl -fsS -c /tmp/cookies -H 'Content-Type: application/json' --data-binary @/tmp/login.json http://localhost:8082/api/auth/login | jq -e '.authenticated == true'
@@ -211,30 +206,7 @@ jobs:
           test "$(docker compose exec -T denova denova --version | tr -d '\r')" = "$VERSION"
           docker compose exec -T denova rg --version
           docker compose exec -T denova chromium --version
-          docker compose exec -T denova claude --version
-          docker compose exec -T denova sh -c 'claude auth status || true' | jq -e '.loggedIn == false'
           test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 127.0.0.1' http://localhost:8082/api/agent-chat/projects)" = 401
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8082/claude/)" = 302
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 127.0.0.1' http://localhost:8082/claude/api/status)" = 401
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/cookies -X POST http://localhost:8082/claude/api/logout)" = 403
-          curl -fsS -b /tmp/cookies http://localhost:8082/claude/ | grep -q '<html'
-          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/status | jq -e '.installed == true and .auth.loggedIn == false and (.version | length > 0)'
-          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -d '{"method":"claudeai"}' http://localhost:8082/claude/api/login/start | jq -e '.url | startswith("https://")'
-          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -X POST http://localhost:8082/claude/api/login/cancel
-          test "$(docker compose exec -T denova sh -c 'command -v claude')" = /opt/denova/launcher/claude
-          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -e '.tokens == [] and .active == ""'
-          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -d '{"name":"smoke","token":"sk-ant-oat01-smoke-invalid-token"}' http://localhost:8082/claude/api/tokens | jq -e '.id | length > 0'
-          docker compose exec -T denova sh -c 'test "$(stat -c %a /data/.config/denova-claude/active-token)" = 600 && grep -q smoke-invalid /data/.config/denova-claude/active-token'
-          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -e '.tokens[0].active == true and .tokens[0].usage.error_key == "rejected"'
-          id=$(curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/tokens | jq -r '.tokens[0].id')
-          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -X DELETE "http://localhost:8082/claude/api/tokens/$id"
-          docker compose exec -T denova sh -c 'test ! -s /data/.config/denova-claude/active-token'
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":"127.0.0.1:7890"}' http://localhost:8082/claude/api/proxy)" = 400
-          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":"http://proxy.invalid:3128"}' http://localhost:8082/claude/api/proxy
-          docker compose exec -T denova sh -c 'grep -q "\"HTTPS_PROXY\": \"http://proxy.invalid:3128\"" /data/.claude/settings.json'
-          curl -fsS -b /tmp/cookies http://localhost:8082/claude/api/proxy | jq -e '.proxy == "http://proxy.invalid:3128"'
-          curl -fsS -b /tmp/cookies -H 'X-Denova-Claude: 1' -H 'Content-Type: application/json' -X PUT -d '{"proxy":""}' http://localhost:8082/claude/api/proxy
-          docker compose exec -T denova sh -c '! grep -q PROXY /data/.claude/settings.json'
           # Current builds embed the frontend; HTTP checks above verify it is served.
           # The web directory remains for v0.5.1 package compatibility.
           docker compose exec -T denova sh -c 'test -x /opt/denova/denova-updater && test -d /opt/denova/skills && test -d /opt/denova/web'
