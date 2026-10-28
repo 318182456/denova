@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode/utf8"
-
-	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
@@ -16,6 +13,9 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/book"
 	"denova/internal/interactive"
+
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type ContextAnalysis struct {
@@ -59,7 +59,8 @@ type ContextAnalysisPart struct {
 	Content    string `json:"content"`
 	Note       string `json:"note,omitempty"`
 	Bytes      int    `json:"bytes"`
-	Chars      int    `json:"chars"`
+	// TokenEstimate measures the displayed text, excluding request framing and image pixels.
+	TokenEstimate int `json:"token_estimate"`
 	// Parts decomposes provider-neutral message fields and safe opaque-state
 	// metadata for diagnostics. Content remains the copyable message body.
 	Parts []ContextAnalysisPart `json:"parts,omitempty"`
@@ -80,21 +81,21 @@ type ContextAnalysisPartInput struct {
 func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
 	content := in.Content
 	return ContextAnalysisPart{
-		ID:         strings.TrimSpace(in.ID),
-		Source:     strings.TrimSpace(in.Source),
-		Title:      strings.TrimSpace(in.Title),
-		Role:       strings.TrimSpace(in.Role),
-		Kind:       strings.TrimSpace(in.Kind),
-		ToolName:   strings.TrimSpace(in.ToolName),
-		ToolCallID: strings.TrimSpace(in.ToolCallID),
-		Content:    content,
-		Note:       strings.TrimSpace(in.Note),
-		Bytes:      len(content),
-		Chars:      utf8.RuneCountInString(content),
+		ID:            strings.TrimSpace(in.ID),
+		Source:        strings.TrimSpace(in.Source),
+		Title:         strings.TrimSpace(in.Title),
+		Role:          strings.TrimSpace(in.Role),
+		Kind:          strings.TrimSpace(in.Kind),
+		ToolName:      strings.TrimSpace(in.ToolName),
+		ToolCallID:    strings.TrimSpace(in.ToolCallID),
+		Content:       content,
+		Note:          strings.TrimSpace(in.Note),
+		Bytes:         len(content),
+		TokenEstimate: agentmodel.EstimateTextTokens(content),
 	}
 }
 
-func contextAnalysisPartFromMessage(id, source, title string, msg *agent.Message) ContextAnalysisPart {
+func contextAnalysisPartFromMessage(id, source, title string, msg *agentschema.Message) ContextAnalysisPart {
 	if msg == nil {
 		return NewContextAnalysisPart(ContextAnalysisPartInput{ID: id, Source: source, Title: title})
 	}
@@ -107,9 +108,9 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *agent.Message
 		Content: msg.Content,
 	}
 	switch msg.Role {
-	case agent.User:
+	case agentschema.User:
 		input.Kind = "body"
-	case agent.Assistant:
+	case agentschema.Assistant:
 		input.Kind = "body"
 		if len(msg.ToolCalls) > 0 {
 			input.Kind = "tool_call"
@@ -123,7 +124,7 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *agent.Message
 				input.Content = strings.TrimRight(msg.Content, "\n") + "\n\n" + contextAnalysisToolCallsContent(msg.ToolCalls)
 			}
 		}
-	case agent.ToolRole:
+	case agentschema.ToolRole:
 		input.Kind = "tool_result"
 		input.ToolName = msg.ToolName
 		input.ToolCallID = msg.ToolCallID
@@ -139,7 +140,7 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *agent.Message
 	return part
 }
 
-func contextAnalysisToolCallNames(calls []agent.ToolCall) string {
+func contextAnalysisToolCallNames(calls []agentschema.ToolCall) string {
 	names := make([]string, 0, len(calls))
 	seen := make(map[string]bool, len(calls))
 	for _, call := range calls {
@@ -153,7 +154,7 @@ func contextAnalysisToolCallNames(calls []agent.ToolCall) string {
 	return strings.Join(names, ", ")
 }
 
-func contextAnalysisToolCallIDs(calls []agent.ToolCall) string {
+func contextAnalysisToolCallIDs(calls []agentschema.ToolCall) string {
 	ids := make([]string, 0, len(calls))
 	for _, call := range calls {
 		if id := strings.TrimSpace(call.ID); id != "" {
@@ -163,7 +164,7 @@ func contextAnalysisToolCallIDs(calls []agent.ToolCall) string {
 	return strings.Join(ids, ", ")
 }
 
-func contextAnalysisToolCallsContent(calls []agent.ToolCall) string {
+func contextAnalysisToolCallsContent(calls []agentschema.ToolCall) string {
 	if len(calls) == 0 {
 		return ""
 	}
@@ -299,12 +300,12 @@ type contextUsageAnalysis struct {
 	wouldCompact      bool
 }
 
-func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*agent.Message, expectedOutputChars int) (contextUsageAnalysis, error) {
+func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*agentschema.Message, expectedOutputChars int) (contextUsageAnalysis, error) {
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
-	estimatedMessages := make([]*agent.Message, 0, len(messages)+1)
+	estimatedMessages := make([]*agentschema.Message, 0, len(messages)+1)
 	if strings.TrimSpace(systemPrompt) != "" {
-		estimatedMessages = append(estimatedMessages, agent.SystemMessage(systemPrompt))
+		estimatedMessages = append(estimatedMessages, agentschema.SystemMessage(systemPrompt))
 	}
 	estimatedMessages = append(estimatedMessages, messages...)
 	model, err := modelio.ConfigFromResolved(modelSettings)
@@ -318,7 +319,7 @@ func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, mes
 	tokens := size.Tokens
 	completionReserve, toolResultReserve := agentcompaction.EstimateProjectionReserves(cfg, agentKind, expectedOutputChars)
 	if maxTokens := modelSettings.MaxTokens; maxTokens != nil {
-		totalReserve := agent.CapacityAwareTokenReserve(
+		totalReserve := agentmodel.CapacityAwareTokenReserve(
 			completionReserve+toolResultReserve, *maxTokens,
 			modelSettings.ContextWindowTokens, contextSettings.CompactionThreshold,
 		)

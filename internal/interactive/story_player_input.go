@@ -2,14 +2,17 @@ package interactive
 
 import (
 	"crypto/sha256"
-	"denova/internal/agents/sessionjournal"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	agent "github.com/alfredxw/denova/agent"
 	"strings"
 	"time"
+
+	"denova/internal/agents/sessionjournal"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 var ErrPlayerInputIdentityConflict = errors.New("player input identity conflict")
@@ -17,24 +20,24 @@ var ErrPlayerInputIdentityConflict = errors.New("player input identity conflict"
 // PlayerInputIntent is the append-only canonical form of one accepted game
 // cycle before any model, tool, or narrative effect starts.
 type PlayerInputIntent struct {
-	Identity    DomainCommitIdentity      `json:"identity"`
-	BranchID    string                    `json:"branch_id"`
-	Text        string                    `json:"text"`
-	Attachments []agent.Attachment        `json:"attachments,omitempty"`
-	ContextOnly bool                      `json:"context_only,omitempty"`
-	Hash        string                    `json:"hash"`
-	Checkpoint  agent.CanonicalCheckpoint `json:"-"`
+	Identity    DomainCommitIdentity               `json:"identity"`
+	BranchID    string                             `json:"branch_id"`
+	Text        string                             `json:"text"`
+	Attachments []agentschema.Attachment           `json:"attachments,omitempty"`
+	ContextOnly bool                               `json:"context_only,omitempty"`
+	Hash        string                             `json:"hash"`
+	Checkpoint  agentcanonical.CanonicalCheckpoint `json:"-"`
 }
 
 type PlayerInputAcceptedEvent struct {
-	V           int                `json:"v"`
-	Type        string             `json:"type"`
-	ID          string             `json:"id"`
-	ParentID    string             `json:"parent_id,omitempty"`
-	BranchID    string             `json:"branch_id"`
-	Ts          string             `json:"ts"`
-	Text        string             `json:"text"`
-	Attachments []agent.Attachment `json:"attachments,omitempty"`
+	V           int                      `json:"v"`
+	Type        string                   `json:"type"`
+	ID          string                   `json:"id"`
+	ParentID    string                   `json:"parent_id,omitempty"`
+	BranchID    string                   `json:"branch_id"`
+	Ts          string                   `json:"ts"`
+	Text        string                   `json:"text"`
+	Attachments []agentschema.Attachment `json:"attachments,omitempty"`
 	// ContextOnly keeps host-owned autonomous instructions in model history
 	// without projecting them as player-authored UI messages.
 	ContextOnly bool `json:"context_only,omitempty"`
@@ -77,7 +80,7 @@ func newPlayerInputIntent(identity DomainCommitIdentity, branchID, text string, 
 
 // WithAttachments binds application-owned file copies to the same canonical
 // player input and recalculates its domain hash.
-func (i PlayerInputIntent) WithAttachments(attachments []agent.Attachment) (PlayerInputIntent, error) {
+func (i PlayerInputIntent) WithAttachments(attachments []agentschema.Attachment) (PlayerInputIntent, error) {
 	canonical, err := newPlayerInputIntentWithAttachments(i.Identity, i.BranchID, i.Text, attachments, i.ContextOnly)
 	if err != nil {
 		return PlayerInputIntent{}, err
@@ -85,7 +88,7 @@ func (i PlayerInputIntent) WithAttachments(attachments []agent.Attachment) (Play
 	return canonical, nil
 }
 
-func newPlayerInputIntentWithAttachments(identity DomainCommitIdentity, branchID, text string, attachments []agent.Attachment, contextOnly bool) (PlayerInputIntent, error) {
+func newPlayerInputIntentWithAttachments(identity DomainCommitIdentity, branchID, text string, attachments []agentschema.Attachment, contextOnly bool) (PlayerInputIntent, error) {
 	identity.CommandID = strings.TrimSpace(identity.CommandID)
 	identity.OperationID = strings.TrimSpace(identity.OperationID)
 	branchID = strings.TrimSpace(branchID)
@@ -96,17 +99,17 @@ func newPlayerInputIntentWithAttachments(identity DomainCommitIdentity, branchID
 		return PlayerInputIntent{}, fmt.Errorf("%w: player input is empty", ErrPlayerInputIdentityConflict)
 	}
 	payload, err := json.Marshal(struct {
-		BranchID    string             `json:"branch_id"`
-		Text        string             `json:"text"`
-		Attachments []agent.Attachment `json:"attachments,omitempty"`
-		ContextOnly bool               `json:"context_only,omitempty"`
+		BranchID    string                   `json:"branch_id"`
+		Text        string                   `json:"text"`
+		Attachments []agentschema.Attachment `json:"attachments,omitempty"`
+		ContextOnly bool                     `json:"context_only,omitempty"`
 	}{BranchID: branchID, Text: text, Attachments: attachments, ContextOnly: contextOnly})
 	if err != nil {
 		return PlayerInputIntent{}, err
 	}
 	sum := sha256.Sum256(payload)
 	return PlayerInputIntent{
-		Identity: identity, BranchID: branchID, Text: text, Attachments: append([]agent.Attachment(nil), attachments...), ContextOnly: contextOnly,
+		Identity: identity, BranchID: branchID, Text: text, Attachments: append([]agentschema.Attachment(nil), attachments...), ContextOnly: contextOnly,
 		Hash: "sha256:" + hex.EncodeToString(sum[:]),
 	}, nil
 }
@@ -145,7 +148,7 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 	event := PlayerInputAcceptedEvent{
 		V: schemaVersion, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(canonical.Identity), ParentID: branch.Head,
-		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, Attachments: append([]agent.Attachment(nil), canonical.Attachments...), ContextOnly: canonical.ContextOnly, AcceptedTurnCount: projection.Depth,
+		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, Attachments: append([]agentschema.Attachment(nil), canonical.Attachments...), ContextOnly: canonical.ContextOnly, AcceptedTurnCount: projection.Depth,
 		AgentCommandID: canonical.Identity.CommandID, AgentOperationID: canonical.Identity.OperationID,
 		AgentCycle: canonical.Identity.Cycle, AgentCommitHash: canonical.Hash,
 	}

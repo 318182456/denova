@@ -35,13 +35,19 @@ for (const product of ['writing', 'game'] as const) {
           }] })), page: { has_more: false, total: tools.length },
         } }))
       } else {
+        const events = tools.map((tool, index) => ({
+          id: `call-${index}`, role: 'tool_call', name: tool.name, args: JSON.stringify(tool.input), result: JSON.stringify(tool.output), status: 'success', tool_presentation: presentation,
+        }))
         await page.route('**/api/interactive/stories/*/snapshot**', async route => {
           const response = await route.fetch()
           const snapshot = await response.json()
-          const turns = snapshot.turns.map((turn: Record<string, unknown>, index: number) => index === snapshot.turns.length - 1 ? { ...turn, display_events: tools.map((tool, index) => ({
-            id: `call-${index}`, role: 'tool_call', name: tool.name, args: JSON.stringify(tool.input), result: JSON.stringify(tool.output), status: 'success', tool_presentation: presentation,
-          })) } : turn)
+          const turns = snapshot.turns.map((turn: Record<string, unknown>, index: number) => index === snapshot.turns.length - 1 ? { ...turn, display_events: events } : turn)
           await route.fulfill({ response, json: { ...snapshot, turns } })
+        })
+        // Expansion must load the same synthetic evidence as the snapshot.
+        await page.route('**/api/interactive/stories/*/history/execution?**', async route => {
+          const response = await route.fetch()
+          await route.fulfill({ response, json: { ...await response.json(), display_events: events } })
         })
       }
       for (const width of [1440, 390]) {

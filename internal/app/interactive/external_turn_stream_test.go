@@ -12,14 +12,15 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	apptask "denova/internal/app/task"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
 )
 
 func TestExternalPlanSurvivesInterruptedGameDraft(t *testing.T) {
 	store, story, cfg := externalGameFixture(t)
 	cfg.ActiveAgentRuntime = &config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "fixture"}}
 	turn := externalGameForTest(t, store, story, cfg, agentchat.ChatRequest{CommandID: "plan", Message: "Explore"}, gameAdapterFunc(func(ctx context.Context, input external.Input, host external.Host) (external.Result, error) {
-		if err := host.Emit(external.PlanEvent([]agent.TodoItem{{ID: "1", Text: "Inspect the gate", Status: agent.TodoInProgress}})); err != nil {
+		if err := host.Emit(external.PlanEvent([]agentevent.TodoItem{{ID: "1", Text: "Inspect the gate", Status: agentevent.TodoInProgress}})); err != nil {
 			return external.Result{}, err
 		}
 		return external.Result{}, errors.New("fixture disconnect")

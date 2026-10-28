@@ -1,6 +1,7 @@
+import { useVirtualizedMessageState } from './VirtualizedMessageState'
 import { errorMessage } from '@/lib/error-diagnostics'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { Check, Loader2, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentAskResolution } from '@/lib/api'
@@ -24,23 +25,20 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
   const { t } = useTranslation()
   const interaction = message.ask
   const approval = interaction?.approval
-  const [localResolution, setLocalResolution] = useState<AgentAskResolution | null>(null)
-  const [submitting, setSubmitting] = useState<ApprovalOption | null>(null)
-  const [error, setError] = useState('')
+  const slot = `approval:${interaction?.id}:${interaction?.status}`
+  const [localResolution, setLocalResolution] = useVirtualizedMessageState<AgentAskResolution | null>(`${slot}:resolution`, null)
+  const [submitting, setSubmitting] = useVirtualizedMessageState<ApprovalOption | null>(`${slot}:submitting`, null)
+  const [error, setError] = useVirtualizedMessageState(`${slot}:error`, '')
+  const [anchored, setAnchored] = useVirtualizedMessageState('approval-anchored', '')
   const panelRef = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    setLocalResolution(null)
-    setSubmitting(null)
-    setError('')
-  }, [interaction?.id])
 
   useLayoutEffect(() => {
     const status = localResolution?.status || interaction?.status
-    if (interaction?.kind === 'tool_approval' && interaction.approval && status === 'pending' && panelRef.current) {
+    if (interaction?.kind === 'tool_approval' && interaction.approval && status === 'pending' && panelRef.current && anchored !== interaction.id) {
+      setAnchored(interaction.id)
       onLayoutChange?.(panelRef.current)
     }
-  }, [interaction?.approval, interaction?.id, interaction?.kind, interaction?.status, localResolution?.status, onLayoutChange])
+  }, [anchored, setAnchored, interaction?.approval, interaction?.id, interaction?.kind, interaction?.status, localResolution?.status, onLayoutChange])
 
   if (!interaction || interaction.kind !== 'tool_approval' || !approval) return null
   const status = localResolution?.status || interaction.status

@@ -2,9 +2,11 @@ package execution
 
 import (
 	"context"
-	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
 	"time"
+
+	agentrun "denova/internal/agents/run"
+
+	"github.com/alfredxw/denova/agent"
 )
 
 // OperationProjection reads one exact Agent Run, including runs outside bounded

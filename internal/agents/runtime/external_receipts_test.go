@@ -19,7 +19,8 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/agents/sessionjournal"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type receiptJournal struct {
@@ -192,7 +193,7 @@ func TestExternalControlReleasedReceiptsMigrateAndResume(t *testing.T) {
 	for _, product := range []string{"writing", "game"} {
 		t.Run(product, func(t *testing.T) {
 			fixture := newReceiptJournal(t, product)
-			original := ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "original", Message: "Accepted input", Locale: "zh-CN", InputVisibility: agentrun.InputModelOnly, AttachedFiles: []agent.Attachment{{ID: "image", Path: "attachments/image.png"}}}, Delivery: agentrun.DeliveryFollowUp}
+			original := ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "original", Message: "Accepted input", Locale: "zh-CN", InputVisibility: agentrun.InputModelOnly, AttachedFiles: []agentschema.Attachment{{ID: "image", Path: "attachments/image.png"}}}, Delivery: agentrun.DeliveryFollowUp}
 			rootReceipt := agentrun.CommandReceipt{CommandID: "original", OperationID: "original-operation", Cursor: 1}
 			follow := Command{Kind: agentexecution.CommandFollowUp, CommandID: "follow", OperationID: rootReceipt.OperationID, Input: agentchat.ChatRequest{Message: "Accepted queued input", Locale: "en-US"}}
 			followReceipt := agentrun.CommandReceipt{CommandID: "follow", OperationID: rootReceipt.OperationID, Cursor: 2}

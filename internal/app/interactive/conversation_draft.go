@@ -6,9 +6,11 @@ import (
 	"errors"
 	"strings"
 
+	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/interactive"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 func (c *Conversation) turnDraftIdentity() interactive.DomainCommitIdentity {
@@ -79,14 +81,19 @@ func (c *Conversation) persistDraftDisplay(event interactive.DisplayEvent) error
 }
 
 func (c *Conversation) LoadNarrativeCandidate(ctx context.Context) (string, error) {
+	candidate, err := c.LoadAgentNarrativeCandidate(ctx)
+	return candidate.Content, err
+}
+
+func (c *Conversation) LoadAgentNarrativeCandidate(ctx context.Context) (agentinteractive.NarrativeCandidate, error) {
 	c.turnCheckMu.Lock()
 	defer c.turnCheckMu.Unlock()
 	if err := c.loadTurnDraft(); err != nil {
-		return "", err
+		return agentinteractive.NarrativeCandidate{}, err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.turnDraft.Narrative, nil
+	return agentinteractive.NarrativeCandidate{Content: c.turnDraft.Narrative, HistoryAccepted: c.turnDraft.NarrativeSource == "canonical_model_message"}, nil
 }
 
 func (c *Conversation) AcceptNarrativeCandidate(ctx context.Context, narrative string) error {
@@ -114,7 +121,7 @@ func (c *Conversation) AcceptNarrativeCandidate(ctx context.Context, narrative s
 	return nil
 }
 
-func (c *Conversation) PendingOutput(ctx context.Context, identity agent.CommitIdentity) (*agent.Message, error) {
+func (c *Conversation) PendingOutput(ctx context.Context, identity agentcanonical.CommitIdentity) (*agentschema.Message, error) {
 	narrative, err := c.LoadNarrativeCandidate(ctx)
 	if err != nil {
 		return nil, err
@@ -127,32 +134,32 @@ func (c *Conversation) PendingOutput(ctx context.Context, identity agent.CommitI
 	if !c.turnProtocol.narrativeReady() || narrative == "" {
 		return nil, nil
 	}
-	return agent.AssistantMessage(narrative, nil), nil
+	return agentschema.AssistantMessage(narrative, nil), nil
 }
 
-func (c *Conversation) commitTurnDraft(ctx context.Context, draft interactive.TurnDraft, result *agent.ToolResult) error {
+func (c *Conversation) commitTurnDraft(ctx context.Context, draft interactive.TurnDraft, result *agentschema.ToolResult) error {
 	if draft.Identity.CommandID == "" {
 		return errors.New("Game draft acceptance requires a bound Agent cycle")
 	}
 	if c.draftCommit != nil {
 		return c.draftCommit(ctx, draft, result)
 	}
-	return agent.CommitProductAcceptance(ctx, result, func(checkpoint agent.CanonicalCheckpoint) error {
+	return agentcanonical.CommitProductAcceptance(ctx, result, func(checkpoint agentcanonical.CanonicalCheckpoint) error {
 		return c.store.SaveTurnDraft(c.storyID, c.branchID, draft, checkpoint)
 	})
 }
 
-func turnSubmissionToolResult(receipt interactive.TurnSubmissionReceipt) (*agent.ToolResult, error) {
+func turnSubmissionToolResult(receipt interactive.TurnSubmissionReceipt) (*agentschema.ToolResult, error) {
 	data, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	result := agent.TextToolResult(string(data))
+	result := agentschema.TextToolResult(string(data))
 	result.Details = data
 	return &result, nil
 }
 
-func ruleResolutionToolResult(resolution interactive.RuleResolution) (*agent.ToolResult, error) {
+func ruleResolutionToolResult(resolution interactive.RuleResolution) (*agentschema.ToolResult, error) {
 	model, err := json.MarshalIndent(resolution.ModelToolOutput(), "", "  ")
 	if err != nil {
 		return nil, err
@@ -161,5 +168,5 @@ func ruleResolutionToolResult(resolution interactive.RuleResolution) (*agent.Too
 	if err != nil {
 		return nil, err
 	}
-	return &agent.ToolResult{ModelContent: string(model), DisplayContent: string(display), Details: display, Status: agent.ToolResultSuccess}, nil
+	return &agentschema.ToolResult{ModelContent: string(model), DisplayContent: string(display), Details: display, Status: agentschema.ToolResultSuccess}, nil
 }

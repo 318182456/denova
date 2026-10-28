@@ -2,16 +2,28 @@ package interactiveapp
 
 import (
 	"context"
-	agentrun "denova/internal/agents/run"
 	"fmt"
 
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
 	"denova/internal/interactive"
 
-	agent "github.com/alfredxw/denova/agent"
+	agenthistory "github.com/alfredxw/denova/agent/context/history"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
-func (c *Conversation) CanonicalHistoryHead(ctx context.Context) (agent.CanonicalHistoryHead, error) {
+func (c *Conversation) ReadCanonicalWindow(ctx context.Context, count int, archive *agenthistory.HistoryArchive) ([]*agentschema.Message, error) {
+	storyContext, err := c.storyContextForCycle()
+	if err != nil {
+		return nil, err
+	}
+	snapshot := storyContext.Snapshot
+	snapshot.TurnCount = SnapshotTurnCount(snapshot)
+	return c.store.ReadCanonicalWindow(ctx, c.storyID, snapshot, count, archive)
+}
+
+func (c *Conversation) CanonicalHistoryHead(ctx context.Context) (agentcanonical.CanonicalHistoryHead, error) {
 	head, err := c.store.CanonicalHistoryHead(ctx, c.storyID, c.branchID)
 	if target := c.regenerateTargetSnapshot(); target != "" {
 		// Regeneration reads the target's parent instead of the current branch.
@@ -22,7 +34,7 @@ func (c *Conversation) CanonicalHistoryHead(ctx context.Context) (agent.Canonica
 
 // CanonicalMessages projects the exact Story branch model history. Story JSONL
 // is the sole durable conversation lane, including Agent's bounded checkpoints.
-func (c *Conversation) CanonicalMessages(ctx context.Context) ([]*agent.Message, error) {
+func (c *Conversation) CanonicalMessages(ctx context.Context) ([]*agentschema.Message, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("interactive canonical transcript is unavailable")
 	}
@@ -38,7 +50,7 @@ func (c *Conversation) CanonicalMessages(ctx context.Context) ([]*agent.Message,
 	return c.canonicalMessagesForSnapshot(storyContext.Snapshot)
 }
 
-func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapshot) ([]*agent.Message, error) {
+func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapshot) ([]*agentschema.Message, error) {
 	turnCount := SnapshotTurnCount(snapshot)
 	history, err := c.store.ReadModelHistory(c.storyID, interactive.StoryModelHistoryQuery{
 		BranchID: snapshot.BranchID, StartTurn: 0, EndTurn: turnCount,
@@ -51,8 +63,8 @@ func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapsho
 	projection, err := buildModelContextProjection(
 		history, nil, snapshot,
 		canonicalToolContextPolicy(c.ToolResultContextPolicy()), agentrun.CycleIdentity{},
-		func(input interactive.PlayerInputAcceptedEvent) *agent.Message {
-			return agent.UserMessageWithAttachments(input.Text, input.Attachments)
+		func(input interactive.PlayerInputAcceptedEvent) *agentschema.Message {
+			return agentschema.UserMessageWithAttachments(input.Text, input.Attachments)
 		},
 	)
 	if err != nil {

@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
 )
 
 func TestNativePlanObservesConfirmedTasksAndIgnoresFailedUpdates(t *testing.T) {
@@ -23,7 +24,7 @@ func TestNativePlanObservesConfirmedTasksAndIgnoresFailedUpdates(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := []agent.TodoItem{{ID: "42", Text: "Verify", Status: agent.TodoPending}}
+	want := []agentevent.TodoItem{{ID: "42", Text: "Verify", Status: agentevent.TodoPending}}
 	if !reflect.DeepEqual(output.plan, want) || len(host.calls) != 0 {
 		t.Fatalf("plan=%+v calls=%v", output.plan, host.calls)
 	}
@@ -34,7 +35,7 @@ func TestNativePlanObservesConfirmedTasksAndIgnoresFailedUpdates(t *testing.T) {
 	if err := resumed.observePlan(host, call, json.RawMessage(`{"success":true,"updatedFields":["status"]}`)); err != nil {
 		t.Fatal(err)
 	}
-	want[0].Status = agent.TodoCompleted
+	want[0].Status = agentevent.TodoCompleted
 	if !reflect.DeepEqual(resumed.plan, want) {
 		t.Fatalf("unconfirmed mutation: %+v", resumed.plan)
 	}

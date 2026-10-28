@@ -17,10 +17,14 @@ import (
 	"testing"
 
 	"denova/internal/agents/toolartifact"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-	"github.com/alfredxw/denova/agent/toolresult"
-	agenttools "github.com/alfredxw/denova/agent/tools"
+
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
+	toolresult "github.com/alfredxw/denova/agent/tool/result"
 )
 
 func TestReadImagesCaptureImmutableCopiesAcrossFormats(t *testing.T) {
@@ -51,7 +55,7 @@ func TestReadImagesCaptureImmutableCopiesAcrossFormats(t *testing.T) {
 				t.Fatal(err)
 			}
 			definition, ctx := imageReadDefinition(t, workspaceRoot, stateRoot)
-			ctx = agent.ContextWithToolCall(ctx, "image-call", "read")
+			ctx = agentexecution.ContextWithToolCall(ctx, "image-call", "read")
 			result, err := definition.Tool.Run(ctx, `{"path":"reference"}`)
 			if err != nil {
 				t.Fatal(err)
@@ -71,18 +75,18 @@ func TestReadImagesCaptureImmutableCopiesAcrossFormats(t *testing.T) {
 			if err := os.Remove(source); err != nil {
 				t.Fatal(err)
 			}
-			original, err := agent.ReadAttachmentImage(attachment)
+			original, err := agentschema.ReadAttachmentImage(attachment)
 			if err != nil || !bytes.Equal(original, data.Bytes()) {
 				t.Fatalf("source deletion changed captured pixels: %v", err)
 			}
-			processed, err := toolresult.Standard(toolresult.Policy{MaxBytes: 512}).Process(ctx, agent.ToolResultProcessRequest{
+			processed, err := toolresult.Standard(toolresult.Policy{MaxBytes: 512}).Process(ctx, toolresult.ToolResultProcessRequest{
 				ToolName: "read", Arguments: `{"path":"reference"}`, ProviderCallID: "image-call", BatchSize: 1,
-				Definition: agent.ToolDefinitionSnapshot{Descriptor: definition.Descriptor}, Result: result,
+				Definition: agenttool.ToolDefinitionSnapshot{Descriptor: definition.Descriptor}, Result: result,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			message := agent.ToolMessage(processed, "image-call", agent.WithToolName("read"))
+			message := agentschema.ToolMessage(processed, "image-call", agentschema.WithToolName("read"))
 			if !reflect.DeepEqual(message.Attachments, result.Attachments) || !reflect.DeepEqual(message.EffectiveToolResult().Attachments, result.Attachments) {
 				t.Fatal("tool projection dropped the native image")
 			}
@@ -93,22 +97,22 @@ func TestReadImagesCaptureImmutableCopiesAcrossFormats(t *testing.T) {
 			if bytes.Contains(encoded, []byte(stateRoot)) || bytes.Contains(encoded, []byte("base64")) {
 				t.Fatal("host paths or binary data entered the journal")
 			}
-			var restored agent.Message
+			var restored agentschema.Message
 			if err := json.Unmarshal(encoded, &restored); err != nil {
 				t.Fatal(err)
 			}
 			if restored.Attachments[0].RuntimePath != "" || restored.Attachments[0].Path != attachment.Path {
 				t.Fatal("image journal round trip changed portable identity")
 			}
-			estimator := agent.InputEstimator{ImageTokens: func(int, int) int { return 123 }}
-			size, err := estimator.Estimate([]*agent.Message{message, message.Clone()}, nil)
-			if err != nil || size.Tokens != agent.EstimateRequestTextTokens([]*agent.Message{message, message.Clone()}, nil)+246 || providers.NativeImageCount([]*agent.Message{message, message.Clone()}) != 2 {
+			estimator := agentmodel.InputEstimator{ImageTokens: func(int, int) int { return 123 }}
+			size, err := estimator.Estimate([]*agentschema.Message{message, message.Clone()}, nil)
+			if err != nil || size.Tokens != agentmodel.EstimateRequestTextTokens([]*agentschema.Message{message, message.Clone()}, nil)+246 || providers.NativeImageCount([]*agentschema.Message{message, message.Clone()}) != 2 {
 				t.Fatalf("repeated tool images were not included in visual accounting: %+v %v", size, err)
 			}
 			if err := os.WriteFile(attachment.RuntimePath, []byte("changed"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := agent.ReadAttachmentImage(attachment); err == nil {
+			if _, err := agentschema.ReadAttachmentImage(attachment); err == nil {
 				t.Fatal("snapshot corruption was silently accepted")
 			}
 		})
@@ -155,7 +159,7 @@ func TestReadImageFailuresDoNotPublishSnapshots(t *testing.T) {
 	}
 }
 
-func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string) (agent.ToolDefinition, context.Context) {
+func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string, maxBytes ...int) (agenttool.ToolDefinition, context.Context) {
 	t.Helper()
 	workspace, err := agenttools.OpenWorkspaceWithOptions(agenttools.WorkspaceOptions{Root: workspaceRoot})
 	if err != nil {
@@ -165,7 +169,11 @@ func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string) (agent.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition, err := agenttools.Read([]agenttools.ReadAdapter{adapter}, agenttools.WithMaxResultBytes(256))
+	limit := 256
+	if len(maxBytes) > 0 {
+		limit = maxBytes[0]
+	}
+	definition, err := agenttools.Read([]agenttools.ReadAdapter{adapter}, agenttools.WithMaxResultBytes(limit))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,5 +181,5 @@ func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string) (agent.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	return definition, agent.ContextWithToolArtifactBackend(t.Context(), store)
+	return definition, agenttool.ContextWithToolArtifactBackend(t.Context(), store)
 }

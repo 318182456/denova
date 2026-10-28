@@ -6,16 +6,17 @@ import (
 	"strings"
 
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func userInput(input external.Input) ([]map[string]any, error) {
 	content := []map[string]any{{"type": "text", "text": input.Text, "text_elements": []any{}}}
 	for _, attachment := range input.Attachments {
-		if !agent.IsNativeImageMediaType(attachment.MediaType) {
+		if !agentschema.IsNativeImageMediaType(attachment.MediaType) {
 			continue
 		}
-		url, err := agent.AttachmentDataURL(attachment)
+		url, err := agentschema.AttachmentDataURL(attachment)
 		if err != nil {
 			return nil, err
 		}

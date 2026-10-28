@@ -16,8 +16,10 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
 	"denova/internal/i18n"
-	agent "github.com/alfredxw/denova/agent"
-	publicresult "github.com/alfredxw/denova/agent/toolresult"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publicresult "github.com/alfredxw/denova/agent/tool/result"
 )
 
 type externalGameCall struct {
@@ -66,7 +68,7 @@ func (turn *ExternalTurn) CallTool(ctx context.Context, call external.ToolCall) 
 	return result, err
 }
 
-func (turn *ExternalTurn) invokeTool(ctx context.Context, call external.ToolCall, definition agent.ToolDefinition) (external.ToolResult, error) {
+func (turn *ExternalTurn) invokeTool(ctx context.Context, call external.ToolCall, definition agenttool.ToolDefinition) (external.ToolResult, error) {
 	c := turn.config.Conversation
 	if call.Name == "submit_interactive_turn" && turn.segment != "" {
 		if err := c.AcceptNarrativeCandidate(ctx, turn.segment); err != nil {
@@ -91,7 +93,7 @@ func (turn *ExternalTurn) invokeTool(ctx context.Context, call external.ToolCall
 	stop := context.AfterFunc(turn.ctx, cancel)
 	defer stop()
 	defer cancel()
-	ctx = agent.ContextWithToolArtifactBackend(ctx, c.ToolArtifactStore())
+	ctx = agenttool.ContextWithToolArtifactBackend(ctx, c.ToolArtifactStore())
 	resultLimit := turn.config.Config.AgentToolResultLimitKB
 	if resultLimit <= 0 {
 		resultLimit = config.DefaultAgentToolResultLimitKB
@@ -104,19 +106,19 @@ func (turn *ExternalTurn) invokeTool(ctx context.Context, call external.ToolCall
 		return external.ToolResult{}, err
 	}
 	turn.send(agentrun.Event{Type: "tool_call", Data: map[string]any{"id": executionID, "name": call.Name, "args": string(call.Arguments), "tool_presentation": definition.Descriptor.Presentation}})
-	var result agent.ToolResult
+	var result agentschema.ToolResult
 	var callErr error
-	files := append([]agent.Attachment(nil), turn.config.Request.AttachedFiles...)
+	files := append([]agentschema.Attachment(nil), turn.config.Request.AttachedFiles...)
 	for _, guidance := range turn.config.Guidance {
 		files = append(files, guidance.AttachedFiles...)
 	}
 	if reason := external.HostPermissionError(*turn.config.Config.ActiveAgentRuntime, turn.config.Config.ProjectID, c.workspace, call, definition.Descriptor, files); reason != "" {
-		result = agent.ToolErrorResult(reason, i18n.New(turn.config.Config.Language).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
+		result = agenttool.ToolErrorResult(reason, i18n.New(turn.config.Config.Language).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
 	} else {
 		outcome, err := toolruntime.InvokeHostTool(ctx, policy, identity, definition, string(call.Arguments))
 		result, callErr = outcome.Result, err
 		if callErr != nil && outcome.Invocation == toolruntime.HostToolNotInvoked {
-			result = agent.ToolErrorResult("Tool execution did not start. No tool side effects occurred.", i18n.New(turn.config.Config.Language).T("agentRuntime.toolNotExecuted"))
+			result = agenttool.ToolErrorResult("Tool execution did not start. No tool side effects occurred.", i18n.New(turn.config.Config.Language).T("agentRuntime.toolNotExecuted"))
 		}
 	}
 	if callErr != nil && result.ModelContent == "" {
@@ -126,23 +128,23 @@ func (turn *ExternalTurn) invokeTool(ctx context.Context, call external.ToolCall
 	if err != nil {
 		return external.ToolResult{}, err
 	}
-	processed, err := publicresult.Standard(publicresult.Policy{MaxBytes: policy.ToolResultMaxBytes}).Process(context.WithoutCancel(ctx), agent.ToolResultProcessRequest{
+	processed, err := publicresult.Standard(publicresult.Policy{MaxBytes: policy.ToolResultMaxBytes}).Process(context.WithoutCancel(ctx), publicresult.ToolResultProcessRequest{
 		ToolName: call.Name, Arguments: string(call.Arguments), ExecutionID: executionID, ProviderCallID: call.ID,
-		Definition: agent.ToolDefinitionSnapshot{Info: info, Descriptor: definition.Descriptor}, Result: result})
+		Definition: agenttool.ToolDefinitionSnapshot{Info: info, Descriptor: definition.Descriptor}, Result: result})
 	if err != nil {
 		return external.ToolResult{}, err
 	}
-	processed, err = agent.NormalizeToolResult(processed, definition.Descriptor)
+	processed, err = agenttool.NormalizeToolResult(processed, definition.Descriptor)
 	if err != nil {
 		return external.ToolResult{}, err
 	}
-	invocation := agent.AssistantMessage(turn.segment, []agent.ToolCall{{ID: executionID, Type: "function", Function: agent.FunctionCall{Name: call.Name, Arguments: string(call.Arguments)}}})
-	observation := agent.ToolMessage(processed, executionID)
+	invocation := agentschema.AssistantMessage(turn.segment, []agentschema.ToolCall{{ID: executionID, Type: "function", Function: agentschema.FunctionCall{Name: call.Name, Arguments: string(call.Arguments)}}})
+	observation := agentschema.ToolMessage(processed, executionID)
 	observation.ToolName = call.Name
 	if err := c.AppendContextMessages(invocation, observation); err != nil {
 		return external.ToolResult{}, err
 	}
-	turn.observations = append(turn.observations, externalGameMessages([]*agent.Message{invocation, observation})...)
+	turn.observations = append(turn.observations, externalGameMessages([]*agentschema.Message{invocation, observation})...)
 	turn.segment = ""
 	if err := c.UpdateDisplayToolResult(executionID, call.Name, string(processed.Status), processed.DisplayContent, &definition.Descriptor.Presentation); err != nil {
 		return external.ToolResult{}, err

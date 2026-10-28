@@ -59,7 +59,10 @@ for (const theme of ['dark', 'light']) {
     await inbox.getByRole('button', { name: /Denova v0.5.0/ }).click()
     await expect(inbox.getByRole('heading', { name: '更新正文', exact: true })).toBeVisible()
     const contentTop = (await inbox.getByRole('heading', { name: '更新正文', exact: true }).boundingBox())!.y
-    const supportTop = (await inbox.getByRole('region', { name: '给 Denova 点个 Star', exact: true }).boundingBox())!.y
+    const support = inbox.getByRole('region', { name: '支持 Denova', exact: true })
+    await expect(support).toHaveCount(1)
+    await expect(support.getByRole('link', { name: '去 GitHub 点 Star', exact: true })).toHaveAttribute('href', 'https://github.com/alfredxw/denova')
+    const supportTop = (await support.boundingBox())!.y
     expect(supportTop).toBeLessThan(contentTop)
     const donation = inbox.locator('img[src="/donate.png"]')
     await expect(donation).toBeVisible()
@@ -67,6 +70,21 @@ for (const theme of ['dark', 'light']) {
     expect(donationBox.y + donationBox.height).toBeLessThan(contentTop)
     expect(await inbox.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath(`inbox-detail-${theme}.png`) })
+    const previewTrigger = support.getByRole('button', { name: '放大查看二维码', exact: true })
+    await expect(support.getByText('放大查看二维码', { exact: true })).toHaveCount(0)
+    const supportDescription = await support.locator('p').innerText()
+    await previewTrigger.click()
+    const preview = page.getByRole('dialog', { name: '支持 Denova', exact: true })
+    await expect(preview).toBeVisible()
+    await expect(preview).toContainText(supportDescription)
+    await expect(preview.getByRole('img', { name: 'Denova 赞助二维码', exact: true })).toBeVisible()
+    const previewImageBox = (await preview.getByRole('img').boundingBox())!
+    expect(previewImageBox.width).toBeGreaterThan(donationBox.width)
+    expect(await preview.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await page.screenshot({ path: test.info().outputPath(`inbox-donation-${theme}.png`) })
+    await page.keyboard.press('Escape')
+    await expect(preview).toBeHidden()
+    await expect(previewTrigger).toBeFocused()
     // Desktop keeps side-by-side reading; the navigation shell changes at this breakpoint.
     await inbox.getByRole('button', { name: '关闭', exact: true }).click()
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -74,6 +92,13 @@ for (const theme of ['dark', 'light']) {
     await expect(inbox.getByRole('tablist')).toBeVisible()
     await expect(inbox.locator('article')).toBeVisible()
     await expect(inbox.getByRole('button', { name: '返回消息列表', exact: true })).toBeHidden()
+    await inbox.getByRole('button', { name: /Denova v0.5.0/ }).click()
+    await previewTrigger.click()
+    await expect(preview).toBeVisible()
+    expect((await preview.boundingBox())!.width).toBeLessThanOrEqual(448)
+    await preview.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect(preview).toBeHidden()
+    await expect(previewTrigger).toBeFocused()
     await inbox.getByRole('button', { name: '关闭', exact: true }).click()
   })
 }
@@ -95,7 +120,7 @@ test('mobile Writing exposes touch tab actions and compact editing tools without
   await expect(strip.getByRole('tab')).toHaveCount(2)
   await expect(strip.getByRole('button')).toHaveCount(1)
   expect((await strip.boundingBox())!.height).toBeLessThanOrEqual(48.1)
-  expect((await page.locator('.nova-mobile-editor-toolbar').boundingBox())!.height).toBeLessThanOrEqual(44.1)
+  expect((await page.locator('.nova-mobile-editor-toolbar:visible').boundingBox())!.height).toBeLessThanOrEqual(44.1)
   for (const name of ['固定标签页', '取消固定', '向右移动']) {
     await strip.getByRole('button', { name: '当前标签页操作', exact: true }).click()
     await page.getByRole('menuitem', { name, exact: true }).click()

@@ -19,7 +19,10 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+
+	"github.com/alfredxw/denova/agent"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type gameAdapterFunc func(context.Context, external.Input, external.Host) (external.Result, error)
@@ -50,7 +53,7 @@ func externalGameForTest(t *testing.T, store *interactive.Store, story string, c
 	}
 	assembly, err := agents.BuildExternalGameAssembly(t.Context(), &cfg, nil, prompts.InteractiveStorySystemInstructionInput{}, agents.AgentHostCapabilities{Interactive: true}, agentinteractive.InteractiveStoryToolContext{
 		Store: store, StoryID: story, BranchID: "main", PrepareTurn: c.PrepareInteractiveTurn, SubmitTurnResult: c.SubmitTurnResult,
-		TurnResultReady: c.InteractiveNarrativeReady, LoadNarrativeCandidate: c.LoadNarrativeCandidate, AcceptNarrativeCandidate: c.AcceptNarrativeCandidate,
+		TurnResultReady: c.InteractiveNarrativeReady, LoadNarrativeCandidate: c.LoadAgentNarrativeCandidate,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +85,7 @@ func TestGameSwitchesNativeCodexClaudeNativeWithoutRewritingHistory(t *testing.T
 		c := NewConversation(store, t.TempDir(), cfg.Workspace, story, "main", command, 800, &cfg)
 		model := &publicGameHistoryModel{narrative: text}
 		op, err := runtime.Start(t.Context(), agentexecution.StartRequest{Cycle: agentexecution.Cycle{
-			Definition:   agent.Definition{Key: "test.native", Name: "game", Model: model, ModelIdentity: agent.CapabilityIdentity{Kind: "model.test", Version: 1}, Middlewares: []agent.Middleware{gameSubmissionForTest(t, c, command, text)}},
+			Definition:   agent.Definition{Key: "test.native", Name: "game", Model: model, ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.test", Version: 1}, Middlewares: []agentmiddleware.Middleware{gameSubmissionForTest(t, c, command, text)}},
 			Conversation: c, Request: agentchat.ChatRequest{CommandID: command, Message: command}, Options: agentrun.Options{AgentKind: config.AgentKindInteractiveStory, ProjectID: cfg.ProjectID, Workspace: cfg.Workspace, StoryID: story, BranchID: "main", Mode: "interactive"},
 		}})
 		if err != nil {

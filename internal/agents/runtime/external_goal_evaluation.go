@@ -6,14 +6,15 @@ import (
 	"errors"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentgoal "github.com/alfredxw/denova/agent/engine/goal"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // External Goal evaluation uses a provider's read-only session fork. Native
 // evaluation belongs to its own runtime and never enters this adapter.
-func evaluateExternalGoal(ctx context.Context, fork func(context.Context, string) (*agent.Message, error)) (agent.GoalAfterRunDecision, error) {
+func evaluateExternalGoal(ctx context.Context, fork func(context.Context, string) (*agentschema.Message, error)) (agentgoal.GoalAfterRunDecision, error) {
 	response, err := fork(ctx, goalEvaluationPrompt)
-	var decision agent.GoalAfterRunDecision
+	var decision agentgoal.GoalAfterRunDecision
 	if response != nil && response.ResponseMeta != nil {
 		decision.Usage, decision.FinishReason = response.ResponseMeta.Usage, response.ResponseMeta.FinishReason
 	}
@@ -38,19 +39,19 @@ func evaluateExternalGoal(ctx context.Context, fork func(context.Context, string
 	}
 	switch strings.ToLower(strings.TrimSpace(payload.Verdict)) {
 	case "complete", "completed":
-		decision.Verdict = agent.GoalVerdictComplete
+		decision.Verdict = agentgoal.GoalVerdictComplete
 	case "block", "blocked":
-		decision.Verdict = agent.GoalVerdictBlocked
+		decision.Verdict = agentgoal.GoalVerdictBlocked
 	case "continue", "incomplete", "not_complete":
-		decision.Verdict = agent.GoalVerdictContinue
+		decision.Verdict = agentgoal.GoalVerdictContinue
 	default:
 		return decision, errors.New("invalid Goal evaluation verdict")
 	}
 	decision.Reason = strings.TrimSpace(payload.Reason)
-	if decision.Verdict == agent.GoalVerdictContinue {
+	if decision.Verdict == agentgoal.GoalVerdictContinue {
 		decision.Input.Text = strings.TrimSpace(payload.Next)
 	}
-	if decision.Reason == "" || len(decision.Reason) > 64<<10 || (decision.Verdict == agent.GoalVerdictContinue && (decision.Input.Text == "" || len(decision.Input.Text) > 64<<10)) {
+	if decision.Reason == "" || len(decision.Reason) > 64<<10 || (decision.Verdict == agentgoal.GoalVerdictContinue && (decision.Input.Text == "" || len(decision.Input.Text) > 64<<10)) {
 		return decision, errors.New("Goal evaluation fields are empty or too large")
 	}
 	return decision, nil

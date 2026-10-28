@@ -10,8 +10,9 @@ import (
 	"denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
-	publicgoal "github.com/alfredxw/denova/agent/goal"
+
+	publicgoal "github.com/alfredxw/denova/agent/engine/goal"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestSessionGoalContractAcrossRuntimeSelections(t *testing.T) {
@@ -42,15 +43,15 @@ func TestSessionGoalContractAcrossRuntimeSelections(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			goal, err := bound.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalSet, Objective: "Finish and verify"})
+			goal, err := bound.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalSet, Objective: "Finish and verify"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			paused, err := bound.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalPause, ExpectedRevision: goal.Revision})
-			if err != nil || paused.Status != agent.GoalPaused {
+			paused, err := bound.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalPause, ExpectedRevision: goal.Revision})
+			if err != nil || paused.Status != publicgoal.GoalPaused {
 				t.Fatalf("pause=%+v err=%v", paused, err)
 			}
-			if _, err := bound.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalResume, ExpectedRevision: goal.Revision}); !errors.Is(err, publicgoal.ErrRevisionConflict) {
+			if _, err := bound.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalResume, ExpectedRevision: goal.Revision}); !errors.Is(err, publicgoal.ErrRevisionConflict) {
 				t.Fatalf("stale update accepted: %v", err)
 			}
 			got, present, err := bound.Goal(t.Context())

@@ -20,7 +20,7 @@ skills_dir = "./skills"
 # Only startup config and DENOVA_DIR select the data root; user/Project settings do not.
 # denova_dir = "./.denova"
 
-# Optional port overrides. Defaults are backend 8080 and frontend 5173;
+# Optional port overrides. Defaults are backend 7789 and frontend 7788;
 # user settings and environment overrides can select other ports.
 # backend_port = 8111
 # frontend_port = 5112
@@ -58,7 +58,7 @@ default_image_api_profile_id = "default"
 #
 # 图像模型。内置 OpenAI、xAI/Grok、ComfyUI、火山 Seedream、Google Gemini；
 # 自定义端点可选择任一已支持协议。可配置多个 profile。
-# 生成结果会保存到当前工作区 assets/image/generated/。
+# 生成结果会保存到当前工作区 assets/writing/。
 
 [[image_api_profiles]]
 id = "default"

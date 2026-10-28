@@ -6,18 +6,20 @@ import (
 	"testing"
 
 	"denova/config"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 type hostInvocationTool struct {
-	run func(context.Context) (agent.ToolResult, error)
+	run func(context.Context) (agentschema.ToolResult, error)
 }
 
-func (hostInvocationTool) Info(context.Context) (*agent.ToolInfo, error) {
-	return &agent.ToolInfo{Name: "write"}, nil
+func (hostInvocationTool) Info(context.Context) (*agentschema.ToolInfo, error) {
+	return &agentschema.ToolInfo{Name: "write"}, nil
 }
 
-func (tool hostInvocationTool) Run(ctx context.Context, _ string, _ ...agent.ToolOption) (agent.ToolResult, error) {
+func (tool hostInvocationTool) Run(ctx context.Context, _ string, _ ...agenttool.ToolOption) (agentschema.ToolResult, error) {
 	return tool.run(ctx)
 }
 
@@ -27,15 +29,15 @@ func TestHostToolInvocationTracksRunEntry(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			called := false
-			tool := hostInvocationTool{run: func(context.Context) (agent.ToolResult, error) {
+			tool := hostInvocationTool{run: func(context.Context) (agentschema.ToolResult, error) {
 				called = true
 				if scenario == "cancel_in_run" {
 					cancel()
-					return agent.ToolResult{}, context.Canceled
+					return agentschema.ToolResult{}, context.Canceled
 				}
-				return agent.TextToolResult("done"), nil
+				return agentschema.TextToolResult("done"), nil
 			}}
-			definition := agent.ToolDefinition{Tool: tool, Descriptor: testToolContext("write", "").Definition.Descriptor}
+			definition := agenttool.ToolDefinition{Tool: tool, Descriptor: testToolContext("write", "").Definition.Descriptor}
 			policy := OrchestratorConfig{Workspace: t.TempDir(), ToolSettings: config.ResolvedAgentToolSettings{config.AgentToolWorkspaceWrite: scenario != "policy_block"}, EnforceToolSettings: true}
 			identity := HostToolIdentity{OperationID: "operation", ExecutionID: "execution", SessionID: "session"}
 			if scenario == "cancel_before_run" {
@@ -62,11 +64,11 @@ func TestHostToolInvocationTracksRunEntry(t *testing.T) {
 					t.Fatal("invalid identity was accepted")
 				}
 			case "policy_block":
-				if err != nil || outcome.Result.Status != agent.ToolResultBlocked {
+				if err != nil || outcome.Result.Status != agentschema.ToolResultBlocked {
 					t.Fatalf("policy result=%+v err=%v", outcome.Result, err)
 				}
 			case "success":
-				if err != nil || outcome.Result.Status != agent.ToolResultSuccess || outcome.Result.ModelContent != "done" {
+				if err != nil || outcome.Result.Status != agentschema.ToolResultSuccess || outcome.Result.ModelContent != "done" {
 					t.Fatalf("success result=%+v err=%v", outcome.Result, err)
 				}
 			}

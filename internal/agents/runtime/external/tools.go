@@ -16,13 +16,16 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
 	"denova/internal/i18n"
-	agent "github.com/alfredxw/denova/agent"
-	publicresult "github.com/alfredxw/denova/agent/toolresult"
+
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publicresult "github.com/alfredxw/denova/agent/tool/result"
 )
 
 type preparedTool struct {
-	definition agent.ToolDefinition
-	snapshot   agent.ToolDefinitionSnapshot
+	definition agenttool.ToolDefinition
+	snapshot   agenttool.ToolDefinitionSnapshot
 }
 
 type toolAttempt struct {
@@ -32,7 +35,7 @@ type toolAttempt struct {
 	err    error
 }
 
-func prepareTools(ctx context.Context, definitions []agent.ToolDefinition) (map[string]preparedTool, []Tool, error) {
+func prepareTools(ctx context.Context, definitions []agenttool.ToolDefinition) (map[string]preparedTool, []Tool, error) {
 	prepared := make(map[string]preparedTool, len(definitions))
 	wire := make([]Tool, 0, len(definitions))
 	for _, definition := range definitions {
@@ -54,7 +57,7 @@ func prepareTools(ctx context.Context, definitions []agent.ToolDefinition) (map[
 		if err != nil {
 			return nil, nil, err
 		}
-		prepared[info.Name] = preparedTool{definition: definition, snapshot: agent.ToolDefinitionSnapshot{Info: info, Descriptor: definition.Descriptor}}
+		prepared[info.Name] = preparedTool{definition: definition, snapshot: agenttool.ToolDefinitionSnapshot{Info: info, Descriptor: definition.Descriptor}}
 		wire = append(wire, Tool{Name: info.Name, Description: info.Desc, Schema: body})
 	}
 	if _, exists := prepared["ask"]; !exists {
@@ -121,7 +124,7 @@ func (operation *Operation) CallTool(ctx context.Context, call ToolCall) (ToolRe
 func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool preparedTool) (ToolResult, error) {
 	digest := sha256.Sum256([]byte(call.ID))
 	executionID := operation.id + "-" + hex.EncodeToString(digest[:])
-	var question agent.InteractionRequest
+	var question agentinteraction.InteractionRequest
 	if call.Name == "ask" {
 		var err error
 		question, err = QuestionRequest(executionID, call.Arguments)
@@ -131,11 +134,11 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 	}
 	recovery := externaljournal.NonReplayable
 	switch tool.definition.Descriptor.Recovery {
-	case agent.ToolRecoveryReadOnly:
+	case agenttool.ToolRecoveryReadOnly:
 		recovery = externaljournal.ReadOnly
-	case agent.ToolRecoveryReconcilable:
+	case agenttool.ToolRecoveryReconcilable:
 		recovery = externaljournal.ReceiptVerifiable
-	case agent.ToolRecoveryIdempotent, agent.ToolRecoveryNonIdempotent:
+	case agenttool.ToolRecoveryIdempotent, agenttool.ToolRecoveryNonIdempotent:
 		// Idempotency without a durable domain receipt is not crash recovery.
 	}
 	if err := operation.transition(ctx, externaljournal.ToolStarted, externaljournal.StartedTool{ExecutionID: executionID, AgentKind: operation.request.ToolPolicy.AgentKind, Tool: call.Name, Arguments: call.Arguments, Recovery: recovery}); err != nil {
@@ -158,38 +161,38 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 		return ToolResult{Text: string(body), Success: true}, nil
 	}
 	operation.send(agentrun.Event{Type: "tool_call", Data: map[string]any{"id": executionID, "name": call.Name, "args": string(call.Arguments), "run_id": operation.id, "tool_presentation": tool.definition.Descriptor.Presentation}})
-	ctx = agent.ContextWithToolArtifactBackend(ctx, operation.request.Session.ToolArtifactStore())
+	ctx = agenttool.ContextWithToolArtifactBackend(ctx, operation.request.Session.ToolArtifactStore())
 	// Review groups must refer to the same run as the visible and persisted
 	// output. The controller's logical operation can span several such runs.
 	identity := toolruntime.HostToolIdentity{OperationID: operation.id, ExecutionID: executionID, ProviderCallID: call.ID, SessionID: operation.request.Session.ID, ReviewThreadID: operation.request.ReviewThreadID}
-	var result agent.ToolResult
+	var result agentschema.ToolResult
 	var callErr error
 	var invocation toolruntime.HostToolInvocation
 	if reason := operation.hostPermissionError(call, tool); reason != "" {
-		result = agent.ToolErrorResult(reason, i18n.New(operation.request.Locale).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
+		result = agenttool.ToolErrorResult(reason, i18n.New(operation.request.Locale).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
 	} else {
 		outcome, err := toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(call.Arguments))
 		result, invocation, callErr = outcome.Result, outcome.Invocation, err
 	}
 	if callErr != nil {
 		if invocation == toolruntime.HostToolNotInvoked {
-			result = agent.ToolErrorResult("Tool execution did not start. No tool side effects occurred.", i18n.New(operation.request.Locale).T("agentRuntime.toolNotExecuted"))
-		} else if tool.definition.Descriptor.MutationScope != agent.ToolMutationNone && len(result.Details) == 0 && len(result.Effects) == 0 {
+			result = agenttool.ToolErrorResult("Tool execution did not start. No tool side effects occurred.", i18n.New(operation.request.Locale).T("agentRuntime.toolNotExecuted"))
+		} else if tool.definition.Descriptor.MutationScope != agenttool.ToolMutationNone && len(result.Details) == 0 && len(result.Effects) == 0 {
 			// No receipt can establish whether this call changed the domain. Keep
 			// its start unresolved and interrupt the operation; never replay it.
 			return ToolResult{}, callErr
 		}
 		if result.ModelContent == "" {
-			result = agent.ToolErrorResult("Tool execution was interrupted.", "Tool execution was interrupted.")
+			result = agenttool.ToolErrorResult("Tool execution was interrupted.", "Tool execution was interrupted.")
 		}
 	}
 	settleCtx := context.WithoutCancel(ctx)
 	processor := publicresult.Standard(publicresult.Policy{MaxBytes: operation.request.ToolPolicy.ToolResultMaxBytes})
-	processed, processErr := processor.Process(settleCtx, agent.ToolResultProcessRequest{ToolName: call.Name, Arguments: string(call.Arguments), ExecutionID: executionID, ProviderCallID: call.ID, Definition: tool.snapshot, Result: result})
+	processed, processErr := processor.Process(settleCtx, publicresult.ToolResultProcessRequest{ToolName: call.Name, Arguments: string(call.Arguments), ExecutionID: executionID, ProviderCallID: call.ID, Definition: tool.snapshot, Result: result})
 	if processErr != nil {
 		return ToolResult{}, processErr
 	}
-	processed, err := agent.NormalizeToolResult(processed, tool.definition.Descriptor)
+	processed, err := agenttool.NormalizeToolResult(processed, tool.definition.Descriptor)
 	if err != nil {
 		return ToolResult{}, err
 	}

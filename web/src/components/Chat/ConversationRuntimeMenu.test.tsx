@@ -90,22 +90,26 @@ describe('ConversationRuntimeMenu', () => {
     await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: 'codex', codex: { profile_id: 'api', sandbox: 'read-only' } } }))
     expect(mocks.fetchEngineModels).not.toHaveBeenCalled()
   })
-  it('rejects an incompatible API profile even when the engine is ready', async () => {
+  it('falls back to the default model for an incompatible API profile when the engine is ready', async () => {
     mocks.fetchProjectSettings.mockResolvedValue({ effective: {
       agent_runtimes: { general: { codex: { profile_id: 'api' } } },
       model_profiles: [{ id: 'api', model: 'api-model', endpoint_id: 'endpoint' }],
       model_endpoints: [{ id: 'endpoint', protocol: 'anthropic-messages' }],
     } })
     mocks.fetchModelCatalog.mockResolvedValue({ providers: [], protocols: [] })
-    render(menu(controller()))
+    const config = controller()
+    render(menu(config))
     await openRuntime()
-    expect(screen.getByRole('menuitem', { name: 'Codex' })).toHaveAttribute('aria-disabled', 'true')
+    await user.click(screen.getByRole('menuitem', { name: 'Codex' }))
+    await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: 'codex', codex: { model: 'saved-model' } } }))
   })
-  it('rejects missing saved models instead of silently choosing another', async () => {
+  it('falls back to the default model when the saved model is missing', async () => {
     mocks.fetchProjectSettings.mockResolvedValue({ effective: { agent_runtimes: { general: { codex: { model: 'removed' } } } } })
-    render(menu(controller()))
+    const config = controller()
+    render(menu(config))
     await openRuntime()
-    expect(screen.getByRole('menuitem', { name: 'Codex' })).toHaveAttribute('aria-disabled', 'true')
+    await user.click(screen.getByRole('menuitem', { name: 'Codex' }))
+    await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: 'codex', codex: { model: 'saved-model' } } }))
   })
   it('preserves the session when availability changes before submission', async () => {
     const config = controller()

@@ -10,7 +10,8 @@ import (
 	"denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // AdmitExecution guards the final accept step against an engine change made
@@ -76,7 +77,7 @@ func (engines *Engines) validateEngineSwitch(ctx context.Context, native *execut
 			return ErrOperationActive
 		}
 		err = native.ReleaseIdleForEngineSwitch(ctx, candidate)
-		if errors.Is(err, agent.ErrSessionBusy) {
+		if errors.Is(err, agentschema.ErrSessionBusy) {
 			return ErrOperationActive
 		}
 		if err != nil && !errors.Is(err, execution.ErrRuntimeProjectionUnavailable) {

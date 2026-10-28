@@ -13,15 +13,17 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 type invalidHistoryConversation struct {
 	agentchat.Conversation
-	messages []*agent.Message
+	messages []*agentschema.Message
 }
 
-func (conversation invalidHistoryConversation) CanonicalMessages(context.Context) ([]*agent.Message, error) {
+func (conversation invalidHistoryConversation) CanonicalMessages(context.Context) ([]*agentschema.Message, error) {
 	return conversation.messages, nil
 }
 
@@ -54,23 +56,23 @@ func TestInvalidHistoryIsolatesAdmissionToSessionOrBranch(t *testing.T) {
 				options.SessionID = ""
 				options.StoryID, options.BranchID = "same-story", "broken-branch"
 			}
-			messages := make([]*agent.Message, 0, 397)
+			messages := make([]*agentschema.Message, 0, 397)
 			for range 394 {
-				messages = append(messages, agent.UserMessage("earlier history"))
+				messages = append(messages, agentschema.UserMessage("earlier history"))
 			}
 			messages = append(messages,
-				agent.AssistantMessage("", []agent.ToolCall{
-					{ID: "read-a", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}},
-					{ID: "read-b", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}},
+				agentschema.AssistantMessage("", []agentschema.ToolCall{
+					{ID: "read-a", Function: agentschema.FunctionCall{Name: "read", Arguments: `{}`}},
+					{ID: "read-b", Function: agentschema.FunctionCall{Name: "read", Arguments: `{}`}},
 				}),
-				agent.ToolMessage(agent.TextToolResult("result a"), "read-a"),
-				agent.UserMessage("continue"),
+				agentschema.ToolMessage(agentschema.TextToolResult("result a"), "read-a"),
+				agentschema.UserMessage("continue"),
 			)
 			original := clonePublicBackendMessages(messages)
 			cycle := Cycle{
 				Definition: agent.Definition{
 					Name: "root", Model: model,
-					ModelIdentity: agent.CapabilityIdentity{Kind: "model.history-isolation", Version: 1},
+					ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.history-isolation", Version: 1},
 				},
 				Conversation: invalidHistoryConversation{
 					Conversation: agentconversation.NewSessionConversationForAgent(broken, nil, kind),
@@ -80,12 +82,12 @@ func TestInvalidHistoryIsolatesAdmissionToSessionOrBranch(t *testing.T) {
 			}
 			for range 2 {
 				operation, err := runtime.Start(ctx, StartRequest{Cycle: cycle})
-				if operation != nil || !errors.Is(err, agent.ErrInvalidCanonicalMessages) ||
+				if operation != nil || !errors.Is(err, agentcanonical.ErrInvalidCanonicalMessages) ||
 					!strings.Contains(err.Error(), "message 396 splits an incomplete tool-result batch") {
 					t.Fatalf("invalid history admission operation=%v error=%v", operation, err)
 				}
 			}
-			if _, err := runtime.Inspect(ctx, cycle); !errors.Is(err, agent.ErrInvalidCanonicalMessages) {
+			if _, err := runtime.Inspect(ctx, cycle); !errors.Is(err, agentcanonical.ErrInvalidCanonicalMessages) {
 				t.Fatalf("invalid history inspection error=%v", err)
 			}
 			if !reflect.DeepEqual(messages, original) || len(model.inputs) != 0 ||

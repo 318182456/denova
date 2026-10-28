@@ -13,7 +13,9 @@ import (
 	"denova/internal/agents/toolruntime"
 	producttools "denova/internal/agents/tools"
 	workspacechange "denova/internal/workspace/change"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	sdktool "github.com/alfredxw/denova/agent/tool"
 )
 
 // Reconcile reads original domain receipts for abandoned operations. It never
@@ -129,7 +131,7 @@ func recoveredWrite(started externaljournal.StartedTool, change workspacechange.
 		ChangeGroupID: change.GroupID, ReviewThreadID: change.ReviewThreadID, ChangeSetID: change.ID,
 		BaseRevision: change.BaseRevision, Revision: change.Revision, ReviewStatus: change.ReviewStatus, ApplyState: change.ApplyState,
 		MutationReceiptSchema: workspacechange.ToolResultSchema,
-		Descriptor:            producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable),
+		Descriptor:            producttools.WorkspaceWriteDescriptor(sdktool.ToolSourceWrite, config.AgentToolWorkspaceWrite, sdktool.ToolRecoveryReconcilable),
 	})
 	if err != nil {
 		return externaljournal.FinishedTool{}, err
@@ -137,6 +139,6 @@ func recoveredWrite(started externaljournal.StartedTool, change workspacechange.
 	if !present {
 		return externaljournal.FinishedTool{}, fmt.Errorf("recovered %s receipt has no committed mutation", started.Tool)
 	}
-	receipt := &externaljournal.ToolReceipt{Details: json.RawMessage(body), Effects: []agent.Effect{effect}}
+	receipt := &externaljournal.ToolReceipt{Details: json.RawMessage(body), Effects: []agentschema.Effect{effect}}
 	return externaljournal.FinishedTool{ExecutionID: started.ExecutionID, Success: true, Result: workspacechange.ToolReceiptForModel(started.Tool, body), Receipt: receipt}, nil
 }

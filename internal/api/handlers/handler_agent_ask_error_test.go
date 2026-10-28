@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	"github.com/cloudwego/hertz/pkg/app"
 )
 
@@ -18,8 +18,8 @@ func TestAskResolutionDiagnosticsDistinguishInternalFailure(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"definition", fmt.Errorf("approval validation: %w", agent.ErrDefinitionMismatch), 409, "agent_runtime.definition_mismatch"},
-		{"invalid answer", fmt.Errorf("unknown approval choice: %w", agent.ErrInvalidInteractionResponse), 400, "agent_runtime.invalid_ask_answer"},
+		{"definition", fmt.Errorf("approval validation: %w", agentschema.ErrDefinitionMismatch), 409, "agent_runtime.definition_mismatch"},
+		{"invalid answer", fmt.Errorf("unknown approval choice: %w", agentschema.ErrInvalidInteractionResponse), 400, "agent_runtime.invalid_ask_answer"},
 		{"unexpected", errors.New("persist approval: disk full"), 500, "agent_runtime.ask_failed"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

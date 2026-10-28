@@ -1,9 +1,14 @@
 import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { readFileSync } from 'node:fs'
 import { runtimeRoot } from './e2e-paths.mjs'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
+import { loreCompletion, loreIndexCompletion, loreQueryCompletion } from './e2e-lore-fixture.mjs'
+import { comicEpisodeCompletion } from './e2e-comic-fixture.mjs'
+import { extensionImage, extensionOpening, extensionScene } from './e2e-extension-fixture.mjs'
 import { responsesRequest, responsesControl, captureNativeRequest, runtimeCompletion, writeCompletionFrame, finishCompletion } from './e2e-responses-fixture.mjs'
+import { geminiRequest, geminiControl, writeGeminiFrame, finishGemini, writeGeminiGenerated } from './e2e-gemini-fixture.mjs'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
@@ -253,8 +258,8 @@ function writeChatCompletion(response, frames) {
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   })
-  for (const frame of frames) writeCompletionFrame(response, frame)
-  finishCompletion(response)
+  for (const frame of frames) if (!writeGeminiFrame(response, frame)) writeCompletionFrame(response, frame)
+  if (!finishGemini(response)) finishCompletion(response)
 }
 
 async function writeGatedMultiAgentCompletion(response, child) {
@@ -286,6 +291,7 @@ function delay(milliseconds) {
 }
 
 function writeGeneratedCompletion(response, content) {
+  if (writeGeminiGenerated(response, content, writeJSON)) return
   writeJSON(response, 200, {
     id: 'denova-e2e-response',
     object: 'chat.completion',
@@ -305,6 +311,11 @@ function writeModelError(response, message) {
 const server = createServer(async (request, response) => {
   const requestURL = new URL(request.url || '/', 'http://127.0.0.1')
   if (request.method === 'GET' && responsesControl(requestURL, response, writeJSON)) return
+  if (request.method === 'GET' && geminiControl(requestURL, response, writeJSON)) return
+  if (request.method === 'GET' && requestURL.pathname === '/v1beta/models') {
+    writeJSON(response, 200, { models: [{ name: 'models/gemini-e2e', displayName: 'Gemini E2E', supportedGenerationMethods: ['generateContent'] }] })
+    return
+  }
   if (request.method === 'GET' && compactionControl(requestURL, response, writeJSON)) return
   if (request.method === 'GET' && request.url === '/health') {
     writeJSON(response, 200, { status: 'ok' })
@@ -343,7 +354,27 @@ const server = createServer(async (request, response) => {
     writeJSON(response, 200, { allowed: true })
     return
   }
-  if (request.method !== 'POST' || !['/v1/chat/completions', '/v1/responses'].includes(request.url)) {
+  if (request.method === 'POST' && ['/v1/images/generations', '/v1/images/edits'].includes(request.url)) {
+    const body = await readJSONBody(request)
+    recordRequest('E2E_EXTENSION_IMAGE')
+    if (body.prompt?.includes('E2E_COMIC_EPISODE_IMAGE_')) {
+      recordRequest('E2E_COMIC_EPISODE_IMAGE')
+      capturedRequests.set('E2E_COMIC_EPISODE_IMAGE', body)
+    }
+    if (body.prompt?.includes('E2E_PLUGIN_IMAGE_RECOVERY')) {
+      recordRequest('E2E_PLUGIN_IMAGE_RECOVERY')
+      await waitForDelayedRelease('E2E_PLUGIN_IMAGE_RECOVERY')
+    }
+    const image = body.prompt?.includes('E2E_COMIC_PAGE') ? readFileSync(new URL('../tests/fixtures/comic-page.png', import.meta.url)).toString('base64') : extensionImage
+    if (request.url === '/v1/images/edits' && !body.prompt?.includes('E2E_COMIC_EPISODE_IMAGE_')) {
+      recordRequest('E2E_COMIC_EDIT')
+      if (body.images?.length !== 3 || !body.mask?.image_url) { writeJSON(response, 400, { error: 'Comic edit requires source, two references and mask' }); return }
+    }
+    writeJSON(response, 200, { data: [{ b64_json: image, revised_prompt: body.prompt }] })
+    return
+  }
+  const nativeGemini = /^\/v1beta\/models\/[^/]+:(?:streamGenerateContent|generateContent)$/.test(requestURL.pathname)
+  if (request.method !== 'POST' || (!nativeGemini && !['/v1/chat/completions', '/v1/responses'].includes(request.url))) {
     writeJSON(response, 404, { error: 'not found' })
     return
   }
@@ -351,7 +382,8 @@ const server = createServer(async (request, response) => {
   let body
   try {
     body = await readJSONBody(request)
-    if (request.url === '/v1/responses') body = responsesRequest(body, response)
+    if (nativeGemini) body = geminiRequest(body, response, requestURL.pathname.endsWith(':streamGenerateContent'))
+    else if (request.url === '/v1/responses') body = responsesRequest(body, response)
     else captureNativeRequest(body)
   } catch (error) {
     writeJSON(response, 400, { error: `invalid request body: ${error.message}` })
@@ -364,7 +396,14 @@ const server = createServer(async (request, response) => {
     }
   }
 
-  const compaction = runtimeCompletion(body) ?? compactionCompletion(body)
+  const scene = extensionScene(body)
+  if (scene) {
+    recordRequest('E2E_EXTENSION_PRESENTER')
+    if (body.stream === true) writeChatCompletion(response, textCompletionFrames(scene))
+    else writeGeneratedCompletion(response, scene)
+    return
+  }
+  const compaction = loreQueryCompletion(body) ?? loreIndexCompletion(body) ?? loreCompletion(body) ?? runtimeCompletion(body) ?? compactionCompletion(body)
   if (compaction) {
     if (body.stream !== true) writeGeneratedCompletion(response, compaction.content)
     else if (compaction.tool) writeChatCompletion(response, toolCompletionFrames(compaction.tool, compaction.arguments, compaction.id))
@@ -420,13 +459,35 @@ const server = createServer(async (request, response) => {
       : toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-early-submit'))
     return
   }
+  if (requestIncludesMarker(body, 'E2E_EXTENSION_OPENING') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest('E2E_EXTENSION_OPENING')
+    const opening = extensionOpening(
+      toolResultMessages(body, 'initialize_story_state_schema').map(parseToolResult),
+      toolResultMessages(body, 'submit_interactive_turn').map(parseToolResult),
+    )
+    if (opening.tool) writeChatCompletion(response, toolCompletionFrames(opening.tool, JSON.stringify(opening.input), 'call-extension-opening-schema'))
+    else writeChatCompletion(response, chatCompletionFrames(opening.content, JSON.stringify(opening.submission)))
+    return
+  }
+
   if (requestIncludesMarker(body, gameBranchPlanMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
     recordRequest(gameBranchPlanMarker)
     writeChatCompletion(response, chatCompletionFrames(gameBranchPlanNarrative, planningTurnSubmission))
     return
   }
+  if (latestUserMessageIncludesMarker(body, 'E2E_AMBIENT_SELECT:') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    const selected = [...JSON.stringify(body.messages).matchAll(/E2E_AMBIENT_SELECT:([a-zA-Z0-9_-]+):([a-zA-Z0-9_-]+)/g)].at(-1)
+    const presentation = selected && requestIncludesMarker(body, 'audio/wav')
+      ? { ambient: { item_id: selected[1], asset_id: selected[2] } }
+      : {}
+    writeChatCompletion(response, chatCompletionFrames(narrative, JSON.stringify({ ...turnSubmissionPayload, presentation })))
+    return
+  }
   if (latestUserMessageIncludesMarker(body, gameOpeningMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
-    writeChatCompletion(response, chatCompletionFrames(gameOpeningNarrative, openingTurnSubmission))
+    const opening = requestIncludesMarker(body, 'E2E_LORE_MENTIONS_OPENING')
+      ? `${'远处灯火，长夜未尽。'.repeat(200)}\n林川😀在共同历史中出现。\n林川😀再次出现。`
+      : gameOpeningNarrative
+    writeChatCompletion(response, chatCompletionFrames(opening, openingTurnSubmission))
     return
   }
   if (requestIncludesMarker(body, gameAttachmentMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
@@ -472,6 +533,65 @@ const server = createServer(async (request, response) => {
     writeChatCompletion(response, body.input
       ? toolCompletionFrames('read', JSON.stringify({ path: 'CREATOR.md' }), callID)
       : chatCompletionFrames())
+    return
+  }
+  const comicEpisode = comicEpisodeCompletion(body)
+  if (comicEpisode) {
+    if (comicEpisode.hold) await waitForDelayedRelease(comicEpisode.hold)
+    writeChatCompletion(response, comicEpisode.tool
+      ? toolCompletionFrames(comicEpisode.tool, JSON.stringify(comicEpisode.input), comicEpisode.id)
+      : textCompletionFrames(comicEpisode.content))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_COMIC_PAGE')) {
+    const tool = body.tools?.find(item => item.function?.name === 'plugin_comic_render')?.function?.name
+    const lastUser = body.messages.findLastIndex(message => message.role === 'user')
+    const results = toolResultMessages({ messages: body.messages.slice(lastUser) }, tool)
+    if (tool && !results.length) {
+      const content = body.messages[lastUser].content
+      const text = typeof content === 'string' ? content : content.map(part => part.text ?? '').join('\n')
+      const context = JSON.parse(text.match(/\{"pageId":[^\n]+\}/)[0])
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify({ pageId: context.pageId, commandId: crypto.randomUUID(), prompt: text.slice(text.indexOf('E2E_COMIC_PAGE')), ...(context.sourceId ? { sourceId: context.sourceId, selection: context.selection, references: context.references } : {}) }), 'call-comic-render'))
+    } else writeChatCompletion(response, textCompletionFrames('漫画候选已生成，请查看画布并采用。'))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_COMIC_AGENT')) {
+    const tool = body.tools?.find(item => item.function?.name === 'plugin_comic_inspect')?.function?.name
+    if (tool && toolResultMessages(body, tool).length === 0) {
+      const match = JSON.stringify(body.messages).match(/\\"pageId\\"\s*:\s*\\"([^\\"]+)\\"/)
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify(match ? { pageId: match[1] } : {}), 'call-comic-inspect'))
+    } else writeChatCompletion(response, textCompletionFrames('漫画页面已读取。'))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_PLUGIN_CHAIN')) {
+    const tool = body.tools?.find(item => item.function?.name?.startsWith('plugin_'))?.function?.name
+    if (!tool) {
+      writeChatCompletion(response, textCompletionFrames('No plugin tools are enabled.'))
+      return
+    }
+    const latestUser = body.messages.findLastIndex(message => message.role === 'user')
+    const results = toolResultMessages({ messages: body.messages.slice(latestUser) }, tool)
+    if (results.length === 0) {
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify({ text: 'A🌷中' }), 'call-plugin-chain'))
+      return
+    }
+    const output = JSON.stringify(results)
+    const value = JSON.parse(results.at(-1).content.split('\n\nStructured result:\n').at(-1)).value
+    const content = typeof value === 'number' ? `Plugin result adopted: ${value}.` : `Unexpected plugin result: ${output}`
+    if (requestIncludesMarker(body, 'E2E_PLUGIN_WRITE') && toolResultMessages(body, 'write').length === 0) {
+      writeChatCompletion(response, toolCompletionFrames('write', JSON.stringify({ path: 'chapters/plugin-result.md', content: `# Plugin result\n\n${content}` }), 'call-plugin-chapter'))
+      return
+    }
+    writeChatCompletion(response, requestIncludesTool(body, 'submit_interactive_turn') ? chatCompletionFrames(content) : textCompletionFrames(content))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_GALGAME_STREAM') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest('E2E_GALGAME_STREAM')
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+    response.write(`data: ${JSON.stringify(completionFrame({ role: 'assistant', content: '[lin|smile] The lamp' }))}\n\n`)
+    await waitForDelayedRelease('E2E_GALGAME_STREAM')
+    for (const frame of [completionFrame({ content: ' is still warm.\n[xu|neutral] Shall we read the letter?' }), ...toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-live-turn')]) response.write(`data: ${JSON.stringify(frame)}\n\n`)
+    response.end('data: [DONE]\n\n')
     return
   }
   if (requestIncludesTool(body, 'submit_interactive_turn')) {

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 const (
@@ -17,7 +19,7 @@ const (
 // ParentAttributes freezes the exact public parent Session identity in a
 // child key. The encoded canonical key remains privacy-safe provider-side:
 // Denova's cache-key adapter hashes the public identity before model use.
-func ParentAttributes(parent agent.SessionKey) (map[string]string, error) {
+func ParentAttributes(parent agentsession.Key) (map[string]string, error) {
 	return agent.ChildSessionAttributes(parent)
 }
 
@@ -29,7 +31,7 @@ type RunBinding struct {
 	HostData    *agent.HostData `json:"host_data"`
 }
 
-func BindRun(parent agent.RunView, route *agent.HostData) (*agent.HostData, error) {
+func BindRun(parent agentschema.RunView, route *agent.HostData) (*agent.HostData, error) {
 	if parent.ID == "" || parent.Cycle < 1 || route == nil {
 		return nil, errors.New("delegated Run requires current parent Run ownership")
 	}
@@ -55,18 +57,18 @@ func DecodeRunBinding(data *agent.HostData) (RunBinding, error) {
 }
 
 // ParentSession decodes the exact parent key from a delegated child Session.
-func ParentSession(child agent.SessionKey) (agent.SessionKey, error) {
+func ParentSession(child agentsession.Key) (agentsession.Key, error) {
 	if !strings.HasPrefix(child.Namespace, "task.") {
-		return agent.SessionKey{}, errors.New("Session is not a delegated task")
+		return agentsession.Key{}, errors.New("Session is not a delegated task")
 	}
 	parent, err := agent.ParentSessionKey(child)
 	if err != nil {
-		return agent.SessionKey{}, fmt.Errorf("decode delegated parent Session: %w", err)
+		return agentsession.Key{}, fmt.Errorf("decode delegated parent Session: %w", err)
 	}
 	return parent, nil
 }
 
-func ChildName(child agent.SessionKey) (string, error) {
+func ChildName(child agentsession.Key) (string, error) {
 	name := strings.TrimSpace(child.Attributes[ChildAgentAttribute])
 	if name == "" || child.Namespace != "task."+name {
 		return "", errors.New("delegated task Agent identity is invalid")

@@ -195,18 +195,20 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
     action: AgentQueuedCommandAction,
     reason?: string,
   ) => {
-    const runtime = requireProjectedOperation()
-    if (item.operation_id !== runtime.operationId || !runtime.queue.some((candidate) => candidate.command_id === item.command_id)) {
+    const runtime = action === 'steer_queued' ? requireProjectedOperation() : readRuntime()
+    const operationId = item.operation_id
+    if (!operationId || (action === 'steer_queued' && operationId !== runtime.operationId) ||
+      !runtime.queue.some((candidate) => candidate.command_id === item.command_id && candidate.operation_id === operationId)) {
       throw new Error(t('chat.runtime.invalidCommand'))
     }
     const payload = { target_command_id: item.command_id, ...(reason ? { reason } : {}) }
-    const retryKey = agentCommandRetryKey(runtime.operationId, action, payload)
+    const retryKey = agentCommandRetryKey(operationId, action, payload)
     const commandId = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
     try {
       const receipt = await submitInteractiveAgentCommand({
         type: action,
         commandId,
-        targetOperationId: runtime.operationId,
+        targetOperationId: operationId,
         targetCommandId: item.command_id,
         storyId,
         branchId,
@@ -214,12 +216,11 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
       })
       retryCommandIDsRef.current.delete(retryKey)
       if (action === 'steer_queued' && runtime.phase !== 'suspended') recoveryAbortActionRef.current = null
-      onRuntimeChange((current) => current.operationId !== runtime.operationId
+      onRuntimeChange((current) => action === 'steer_queued' && current.operationId !== operationId
         ? current
         : {
             ...current,
             cursor: Math.max(current.cursor, receipt.cursor),
-            operationId: receipt.operation_id,
             ...(action === 'steer_queued' && current.phase !== 'suspended' ? {
               recoveryPaused: false,
               recoveryAbortAvailable: false,
@@ -235,7 +236,7 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
       if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
       throw new Error(agentCommandErrorMessage(error, t))
     }
-  }, [branchId, onRuntimeChange, requireProjectedOperation, storyId, t])
+  }, [branchId, onRuntimeChange, readRuntime, requireProjectedOperation, storyId, t])
 
   const steerQueued = useCallback(
     (item: AgentRuntimeQueuedCommand) => submitQueuedControl(item, 'steer_queued'),

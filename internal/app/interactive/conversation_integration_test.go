@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 	"denova/internal/book/lore"
@@ -17,8 +17,11 @@ import (
 	interactivestate "denova/internal/interactive/state"
 	"denova/internal/presetlayout"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
 	publiccontext "github.com/alfredxw/denova/agent/context"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
@@ -68,7 +71,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if fragment.Source != "interactive.resident_lore" {
 			continue
 		}
-		residentStable = fragment.Stability == agent.ContextStablePrefix && fragment.Placement == agent.ContextLeadingMessage && fragment.StateID == ""
+		residentStable = fragment.Stability == agentschema.ContextStablePrefix && fragment.Placement == agentschema.ContextLeadingMessage && fragment.StateID == ""
 	}
 	if !residentStable {
 		t.Fatalf("resident lore must be one replaceable stable-prefix fragment: %#v", lifecycleFragments)
@@ -80,7 +83,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if len(history) != 4 {
 		t.Fatalf("history length = %d, want 4", len(history))
 	}
-	if history[0].Role != agents.RoleUser || !strings.Contains(history[0].Content, "Resident Lore") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
+	if history[0].Role != agents.RoleUser || !strings.Contains(history[0].Content, "## Resident") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
 		t.Fatalf("history[0] should be stable resident lore: %#v", history[0])
 	}
 	if history[1].Role != agents.RoleUser || history[1].Content != "我推开酒馆的门" {
@@ -100,7 +103,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"[Current Turn Runtime Context]",
 		"800 Chinese characters",
 		"Highest length constraint",
-		"list_lore_items",
+		"query_lore_items",
 		"search_story_history",
 		"turn_id",
 		"Game Agent Planning",
@@ -652,14 +655,14 @@ func TestInteractiveConversationUsesAgentMessageCoverage(t *testing.T) {
 	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
 	model := &publicGameSequenceModel{}
 	for i := 1; i <= 10; i++ {
-		model.responses = append(model.responses, agent.AssistantMessage(fmt.Sprintf("第%d段剧情", i), nil))
+		model.responses = append(model.responses, agentschema.AssistantMessage(fmt.Sprintf("第%d段剧情", i), nil))
 	}
 	owner, err := agent.New(context.Background(), agent.Definition{Model: model, Compaction: publicGameCompactionManager{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = owner.Close(context.Background()) })
-	sdkSession, err := owner.Session(context.Background(), agent.NamedSession("projection"))
+	sdkSession, err := owner.Session(context.Background(), agentsession.Named("projection"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,7 +675,7 @@ func TestInteractiveConversationUsesAgentMessageCoverage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	checkpoint, err := sdkSession.Compact(context.Background(), agent.CompactionRequest{Force: true})
+	checkpoint, err := sdkSession.Compact(context.Background(), agentcompaction.CompactionRequest{Force: true})
 	if err != nil || !checkpoint.Changed {
 		t.Fatalf("checkpoint=%#v err=%v", checkpoint, err)
 	}

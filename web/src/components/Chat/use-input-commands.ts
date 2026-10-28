@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, BadgeHelp, ClipboardList, Eraser, Sparkles, Target } from 'lucide-react'
+import { Archive, BadgeHelp, ClipboardList, GitCommitHorizontal, Plus, Sparkles, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentQuickPromptSettings } from '@/features/settings/types'
 import type { InputCommandOption } from './InputCommandMenu'
+import { searchInputCommands } from './input-command-search'
 
 const COMMANDS = [
   { cmd: '/goal', descKey: 'chat.command.goal.desc', hintKey: 'chat.command.goal.hint', icon: Target },
   { cmd: '/plan', descKey: 'chat.command.plan.desc', hintKey: 'chat.command.plan.hint', icon: ClipboardList },
-  { cmd: '/clear', descKey: 'chat.command.clear.desc', hintKey: 'chat.command.clear.hint', icon: Eraser },
+  { cmd: '/new', descKey: 'chat.command.new.desc', hintKey: 'chat.command.new.hint', icon: Plus },
+  { cmd: '/snapshot', descKey: 'chat.command.snapshot.desc', hintKey: 'chat.command.snapshot.hint', icon: GitCommitHorizontal },
   { cmd: '/compact', descKey: 'chat.command.compact.desc', hintKey: 'chat.command.compact.hint', icon: Archive },
   { cmd: '/status', descKey: 'chat.command.status.desc', hintKey: 'chat.command.status.hint', icon: Sparkles },
   { cmd: '/help', descKey: 'chat.command.help.desc', hintKey: 'chat.command.help.hint', icon: BadgeHelp },
@@ -52,7 +54,6 @@ export function useInputCommands({ scope, builtinCommands, skills, quickPrompts,
       .map((skill) => ({
         cmd: `/${skill.name}`,
         description: skill.description || skill.name,
-        hint: t('chat.command.skill.hint'),
         icon: Sparkles,
         source: 'skill' as const,
       }))
@@ -72,11 +73,8 @@ export function useInputCommands({ scope, builtinCommands, skills, quickPrompts,
         icon: Sparkles,
         source: 'quick-prompt',
       })) : []
-    const commands = scope === 'none' ? [] : [...builtins, ...prompts, ...skillOptions]
-    const normalizedQuery = commandQuery?.toLocaleLowerCase() ?? ''
-    const filteredCommands = commandQuery === null ? [] : commands.filter((command) => command.source === 'quick-prompt'
-      ? command.cmd.toLocaleLowerCase().includes(normalizedQuery)
-      : command.cmd.toLocaleLowerCase().startsWith(`/${normalizedQuery}`))
+    const filteredCommands = scope === 'none' ? [] : [builtins, prompts, skillOptions]
+      .flatMap((group) => searchInputCommands(group, commandQuery, (command) => command.cmd))
     const indexed = filteredCommands.map((command, index) => ({ command, index }))
     return {
       filteredCommands,

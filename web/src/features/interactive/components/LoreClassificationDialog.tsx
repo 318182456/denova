@@ -1,3 +1,4 @@
+import { useLoreCategories } from '@/features/lore/use-lore-categories'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { errorMessage } from '@/lib/error-diagnostics'
 import { useEffect, useMemo, useState } from 'react'
@@ -8,10 +9,9 @@ import { applyLoreClassification, previewLoreClassification, type LoreClassifica
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
-const LORE_TYPES: LoreItem['type'][] = ['character', 'world', 'location', 'faction', 'rule', 'item', 'other']
 
 export function LoreClassificationDialog({
   open,
@@ -25,6 +25,7 @@ export function LoreClassificationDialog({
   onApplied: (items: LoreItem[]) => void
 }) {
   const { t } = useTranslation()
+  const { categories } = useLoreCategories(projectId)
   const [mode, setMode] = useState<LoreClassificationMode>('semantic')
   const [preview, setPreview] = useState<LoreClassificationPreview | null>(null)
   const [types, setTypes] = useState<Record<string, LoreItem['type']>>({})
@@ -158,13 +159,13 @@ export function LoreClassificationDialog({
                     <div className="min-w-0">
                       <div className="truncate text-xs font-medium text-[var(--nova-text)]">{item.name}</div>
                       <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
-                        {t('settingPanel.loreClassification.current', { type: t(`lore.type.${item.current_type}`) })} · {t(`settingPanel.loreClassification.confidence.${item.confidence}`)} · {t(`settingPanel.loreClassification.source.${item.suggestion_source}`)}
+                        {t('settingPanel.loreClassification.current', { type: categories.find((c) => c.id === item.current_type)?.name || t(`lore.type.${item.current_type}`) })} · {t(`settingPanel.loreClassification.confidence.${item.confidence}`)} · {t(`settingPanel.loreClassification.source.${item.suggestion_source}`)}
                       </div>
                     </div>
                     <Select value={nextType} onValueChange={(value) => updateType(item.id, value as LoreItem['type'], item.current_type)} disabled={applying}>
                       <SelectTrigger size="sm" className="nova-field col-span-2 h-8 text-xs focus:ring-0 sm:col-span-1"><SelectValue /></SelectTrigger>
                       <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                        {LORE_TYPES.map((type) => <SelectItem key={type} value={type}>{t(`lore.type.${type}`)}</SelectItem>)}
+                        <SelectGroup>{categories.map(({ id, name }) => <SelectItem key={id} value={id}>{name || t(`lore.type.${id}`)}</SelectItem>)}</SelectGroup>
                       </SelectContent>
                     </Select>
                   </div>

@@ -13,17 +13,18 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
-
 	"denova/internal/agents/session"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 func TestSessionResourceReadsBeyondResidentHistory(t *testing.T) {
 	const count = 420
-	messages := make([]*agent.Message, count)
+	messages := make([]*agentschema.Message, count)
 	for index := range count {
-		messages[index] = agent.UserMessage(fmt.Sprintf("message-%03d", index))
+		messages[index] = agentschema.UserMessage(fmt.Sprintf("message-%03d", index))
 	}
 	catalog, source, target, resource := newSessionResourceFixture(t, messages...)
 	first, err := catalog.read(context.Background(), readInput{Path: resource, Limit: 31})
@@ -46,7 +47,7 @@ func TestSessionResourceReadsBeyondResidentHistory(t *testing.T) {
 				t.Fatalf("incomplete history must disclose its full range: %+v", envelope)
 			}
 			// A new tail record must not change the positions of earlier history.
-			if err := target.Append(agent.UserMessage("appended-during-pagination")); err != nil {
+			if err := target.Append(agentschema.UserMessage("appended-during-pagination")); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -100,7 +101,7 @@ func TestSessionResourceReadsBeyondResidentHistory(t *testing.T) {
 
 func TestSessionResourceContinuesLargeUTF8RowsAndExcludesReasoning(t *testing.T) {
 	catalog, source, target, resource := newSessionResourceFixture(t)
-	if err := target.Append(agent.UserMessage("initial requirement")); err != nil {
+	if err := target.Append(agentschema.UserMessage("initial requirement")); err != nil {
 		t.Fatal(err)
 	}
 	if err := target.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "private-reasoning-marker"}); err != nil {
@@ -110,13 +111,17 @@ func TestSessionResourceContinuesLargeUTF8RowsAndExcludesReasoning(t *testing.T)
 	if err := target.AppendDisplayEvent(session.DisplayEvent{Role: "assistant", Content: longText}); err != nil {
 		t.Fatal(err)
 	}
-	if err := target.Clear(); err != nil {
-		t.Fatal(err)
-	}
-	if err := target.Append(agent.UserMessage("after-clear")); err != nil {
-		t.Fatal(err)
-	}
 	journalPath := filepath.Join(sessionDir(source.StateRoot), target.ID+".jsonl")
+	released, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journalPath, append(released, []byte("{\"type\":\"clear\",\"created_at\":\"2026-01-02T03:04:05Z\"}\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Append(agentschema.UserMessage("after-clear")); err != nil {
+		t.Fatal(err)
+	}
 	before, err := os.ReadFile(journalPath)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +172,7 @@ func TestSessionResourceContinuesLargeUTF8RowsAndExcludesReasoning(t *testing.T)
 
 func TestSessionResourceKeepsExactPositionsWithinSingleTurn(t *testing.T) {
 	catalog, _, target, resource := newSessionResourceFixture(t)
-	if err := target.Append(agent.UserMessage("long turn")); err != nil {
+	if err := target.Append(agentschema.UserMessage("long turn")); err != nil {
 		t.Fatal(err)
 	}
 	const count = 110
@@ -236,7 +241,7 @@ func TestSessionResourceEmptyAndContinuationBoundaries(t *testing.T) {
 	if err := json.Unmarshal([]byte(content), &manifest); err != nil || manifest.Schema != "denova.trajectory.session.v2" || manifest.SessionID != target.ID {
 		t.Fatalf("empty Session manifest is invalid: %+v, %v", manifest, err)
 	}
-	if err := target.Append(agent.UserMessage("界")); err != nil {
+	if err := target.Append(agentschema.UserMessage("界")); err != nil {
 		t.Fatal(err)
 	}
 	catalog.Limit = 1
@@ -266,7 +271,7 @@ func TestSessionResourceEmptyAndContinuationBoundaries(t *testing.T) {
 	}
 }
 
-func newSessionResourceFixture(t *testing.T, initial ...*agent.Message) (Catalog, Source, *session.Session, string) {
+func newSessionResourceFixture(t *testing.T, initial ...*agentschema.Message) (Catalog, Source, *session.Session, string) {
 	t.Helper()
 	source := Source{ProjectID: "project-1", Name: "Test Project", StateRoot: t.TempDir(), Workspace: t.TempDir()}
 	store, err := session.NewStore(sessionDir(source.StateRoot))
@@ -300,7 +305,7 @@ func newSessionResourceFixture(t *testing.T, initial ...*agent.Message) (Catalog
 	return catalog, source, target, Scheme + "projects/" + source.ProjectID + "/sessions/" + target.ID
 }
 
-func sessionReadTool(t *testing.T, catalog Catalog, budget int) agent.ToolDefinition {
+func sessionReadTool(t *testing.T, catalog Catalog, budget int) agenttool.ToolDefinition {
 	t.Helper()
 	adapter, err := NewReadAdapter(catalog)
 	if err != nil {
@@ -323,7 +328,7 @@ type sessionReadEnvelope struct {
 	} `json:"limits"`
 }
 
-func readSessionToolWindow(t *testing.T, definition agent.ToolDefinition, input readInput, budget int) (sessionReadEnvelope, string) {
+func readSessionToolWindow(t *testing.T, definition agenttool.ToolDefinition, input readInput, budget int) (sessionReadEnvelope, string) {
 	t.Helper()
 	arguments, err := json.Marshal(input)
 	if err != nil {

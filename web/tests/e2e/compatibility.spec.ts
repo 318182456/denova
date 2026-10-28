@@ -35,7 +35,7 @@ test('opens and continues the released v0.3.3 Writing, Book, Lore, and Game data
   await page.getByRole('button', { name: /^legacy chapter\b/ }).click()
   await expect(page.locator('.editor-content .ProseMirror')).toContainText('这是 v0.3.3 保留的正文。')
 
-  const writingComposer = page.getByPlaceholder(/输入消息/)
+  const writingComposer = page.getByPlaceholder(/输入消息/).filter({ visible: true })
   if (!(await writingComposer.isVisible())) {
     await page.getByRole('button', { name: '显示创作 Agent', exact: true }).click()
   }
@@ -54,7 +54,8 @@ test('opens and continues the released v0.3.3 Writing, Book, Lore, and Game data
 
   await sidebar.getByRole('button', { name: '资料库', exact: true }).click()
   await expect(page.getByText('林川', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('旧资料库正文', { exact: true }).first()).toBeVisible()
+  await page.getByTestId('lore-card-hero').getByRole('button', { name: '林川', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '正文', exact: true })).toContainText('旧资料库正文')
   await expect.poll(async () => getProjectLoreItems(request, current.project_id)).toContainEqual(
     expect.objectContaining({ id: 'hero', name: '林川', content: '旧资料库正文' }),
   )

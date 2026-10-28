@@ -9,8 +9,13 @@ import (
 	agentdelegation "denova/internal/agents/delegation"
 	agentlifecycle "denova/internal/agents/lifecycle"
 
-	agent "github.com/alfredxw/denova/agent"
-	publictools "github.com/alfredxw/denova/agent/tools"
+	"github.com/alfredxw/denova/agent"
+	agentcontext "github.com/alfredxw/denova/agent/context"
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentsession "github.com/alfredxw/denova/agent/session"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 func (backend *publicBackend) bindDefinition(
@@ -63,7 +68,7 @@ func (backend *publicBackend) bindDefinition(
 	}
 	identityConfig := struct {
 		Definition string
-		Binding    agent.SessionKey
+		Binding    agentsession.Key
 	}{cycle.Definition.Key, request.Session.Key}
 	boundary, err := agentlifecycle.NewConversationBoundary(agentlifecycle.ConversationBoundaryConfig{
 		Conversation: cycle.Conversation, BookService: cycle.BookService,
@@ -134,7 +139,7 @@ func (backend *publicBackend) bindDefinition(
 	if provider, ok := cycle.Conversation.(agentchat.ToolArtifactStoreProvider); ok {
 		store := provider.ToolArtifactStore()
 		if store != nil {
-			definition.Artifacts, err = agent.IdentifyToolArtifactStorage(
+			definition.Artifacts, err = agenttool.IdentifyToolArtifactStorage(
 				store, publicCapabilityIdentity("denova.tool_artifacts", identityConfig),
 			)
 			if err != nil {
@@ -142,7 +147,7 @@ func (backend *publicBackend) bindDefinition(
 			}
 		}
 	}
-	definition.Context, err = agent.CombineContextSources(definition.Context, boundary.ContextSource())
+	definition.Context, err = agentcontext.CombineContextSources(definition.Context, boundary.ContextSource())
 	if err != nil {
 		return agent.Definition{}, fmt.Errorf("compose project and conversation ContextSources: %w", err)
 	}
@@ -151,11 +156,11 @@ func (backend *publicBackend) bindDefinition(
 		definition.Permission, backend.permissionRuleStore.Load, backend.permissionRuleStore.Persist,
 	)
 	var trace agentchat.PublicRunTraceBinder = registration
-	if agent.IsInspection(ctx) {
+	if agentexecution.IsInspection(ctx) {
 		trace = nil
 	}
 	host := agentchat.NewPublicHostMiddleware(cycle.Request, options, trace)
-	definition.Middlewares = append(definition.Middlewares, agent.IdentifyMiddleware(
+	definition.Middlewares = append(definition.Middlewares, agentmiddleware.IdentifyMiddleware(
 		host, publicCapabilityIdentity("denova.public_host", identityConfig),
 	))
 	return definition, nil

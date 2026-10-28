@@ -8,7 +8,9 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // ResolveAsk adapts Denova's stable transport shape to the public Interaction
@@ -20,20 +22,20 @@ func (runtime *Runtime) ResolveAsk(
 	answers []agentconversation.HostAskAnswer,
 	cancelReason string,
 ) (agentconversation.HostAskResolution, error) {
-	response := agent.InteractionResponse{Cancelled: status == session.AskCancelled}
+	response := agentinteraction.InteractionResponse{Cancelled: status == session.AskCancelled}
 	if !response.Cancelled && len(answers) == 1 && answers[0].QuestionID == "tool-approval" {
 		if len(answers) != 1 || len(answers[0].SelectedOptionIDs) != 1 {
-			return agentconversation.HostAskResolution{}, agent.ErrInteractionStale
+			return agentconversation.HostAskResolution{}, agentschema.ErrInteractionStale
 		}
 		switch strings.TrimSpace(answers[0].SelectedOptionIDs[0]) {
 		case session.ToolApprovalAllowOnceOptionID:
-			response.Permission = agent.PermissionAllowOnce
+			response.Permission = agentinteraction.PermissionAllowOnce
 		case session.ToolApprovalAllowWorkspaceOptionID:
-			response.Permission = agent.PermissionRemember
+			response.Permission = agentinteraction.PermissionRemember
 		case session.ToolApprovalDenyOptionID:
-			response.Permission = agent.PermissionDeny
+			response.Permission = agentinteraction.PermissionDeny
 		default:
-			return agentconversation.HostAskResolution{}, agent.ErrInteractionStale
+			return agentconversation.HostAskResolution{}, agentschema.ErrInteractionStale
 		}
 	} else if !response.Cancelled {
 		response.Answers = agentconversation.InteractionAnswers(answers)
@@ -48,7 +50,7 @@ func (runtime *Runtime) ResolveAsk(
 		if err != nil {
 			return agentconversation.HostAskResolution{}, err
 		}
-		if _, err := runtime.public.agent.AbortTree(ctx, root.Key(), agent.AbortRequest{
+		if _, err := runtime.public.agent.AbortTree(ctx, root.Key(), agentevent.AbortRequest{
 			IdempotencyKey: "abort-verification:" + askID, Reason: "User cancelled the task during effect verification",
 		}); err != nil {
 			return agentconversation.HostAskResolution{}, err
@@ -67,15 +69,15 @@ func (runtime *Runtime) ResolveAsk(
 // ResolvePermission maps the existing tool-approval action IDs to the public
 // typed response before durable admission.
 func (runtime *Runtime) ResolvePermission(ctx context.Context, options agentrun.Options, interactionID, optionID string) error {
-	choice := agent.PermissionChoice("")
+	choice := agentinteraction.PermissionChoice("")
 	switch strings.TrimSpace(optionID) {
 	case session.ToolApprovalAllowOnceOptionID:
-		choice = agent.PermissionAllowOnce
+		choice = agentinteraction.PermissionAllowOnce
 	case session.ToolApprovalAllowWorkspaceOptionID:
-		choice = agent.PermissionRemember
+		choice = agentinteraction.PermissionRemember
 	case session.ToolApprovalDenyOptionID:
-		choice = agent.PermissionDeny
+		choice = agentinteraction.PermissionDeny
 	}
-	_, _, err := runtime.ResolveInteraction(ctx, options, interactionID, agent.InteractionResponse{Permission: choice})
+	_, _, err := runtime.ResolveInteraction(ctx, options, interactionID, agentinteraction.InteractionResponse{Permission: choice})
 	return err
 }

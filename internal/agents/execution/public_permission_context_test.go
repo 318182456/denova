@@ -17,7 +17,10 @@ import (
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"denova/internal/book"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentcontext "github.com/alfredxw/denova/agent/context"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 func TestWritingApprovalSurvivesContextFileChanges(t *testing.T) {
@@ -41,7 +44,7 @@ func TestWritingApprovalSurvivesContextFileChanges(t *testing.T) {
 					t.Fatal(err)
 				}
 				request := agentchatRequest("approval-command", "Revise the referenced chapter and inspect its quotes")
-				var contextSource agent.ContextSource
+				var contextSource agentcontext.ContextSource
 				if file == "AGENTS.md" {
 					contextSource, err = agentlifecycle.NewProjectInstructionsContextSource(nil, agentrun.AgentKindIDE, book.NewState(workspace))
 					if err != nil {
@@ -51,7 +54,7 @@ func TestWritingApprovalSurvivesContextFileChanges(t *testing.T) {
 					request.References = []string{file}
 				}
 				var executions atomic.Int32
-				tool, err := agent.InferTool("pwsh", "Inspect chapter quotes", func(context.Context, struct {
+				tool, err := agenttool.InferTool("pwsh", "Inspect chapter quotes", func(context.Context, struct {
 					Command string `json:"command"`
 				}) (string, error) {
 					executions.Add(1)
@@ -60,11 +63,11 @@ func TestWritingApprovalSurvivesContextFileChanges(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				toolset, err := agent.StaticTools(agent.ToolDefinition{Tool: tool, Descriptor: agent.ToolDescriptor{
-					Source: agent.ToolSourceShell, Execution: agent.ToolExecutionParallelRead,
-					MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
-					Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
-					ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
+				toolset, err := agenttool.StaticTools(agenttool.ToolDefinition{Tool: tool, Descriptor: agenttool.ToolDescriptor{
+					Source: agenttool.ToolSourceShell, Execution: agenttool.ToolExecutionParallelRead,
+					MutationScope: agenttool.ToolMutationNone, PostCheck: agenttool.ToolPostCheckNone,
+					Recovery: agenttool.ToolRecoveryReadOnly, ResultProjection: agentschema.ToolResultBoundedModelContext,
+					ResultRetention: agentschema.ToolResultDeferred, Steering: agenttool.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
 				}})
 				if err != nil {
 					t.Fatal(err)
@@ -78,13 +81,13 @@ func TestWritingApprovalSurvivesContextFileChanges(t *testing.T) {
 				}
 				model := &publicBackendTestModel{}
 				for index := 0; index < 2; index++ {
-					model.responses = append(model.responses, agent.AssistantMessage("", []agent.ToolCall{{
-						ID: fmt.Sprintf("call-%d", index), Type: "function", Function: agent.FunctionCall{
+					model.responses = append(model.responses, agentschema.AssistantMessage("", []agentschema.ToolCall{{
+						ID: fmt.Sprintf("call-%d", index), Type: "function", Function: agentschema.FunctionCall{
 							Name: "pwsh", Arguments: `{"command":"$f='chapter.md'; $t=Get-Content -Raw -Encoding UTF8 $f; ([regex]::Matches($t,[string][char]0x201C)).Count"}`,
 						},
 					}}))
 				}
-				model.responses = append(model.responses, agent.AssistantMessage("finished", nil))
+				model.responses = append(model.responses, agentschema.AssistantMessage("finished", nil))
 				runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 					func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 				))
@@ -97,7 +100,7 @@ func TestWritingApprovalSurvivesContextFileChanges(t *testing.T) {
 				pending := make(chan string, 2)
 				operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 					Definition: agent.Definition{Key: "writing-approval", Name: "writer", Model: model,
-						ModelIdentity: agent.CapabilityIdentity{Kind: "test.approval", Version: 1},
+						ModelIdentity: agentschema.CapabilityIdentity{Kind: "test.approval", Version: 1},
 						Tools:         toolset, Context: contextSource, Permission: policy},
 					Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 					Request:      request, BookService: book.NewService(workspace), Options: options,

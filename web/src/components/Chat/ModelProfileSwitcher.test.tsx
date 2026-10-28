@@ -26,6 +26,25 @@ vi.mock('@/features/settings/query', () => ({
 }))
 
 describe('ModelProfileSwitcher', () => {
+  it('keeps configuration and retry accessible after the conversation fails to load', async () => {
+    settingsMocks.fetchSettings.mockResolvedValue({ effective: { openai_model: 'test-model' } })
+    const open = vi.fn()
+    const controller: ConversationConfigController = {
+      snapshot: null, initialized: false, loading: false, saving: false,
+      error: 'Saved configuration is unavailable', patch: vi.fn(), reload: vi.fn(),
+    }
+    render(<ToolNavigationProvider value={{ workspace: '', open }}><ModelProfileSwitcher agentKey="ide" conversationConfig={controller} /></ToolNavigationProvider>)
+    const trigger = screen.getByRole('button', { name: /切换模型/ })
+    expect(trigger).toBeEnabled()
+    await userEvent.click(trigger)
+    expect(screen.getByText(controller.error!)).toBeVisible()
+    await userEvent.click(screen.getByRole('menuitem', { name: '重试' }))
+    expect(controller.reload).toHaveBeenCalledOnce()
+    expect(controller.patch).not.toHaveBeenCalled()
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('menuitem', { name: '配置' }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith({ kind: 'config_resource', resource: 'agent_profile', id: 'ide', scope: 'user', section: 'runtime' }))
+  })
   for (const agentKey of ['ide', 'general', 'interactive_story'] as const) {
     it(`links the ${agentKey} Native runtime to its Agents configuration`, async () => {
       settingsMocks.fetchSettings.mockResolvedValue({ effective: { openai_model: 'test-model' } })

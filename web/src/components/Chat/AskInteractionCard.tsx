@@ -1,6 +1,6 @@
 import { errorMessage } from '@/lib/error-diagnostics'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { useEffect, useState } from 'react'
+import { useVirtualizedMessageState } from './VirtualizedMessageState'
 import { ChevronLeft, ChevronRight, Loader2, MessageCircleQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentAskAnswer, AgentAskInteraction, AgentAskQuestion, AgentAskResolution, AskChatMessage, ToolCallChatMessage } from '@/lib/api'
@@ -44,21 +44,13 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
     })),
   } : rawInteraction
   const title = t(verification ? 'chat.verification.title' : 'chat.ask.title')
-  const [questionIndex, setQuestionIndex] = useState(0)
-  const [drafts, setDrafts] = useState<Record<string, AskDraft>>(() => askDrafts(interaction?.questions || []))
-  const [localResolution, setLocalResolution] = useState<AgentAskResolution | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [expanded, setExpanded] = useState(interaction?.status === 'pending')
-
-  useEffect(() => {
-    setQuestionIndex(0)
-    setDrafts(askDrafts(interaction?.questions || []))
-    setLocalResolution(null)
-    setSubmitting(false)
-    setError('')
-    setExpanded(interaction?.status === 'pending')
-  }, [interaction?.id, interaction?.status])
+  const slot = `ask:${interaction?.id}:${interaction?.status}`
+  const [questionIndex, setQuestionIndex] = useVirtualizedMessageState(`${slot}:question`, 0)
+  const [drafts, setDrafts] = useVirtualizedMessageState<Record<string, AskDraft>>(`${slot}:drafts`, () => askDrafts(interaction?.questions || []))
+  const [localResolution, setLocalResolution] = useVirtualizedMessageState<AgentAskResolution | null>(`${slot}:resolution`, null)
+  const [submitting, setSubmitting] = useVirtualizedMessageState(`${slot}:submitting`, false)
+  const [error, setError] = useVirtualizedMessageState(`${slot}:error`, '')
+  const [expanded, setExpanded] = useVirtualizedMessageState(`${slot}:expanded`, interaction?.status === 'pending')
 
   if (!interaction?.questions.length) return null
 

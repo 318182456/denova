@@ -3,9 +3,10 @@ package session
 import (
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/internal/agents/conversationconfig"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 const (
@@ -59,6 +60,7 @@ type sessionHeader struct {
 	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
 }
 
+// clearRecord preserves the context boundary in released journals; new sessions do not write it.
 type clearRecord struct {
 	Type            string    `json:"type"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -89,17 +91,17 @@ type sessionPatchRecord struct {
 // displayPatchRecord stores only the mutation. Pointer fields distinguish an
 // explicit empty value from an omitted field.
 type displayPatchRecord struct {
-	Type             string                  `json:"type"`
-	TargetRecordID   string                  `json:"target_record_id"`
-	CreatedAt        time.Time               `json:"created_at"`
-	DisplayPhase     *string                 `json:"display_phase,omitempty"`
-	Status           *string                 `json:"status,omitempty"`
-	Result           *string                 `json:"result,omitempty"`
-	ToolPresentation *agent.ToolPresentation `json:"tool_presentation,omitempty"`
-	ArgsAppend       string                  `json:"args_append,omitempty"`
-	ContentAppend    string                  `json:"content_append,omitempty"`
-	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
-	Ask              *AskInteraction         `json:"ask,omitempty"`
+	Type             string                      `json:"type"`
+	TargetRecordID   string                      `json:"target_record_id"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	DisplayPhase     *string                     `json:"display_phase,omitempty"`
+	Status           *string                     `json:"status,omitempty"`
+	Result           *string                     `json:"result,omitempty"`
+	ToolPresentation *agenttool.ToolPresentation `json:"tool_presentation,omitempty"`
+	ArgsAppend       string                      `json:"args_append,omitempty"`
+	ContentAppend    string                      `json:"content_append,omitempty"`
+	Illustration     *ChapterIllustration        `json:"illustration,omitempty"`
+	Ask              *AskInteraction             `json:"ask,omitempty"`
 }
 
 type interruptionPatchRecord struct {
@@ -111,12 +113,12 @@ type interruptionPatchRecord struct {
 }
 
 type contextBatchRecord struct {
-	Type            string               `json:"type"`
-	CreatedAt       time.Time            `json:"created_at"`
-	Identity        DomainCommitIdentity `json:"identity"`
-	Sequence        int                  `json:"sequence"`
-	ContextRevision uint64               `json:"context_revision"`
-	Messages        []agent.Message      `json:"messages"`
+	Type            string                `json:"type"`
+	CreatedAt       time.Time             `json:"created_at"`
+	Identity        DomainCommitIdentity  `json:"identity"`
+	Sequence        int                   `json:"sequence"`
+	ContextRevision uint64                `json:"context_revision"`
+	Messages        []agentschema.Message `json:"messages"`
 }
 
 // releasedContextCompactionRecord is the exact v0.3.3 Product Session

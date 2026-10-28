@@ -18,7 +18,7 @@ const multiAgentExpectations = [
   { marker: 'E2E_MULTI_AGENT_GAMMA', output: 'Gamma stream started.', reasoning: 'Gamma reasoning one. Gamma reasoning two.' },
 ]
 
-test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
+test('runs General Agent tools in ordinary directories without crossing Project boundaries', { tag: '@smoke' }, async ({ page, request }) => {
   const [alphaPath, betaPath] = await Promise.all([
     mkdtemp(path.join(runtimeRoot, 'general-project-alpha-')),
     mkdtemp(path.join(runtimeRoot, 'general-project-beta-')),
@@ -122,7 +122,8 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
 
     const activeProcess = page.locator('[data-agent-execution-process]').last()
     // The parent reaches an explicit dependency while child streams remain active.
-    await expect(activeProcess.getByText('协调 SubAgent', { exact: true })).toBeVisible()
+    await expect(activeProcess).toBeVisible()
+    await expect(page.locator('[data-agent-execution-content]').getByText('协调 SubAgent', { exact: true })).toBeVisible()
     await releaseDelayedRequest(request, multiAgentStreamGateMarker)
     streamsReleased = true
     await expect.poll(async () => {
@@ -212,9 +213,11 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
   const trigger = process.locator('[data-slot="collapsible-trigger"]').first()
   if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
 
-  const cards = process.getByRole('button', { name: 'general-purpose 输出', exact: true })
+  const processKey = await process.locator('xpath=..').getAttribute('data-nova-chat-row-key')
+  const content = page.locator(`[data-agent-execution-content=${JSON.stringify(processKey)}]`)
+  const cards = content.getByRole('button', { name: 'general-purpose 输出', exact: true })
   await expect(cards).toHaveCount(3)
-  for (const item of multiAgentExpectations) await expect(process).not.toContainText(item.output)
+  for (const item of multiAgentExpectations) await expect(content.filter({ hasText: item.output })).toHaveCount(0)
   const seen = new Set<string>()
   for (let index = 0; index < 3; index += 1) {
     await cards.nth(index).click()

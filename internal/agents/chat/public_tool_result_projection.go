@@ -3,11 +3,11 @@ package chat
 import (
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	agentrun "denova/internal/agents/run"
 	producttools "denova/internal/agents/tools"
 	workspacechange "denova/internal/workspace/change"
+
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // ProjectToolResult derives product display data and change notifications from
@@ -38,11 +38,11 @@ func ProjectToolResult(
 		// particular result is interactive media. Preserve the call renderer and
 		// refine only the result renderer so reconnect/replay never invents a
 		// second call card.
-		presentation := agent.UniformToolPresentation(agent.ToolPresentationImage)
+		presentation := agenttool.UniformToolPresentation(agenttool.ToolPresentationImage)
 		if projected := eventDataToolPresentation(data); projected != nil {
 			presentation = *projected
 		}
-		presentation.Result = agent.ToolPresentationInteractiveMedia
+		presentation.Result = agenttool.ToolPresentationInteractiveMedia
 		data["tool_presentation"] = presentation
 	} else if target := producttools.ParseGeneratedImageTarget(toolName, payload); target != "" {
 		data["target"] = target

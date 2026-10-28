@@ -9,7 +9,187 @@ const gameFollowUpMarker = 'E2E_GAME_FOLLOW_UP_STEER'
 const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
 const gameBranchPlanMarker = 'E2E_GAME_BRANCH_PLAN'
 
-test('submits, streams, and persists a complete Game turn', async ({ page, request }) => {
+for (const theme of ['dark', 'light'] as const) {
+  test(`persists Game text width and aligns responsive reading layout in ${theme}`, async ({ page, request }) => {
+    await createAndOpenBook(request, `Game reading width ${theme}`)
+    const story = await createStartedStory(request, 'Reading width')
+    const turn = (await getStorySnapshot(request, story.id)).turns[0]
+    const narrative = Array.from({ length: 12 }, (_, index) => `段落 ${index + 1}：${'车站的灯光照亮漫长的轨道，旅人沿着脚印继续探索。'.repeat(8)}`).join('\n\n')
+    const edited = await request.patch(`/api/interactive/stories/${story.id}/turns/${turn.id}/narrative`, {
+      data: { branch_id: 'main', expected_narrative: turn.narrative, narrative },
+    })
+    expect(edited.ok(), await edited.text()).toBe(true)
+    const settings = await request.patch('/api/settings', { data: { layer: 'user', changes: { theme, interactive_stage_text_max_width: null } } })
+    expect(settings.ok(), await settings.text()).toBe(true)
+    await page.setViewportSize({ width: 2200, height: 1000 })
+    await page.goto('/')
+    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+    const row = page.locator('[data-nova-chat-item].nova-story-reading-column').last()
+    const composerColumn = page.locator('.nova-story-input-float > .nova-story-reading-column')
+    await expect(row).toBeVisible()
+    await expect.poll(async () => (await row.boundingBox())?.width).toBe(896)
+    await page.getByRole('tab', { name: '控制', exact: true }).click()
+    const width = page.getByRole('spinbutton', { name: '文本最大宽度（px）' })
+    await expect(width).toHaveValue('896')
+    const timeline = page.locator('.nova-story-stage-content .nova-chat-canvas')
+    await timeline.hover()
+    await page.mouse.wheel(0, -700)
+    await expect.poll(() => timeline.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeGreaterThan(500)
+    await width.fill('720')
+    await width.press('Enter')
+    await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.interactive_stage_text_max_width).toBe(720)
+    await expect.poll(async () => (await row.boundingBox())?.width).toBe(720)
+    await expect(width).toHaveValue('720')
+    await expect(width).toBeEnabled()
+    // Reflow must not pull a reader who scrolled into history back to the bottom.
+    await expect.poll(() => timeline.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeGreaterThan(500)
+    await page.reload()
+    await expect.poll(async () => (await composerColumn.boundingBox())?.width).toBe(720)
+    await page.getByRole('button', { name: '获取行动选择' }).click()
+    await expect(page.getByText('走进旧车站', { exact: true })).toBeVisible()
+    for (const viewport of [{ width: 2200, height: 1000 }, { width: 390, height: 844 }, { width: 700, height: 900 }]) {
+      await page.setViewportSize(viewport)
+      await expect(composerColumn).toBeVisible()
+      await expect.poll(async () => {
+        const message = (await row.boundingBox())!
+        const composer = (await composerColumn.boundingBox())!
+        return Math.abs(message.x - composer.x) + Math.abs(message.width - composer.width)
+      }).toBeLessThan(2)
+      const box = (await composerColumn.boundingBox())!
+      expect(box.width).toBeLessThanOrEqual(720)
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.getByPlaceholder(/你要做什么/).focus()
+      await expect(page.getByText('走进旧车站', { exact: true })).toBeVisible()
+      await page.screenshot({ path: test.info().outputPath(`game-width-${theme}-${viewport.width}.png`) })
+    }
+  })
+}
+
+for (const viewportWidth of [1280, 390]) {
+  test(`animates Game choice toggles reversibly and respects reduced motion at ${viewportWidth}px`, async ({ page, request }) => {
+    await createAndOpenBook(request, 'Game choice motion')
+    const story = await createStartedStory(request, 'Choice motion')
+    const turn = (await getStorySnapshot(request, story.id)).turns[0]
+    const narrative = '车站的灯光照亮漫长的轨道，旅人沿着脚印继续探索。'.repeat(180)
+    const edited = await request.patch(`/api/interactive/stories/${story.id}/turns/${turn.id}/narrative`, {
+      data: { branch_id: 'main', expected_narrative: turn.narrative, narrative },
+    })
+    expect(edited.ok(), await edited.text()).toBe(true)
+    const settings = await request.patch('/api/settings', { data: { layer: 'user', changes: { motion_intensity: 'system' } } })
+    expect(settings.ok(), await settings.text()).toBe(true)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.goto('/')
+    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+    await page.setViewportSize({ width: viewportWidth, height: 900 })
+    const toggle = page.locator('.nova-story-stage-composer [aria-controls][aria-expanded]')
+    await expect(toggle).toBeEnabled()
+    const timeline = page.locator('.nova-story-stage-content .nova-chat-canvas')
+    // Composer controls can become ready before history is rendered and measured.
+    await expect(timeline).toContainText(narrative)
+    await expect(timeline).toHaveAttribute('aria-busy', 'false')
+    await expect.poll(() => timeline.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(600)
+    // Wait for the route's entrance fade before sending input or measuring motion.
+    await expect.poll(() => page.locator('.nova-story-choice-panel').evaluate(surface => {
+      let opacity = 1
+      for (let ancestor = surface.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        opacity *= Number(getComputedStyle(ancestor).opacity)
+      }
+      return opacity
+    })).toBe(1)
+    // Wheel over the timeline gutter so nested state panels do not consume it.
+    await timeline.hover({ position: { x: 8, y: 80 } })
+    await page.mouse.wheel(0, -600)
+    await expect.poll(() => timeline.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeGreaterThan(400)
+    const frames = await toggle.evaluate(async (element) => {
+      const button = element as HTMLButtonElement
+      const panel = document.getElementById(button.getAttribute('aria-controls')!)!
+      const composer = button.closest('.nova-story-stage-composer')!
+      const inputFloat = button.closest('.nova-story-input-float')!
+      const surface = document.querySelector('.nova-story-choice-panel')!
+      const timeline = document.querySelector('.nova-story-stage-content .nova-chat-canvas')!
+      const samples: Array<{ opacity: number; backdropAncestorOpacity: number; bottom: number; floatHeight: number; scrollTop: number; scrollHeight: number; expanded: boolean; inert: boolean }> = []
+      const sample = () => {
+        let backdropAncestorOpacity = 1
+        for (let ancestor = surface.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          backdropAncestorOpacity *= Number(getComputedStyle(ancestor).opacity)
+        }
+        samples.push({
+          opacity: Number(getComputedStyle(surface).opacity) * backdropAncestorOpacity,
+          backdropAncestorOpacity,
+          bottom: composer.getBoundingClientRect().bottom,
+          floatHeight: inputFloat.getBoundingClientRect().height,
+          scrollTop: timeline.scrollTop,
+          scrollHeight: timeline.scrollHeight,
+          expanded: button.getAttribute('aria-expanded') === 'true',
+          inert: panel.inert,
+        })
+      }
+      sample()
+      button.click()
+      const start = performance.now()
+      let reversed = false
+      while (performance.now() - start < 400) {
+        await new Promise(requestAnimationFrame)
+        sample()
+        if (!reversed && performance.now() - start >= 80) {
+          button.click()
+          reversed = true
+        }
+      }
+      return samples
+    })
+    await test.info().attach('choice-motion-frames', { body: JSON.stringify(frames), contentType: 'application/json' })
+    expect(frames[0].opacity).toBe(0)
+    expect(frames.some(frame => frame.opacity > 0.1 && frame.expanded)).toBe(true)
+    expect(frames.some(frame => frame.opacity > 0.1 && !frame.expanded && frame.inert)).toBe(true)
+    expect(frames.at(-1)?.opacity).toBe(0)
+    // Opacity on a blur ancestor cuts off the text backdrop until its final frame.
+    expect(frames.every(frame => frame.backdropAncestorOpacity === 1)).toBe(true)
+    for (const metric of ['floatHeight', 'scrollTop', 'scrollHeight'] as const) {
+      expect(Math.max(...frames.map(frame => frame[metric])) - Math.min(...frames.map(frame => frame[metric])), metric).toBeLessThan(1)
+    }
+    expect(Math.max(...frames.map(frame => frame.bottom)) - Math.min(...frames.map(frame => frame.bottom))).toBeLessThan(1)
+    expect(new Set(frames.filter(frame => frame.expanded).map(frame => frame.opacity)).size).toBeGreaterThan(2)
+    await expect(page.getByRole('button', { name: '走进旧车站', exact: true })).toHaveCount(0)
+    await toggle.press('Enter')
+    await expect(page.getByRole('button', { name: '走进旧车站', exact: true })).toBeVisible()
+    const panel = page.locator('.nova-story-choice-panel')
+    await expect(panel).toHaveCSS('opacity', '1')
+    expect(await panel.evaluate(element => {
+      const scrollButton = document.querySelector('[data-nova-scroll-to-bottom]')!
+      const buttonBox = scrollButton.getBoundingClientRect()
+      const x = buttonBox.x + buttonBox.width / 2
+      const y = buttonBox.y + buttonBox.height / 2
+      const box = element.getBoundingClientRect()
+      return x < box.left || x > box.right || y < box.top || y > box.bottom
+        || element.contains(document.elementFromPoint(x, y))
+    })).toBe(true)
+    await page.screenshot({ path: test.info().outputPath(`game-choice-overlay-${viewportWidth}.png`) })
+    await toggle.press('Enter')
+    await expect(toggle).toBeFocused()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.reload()
+    await expect(toggle).toBeEnabled()
+    const reducedFrames = await toggle.evaluate(async (element) => {
+      const panel = document.getElementById(element.getAttribute('aria-controls')!)!
+      ;(element as HTMLButtonElement).click()
+      const opacities: number[] = []
+      for (let i = 0; i < 8; i++) {
+        await new Promise(requestAnimationFrame)
+        opacities.push(Number(getComputedStyle(panel).opacity))
+      }
+      return opacities
+    })
+    expect(reducedFrames.at(-1)).toBe(1)
+    expect(new Set(reducedFrames.filter(opacity => opacity > 0))).toEqual(new Set([1]))
+  })
+}
+
+test('submits, streams, and persists a complete Game turn', { tag: '@smoke' }, async ({ page, request }) => {
   await createAndOpenBook(request, 'Game E2E Book')
   const story = await createStartedStory(request, 'Game E2E Story')
 
@@ -40,7 +220,7 @@ test('submits, streams, and persists a complete Game turn', async ({ page, reque
   await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns[2]?.user).toBe('走进旧车站')
 })
 
-test('creates and switches to a branch from a persisted Game turn', async ({ page, request }) => {
+test('creates and switches to a branch from a persisted Game turn', { tag: '@smoke' }, async ({ page, request }) => {
   await createAndOpenBook(request, 'Game Branch E2E Book')
   const story = await createStartedStory(request, 'Game Branch E2E Story')
 

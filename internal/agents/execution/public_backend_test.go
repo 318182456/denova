@@ -24,42 +24,48 @@ import (
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	workspacechange "denova/internal/workspace/change"
 
-	agent "github.com/alfredxw/denova/agent"
-	agentpermission "github.com/alfredxw/denova/agent/permission"
-	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 	agentsessionfile "github.com/alfredxw/denova/agent/session/file"
-	publictools "github.com/alfredxw/denova/agent/tools"
+	sdktool "github.com/alfredxw/denova/agent/tool"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
+	agentpermission "github.com/alfredxw/denova/agent/tool/permission"
 )
 
 type publicBackendTestModel struct {
 	mu        sync.Mutex
-	inputs    [][]*agent.Message
-	responses []*agent.Message
+	inputs    [][]*agentschema.Message
+	responses []*agentschema.Message
 }
 
 type publicBackendSkillCaptureModel struct {
 	mu                     sync.Mutex
-	input                  []*agent.Message
+	input                  []*agentschema.Message
 	eventsAtFirstModelCall []agentrun.Event
 	events                 func() []agentrun.Event
 }
 
-func (model *publicBackendSkillCaptureModel) Generate(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (model *publicBackendSkillCaptureModel) Generate(_ context.Context, input []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	return model.capture(input), nil
 }
 
-func (model *publicBackendSkillCaptureModel) Stream(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	return agent.StreamReaderFromArray([]*agent.Message{model.capture(input)}), nil
+func (model *publicBackendSkillCaptureModel) Stream(_ context.Context, input []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{model.capture(input)}), nil
 }
 
-func (model *publicBackendSkillCaptureModel) capture(input []*agent.Message) *agent.Message {
+func (model *publicBackendSkillCaptureModel) capture(input []*agentschema.Message) *agentschema.Message {
 	model.mu.Lock()
 	defer model.mu.Unlock()
 	if model.input == nil {
 		model.input = clonePublicBackendMessages(input)
 		model.eventsAtFirstModelCall = model.events()
 	}
-	return agent.AssistantMessage("done", nil)
+	return agentschema.AssistantMessage("done", nil)
 }
 
 type publicBackendBlockingModel struct{ started chan struct{} }
@@ -78,19 +84,19 @@ type publicBackendNextTurnModel struct {
 	release chan struct{}
 }
 
-func (model *publicBackendNextTurnModel) Generate(ctx context.Context, _ []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (model *publicBackendNextTurnModel) Generate(ctx context.Context, _ []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	return model.next(ctx)
 }
 
-func (model *publicBackendNextTurnModel) Stream(ctx context.Context, _ []*agent.Message, _ ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (model *publicBackendNextTurnModel) Stream(ctx context.Context, _ []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	message, err := model.next(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{message}), nil
 }
 
-func (model *publicBackendNextTurnModel) next(ctx context.Context) (*agent.Message, error) {
+func (model *publicBackendNextTurnModel) next(ctx context.Context) (*agentschema.Message, error) {
 	model.mu.Lock()
 	model.calls++
 	call := model.calls
@@ -99,27 +105,27 @@ func (model *publicBackendNextTurnModel) next(ctx context.Context) (*agent.Messa
 		close(model.started)
 		select {
 		case <-model.release:
-			return agent.AssistantMessage("first answer", nil), nil
+			return agentschema.AssistantMessage("first answer", nil), nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
-	return agent.AssistantMessage("second answer", nil), nil
+	return agentschema.AssistantMessage("second answer", nil), nil
 }
 
-func (model *publicBackendSteerModel) Generate(ctx context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.Message, error) {
+func (model *publicBackendSteerModel) Generate(ctx context.Context, input []*agentschema.Message, options ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	return model.next(ctx)
 }
 
-func (model *publicBackendSteerModel) Stream(ctx context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (model *publicBackendSteerModel) Stream(ctx context.Context, input []*agentschema.Message, options ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	message, err := model.next(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{message}), nil
 }
 
-func (model *publicBackendSteerModel) next(ctx context.Context) (*agent.Message, error) {
+func (model *publicBackendSteerModel) next(ctx context.Context) (*agentschema.Message, error) {
 	model.mu.Lock()
 	model.calls++
 	call := model.calls
@@ -128,18 +134,18 @@ func (model *publicBackendSteerModel) next(ctx context.Context) (*agent.Message,
 		close(model.started)
 		select {
 		case <-model.release:
-			return agent.AssistantMessage("obsolete answer", nil), nil
+			return agentschema.AssistantMessage("obsolete answer", nil), nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
-	return agent.AssistantMessage("steered answer", nil), nil
+	return agentschema.AssistantMessage("steered answer", nil), nil
 }
 
 type publicBackendTestProfile struct {
 	id        ProfileID
 	prepare   func(context.Context, CycleRestoreRequest) (Cycle, error)
-	canonical func(context.Context, CanonicalInputRequest) (agent.CanonicalAdapter, error)
+	canonical func(context.Context, CanonicalInputRequest) (agentcanonical.CanonicalAdapter, error)
 }
 
 func (profile publicBackendTestProfile) ID() ProfileID {
@@ -153,7 +159,7 @@ func (profile publicBackendTestProfile) PrepareCycle(ctx context.Context, reques
 	return profile.prepare(ctx, request)
 }
 
-func (profile publicBackendTestProfile) CanonicalInput(ctx context.Context, request CanonicalInputRequest) (agent.CanonicalAdapter, error) {
+func (profile publicBackendTestProfile) CanonicalInput(ctx context.Context, request CanonicalInputRequest) (agentcanonical.CanonicalAdapter, error) {
 	if profile.canonical == nil {
 		return nil, errors.New("public backend test Profile has no canonical input boundary")
 	}
@@ -162,8 +168,8 @@ func (profile publicBackendTestProfile) CanonicalInput(ctx context.Context, requ
 
 func publicBackendTestSessionCanonical(
 	sess *session.Session,
-) func(context.Context, CanonicalInputRequest) (agent.CanonicalAdapter, error) {
-	return func(_ context.Context, request CanonicalInputRequest) (agent.CanonicalAdapter, error) {
+) func(context.Context, CanonicalInputRequest) (agentcanonical.CanonicalAdapter, error) {
+	return func(_ context.Context, request CanonicalInputRequest) (agentcanonical.CanonicalAdapter, error) {
 		conversation := agentconversation.NewSessionConversationForAgent(sess, nil, request.Options.AgentKind)
 		committer, err := agentlifecycle.NewSessionConversationCommitter(agentlifecycle.SessionCommitterConfig{
 			Conversation: conversation,
@@ -180,7 +186,7 @@ func publicBackendTestSessionCanonical(
 			Request:           request.Request,
 			Options:           request.Options,
 			Committer:         committer,
-			ContextIdentity:   agent.CapabilityIdentity{Kind: "context.public-backend-test-admission", Version: 1},
+			ContextIdentity:   agentschema.CapabilityIdentity{Kind: "context.public-backend-test-admission", Version: 1},
 			CanonicalIdentity: request.Identity,
 		})
 		if err != nil {
@@ -190,27 +196,27 @@ func publicBackendTestSessionCanonical(
 	}
 }
 
-func (model *publicBackendBlockingModel) Generate(ctx context.Context, _ []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (model *publicBackendBlockingModel) Generate(ctx context.Context, _ []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	close(model.started)
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func (model *publicBackendBlockingModel) Stream(ctx context.Context, _ []*agent.Message, _ ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (model *publicBackendBlockingModel) Stream(ctx context.Context, _ []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	close(model.started)
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func (model *publicBackendTestModel) Generate(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (model *publicBackendTestModel) Generate(_ context.Context, input []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	return model.response(input), nil
 }
 
-func (model *publicBackendTestModel) Stream(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	return agent.StreamReaderFromArray([]*agent.Message{model.response(input)}), nil
+func (model *publicBackendTestModel) Stream(_ context.Context, input []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{model.response(input)}), nil
 }
 
-func (model *publicBackendTestModel) response(input []*agent.Message) *agent.Message {
+func (model *publicBackendTestModel) response(input []*agentschema.Message) *agentschema.Message {
 	model.mu.Lock()
 	defer model.mu.Unlock()
 	model.inputs = append(model.inputs, clonePublicBackendMessages(input))
@@ -219,10 +225,10 @@ func (model *publicBackendTestModel) response(input []*agent.Message) *agent.Mes
 		model.responses = model.responses[1:]
 		return response
 	}
-	return &agent.Message{
-		Role: agent.Assistant, Content: "public runtime answer",
-		ResponseMeta: &agent.ResponseMeta{FinishReason: "stop", Usage: &agent.TokenUsage{
-			PromptTokens: 20, PromptTokenDetails: agent.PromptTokenDetails{CachedTokens: 12},
+	return &agentschema.Message{
+		Role: agentschema.Assistant, Content: "public runtime answer",
+		ResponseMeta: &agentschema.ResponseMeta{FinishReason: "stop", Usage: &agentschema.TokenUsage{
+			PromptTokens: 20, PromptTokenDetails: agentschema.PromptTokenDetails{CachedTokens: 12},
 			CompletionTokens: 4, TotalTokens: 24,
 		}},
 	}
@@ -239,11 +245,11 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := agent.ToolDescriptor{
-		Source: agent.ToolSourceWrite, Execution: agent.ToolExecutionWorkspaceExclusive,
-		MutationScope: agent.ToolMutationWorkspace, PostCheck: agent.ToolPostCheckWorkspaceChange,
-		Recovery: agent.ToolRecoveryReconcilable, ResultProjection: agent.ToolResultBoundedModelContext,
-		ResultRetention: agent.ToolResultProtected, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
+	descriptor := sdktool.ToolDescriptor{
+		Source: sdktool.ToolSourceWrite, Execution: sdktool.ToolExecutionWorkspaceExclusive,
+		MutationScope: sdktool.ToolMutationWorkspace, PostCheck: sdktool.ToolPostCheckWorkspaceChange,
+		Recovery: sdktool.ToolRecoveryReconcilable, ResultProjection: agentschema.ToolResultBoundedModelContext,
+		ResultRetention: agentschema.ToolResultProtected, Steering: sdktool.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
 	}
 	effect, present, err := agenttoolruntime.AgentToolMutationEffect(agenttool.ExecutionRecord{
 		ToolName: "write", ExecutionID: "write-call", Status: "success", Workspace: workspace,
@@ -253,20 +259,20 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	if err != nil || !present {
 		t.Fatalf("mutation effect present=%v err=%v", present, err)
 	}
-	tool, err := agent.InferTool("write", "write test", func(context.Context, struct{}) (agent.ToolResult, error) {
-		return agent.ToolResult{
-			ModelContent: "written", DisplayContent: "written", Status: agent.ToolResultSuccess,
-			Effects: []agent.Effect{effect},
+	tool, err := sdktool.InferTool("write", "write test", func(context.Context, struct{}) (agentschema.ToolResult, error) {
+		return agentschema.ToolResult{
+			ModelContent: "written", DisplayContent: "written", Status: agentschema.ToolResultSuccess,
+			Effects: []agentschema.Effect{effect},
 		}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &publicBackendTestModel{responses: []*agent.Message{
-		agent.AssistantMessage("", []agent.ToolCall{{
-			ID: "provider-write", Type: "function", Function: agent.FunctionCall{Name: "write", Arguments: `{}`},
+	model := &publicBackendTestModel{responses: []*agentschema.Message{
+		agentschema.AssistantMessage("", []agentschema.ToolCall{{
+			ID: "provider-write", Type: "function", Function: agentschema.FunctionCall{Name: "write", Arguments: `{}`},
 		}}),
-		agent.AssistantMessage("finished", nil),
+		agentschema.AssistantMessage("finished", nil),
 	}}
 	hostEffects := 0
 	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
@@ -282,7 +288,7 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	var verified []agenttool.Mutation
 	var verification agenttool.Verification
 	var events []agentrun.Event
-	toolset, err := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.public-backend-mutation", Version: 1}, agent.ToolDefinition{
+	toolset, err := sdktool.StaticToolsIdentified(agentschema.CapabilityIdentity{Kind: "tools.public-backend-mutation", Version: 1}, sdktool.ToolDefinition{
 		Tool: tool, Descriptor: descriptor,
 	})
 	if err != nil {
@@ -291,7 +297,7 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-mutation", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-mutation", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-mutation", Version: 1},
 			Permission:    agentpermission.FullAccess(),
 			Tools:         toolset,
 		},
@@ -349,7 +355,7 @@ func TestAgentRuntimeCommitsMalformedArgumentsAsRecoverableContext(t *testing.T)
 		t.Fatal(err)
 	}
 	executions := 0
-	tool, err := agent.InferTool("typed_retry", "typed retry", func(_ context.Context, input struct {
+	tool, err := sdktool.InferTool("typed_retry", "typed retry", func(_ context.Context, input struct {
 		Value int `json:"value"`
 	}) (string, error) {
 		executions++
@@ -358,26 +364,26 @@ func TestAgentRuntimeCommitsMalformedArgumentsAsRecoverableContext(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &publicBackendTestModel{responses: []*agent.Message{
-		agent.AssistantMessage("", []agent.ToolCall{{
+	model := &publicBackendTestModel{responses: []*agentschema.Message{
+		agentschema.AssistantMessage("", []agentschema.ToolCall{{
 			ID: "invalid-json", Type: "function",
-			Function: agent.FunctionCall{Name: "typed_retry", Arguments: `[`},
+			Function: agentschema.FunctionCall{Name: "typed_retry", Arguments: `[`},
 		}}),
-		agent.AssistantMessage("", []agent.ToolCall{{
+		agentschema.AssistantMessage("", []agentschema.ToolCall{{
 			ID: "corrected", Type: "function",
-			Function: agent.FunctionCall{Name: "typed_retry", Arguments: `{"value":7}`},
+			Function: agentschema.FunctionCall{Name: "typed_retry", Arguments: `{"value":7}`},
 		}}),
-		agent.AssistantMessage("finished", nil),
+		agentschema.AssistantMessage("finished", nil),
 	}}
-	descriptor := agent.ToolDescriptor{
-		Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
-		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
-		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
-		ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
+	descriptor := sdktool.ToolDescriptor{
+		Source: sdktool.ToolSourceRead, Execution: sdktool.ToolExecutionParallelRead,
+		MutationScope: sdktool.ToolMutationNone, PostCheck: sdktool.ToolPostCheckNone,
+		Recovery: sdktool.ToolRecoveryReadOnly, ResultProjection: agentschema.ToolResultBoundedModelContext,
+		ResultRetention: agentschema.ToolResultDeferred, Steering: sdktool.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
 	}
-	toolset, err := agent.StaticToolsIdentified(
-		agent.CapabilityIdentity{Kind: "tools.public-backend-invalid-arguments", Version: 1},
-		agent.ToolDefinition{Tool: tool, Descriptor: descriptor},
+	toolset, err := sdktool.StaticToolsIdentified(
+		agentschema.CapabilityIdentity{Kind: "tools.public-backend-invalid-arguments", Version: 1},
+		sdktool.ToolDefinition{Tool: tool, Descriptor: descriptor},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -392,7 +398,7 @@ func TestAgentRuntimeCommitsMalformedArgumentsAsRecoverableContext(t *testing.T)
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-invalid-arguments", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-invalid-arguments", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-invalid-arguments", Version: 1},
 			Permission:    agentpermission.FullAccess(), Tools: toolset,
 		},
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
@@ -416,7 +422,7 @@ func TestAgentRuntimeCommitsMalformedArgumentsAsRecoverableContext(t *testing.T)
 		t.Fatal(err)
 	}
 	for index, message := range snapshot.EffectiveMessages {
-		if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 1 ||
+		if message == nil || message.Role != agentschema.Assistant || len(message.ToolCalls) != 1 ||
 			message.ToolCalls[0].ID != "invalid-json" {
 			continue
 		}
@@ -424,7 +430,7 @@ func TestAgentRuntimeCommitsMalformedArgumentsAsRecoverableContext(t *testing.T)
 			t.Fatalf("canonical invalid call = %#v", message)
 		}
 		result := snapshot.EffectiveMessages[index+1]
-		if result.ToolResult == nil || result.ToolResult.SyntheticReason != agent.ToolSyntheticInvalidArguments ||
+		if result.ToolResult == nil || result.ToolResult.SyntheticReason != agentschema.ToolSyntheticInvalidArguments ||
 			!strings.Contains(result.Content, `"received_arguments":"["`) {
 			t.Fatalf("canonical invalid result = %#v", result)
 		}
@@ -456,19 +462,19 @@ func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &publicBackendTestModel{responses: []*agent.Message{
-		agent.AssistantMessage("", []agent.ToolCall{
-			{ID: "provider-write", Type: "function", Function: agent.FunctionCall{
+	model := &publicBackendTestModel{responses: []*agentschema.Message{
+		agentschema.AssistantMessage("", []agentschema.ToolCall{
+			{ID: "provider-write", Type: "function", Function: agentschema.FunctionCall{
 				Name: "write", Arguments: `{"path":"created.md","content":"created\n"}`,
 			}},
-			{ID: "provider-edit", Type: "function", Function: agent.FunctionCall{
+			{ID: "provider-edit", Type: "function", Function: agentschema.FunctionCall{
 				Name: "edit", Arguments: `{"path":"edited.md","edits":[{"old_string":"before edit","new_string":"after edit"}]}`,
 			}},
-			{ID: "provider-delete", Type: "function", Function: agent.FunctionCall{
+			{ID: "provider-delete", Type: "function", Function: agentschema.FunctionCall{
 				Name: "edit", Arguments: `{"path":"deleted.md","operation":"delete"}`,
 			}},
 		}),
-		agent.AssistantMessage("finished", nil),
+		agentschema.AssistantMessage("finished", nil),
 	}}
 	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
@@ -477,8 +483,8 @@ func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *test
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
-	toolset, err := agent.StaticToolsIdentified(
-		agent.CapabilityIdentity{Kind: "tools.public-backend-diff-review", Version: 1}, definitions...,
+	toolset, err := sdktool.StaticToolsIdentified(
+		agentschema.CapabilityIdentity{Kind: "tools.public-backend-diff-review", Version: 1}, definitions...,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -486,7 +492,7 @@ func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *test
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-diff-review", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-diff-review", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-diff-review", Version: 1},
 			Permission:    agentpermission.FullAccess(),
 			Tools:         toolset,
 		},
@@ -537,8 +543,8 @@ func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *test
 	}
 }
 
-func clonePublicBackendMessages(values []*agent.Message) []*agent.Message {
-	result := make([]*agent.Message, len(values))
+func clonePublicBackendMessages(values []*agentschema.Message) []*agentschema.Message {
+	result := make([]*agentschema.Message, len(values))
 	for index, value := range values {
 		if value != nil {
 			result[index] = value.Clone()
@@ -559,9 +565,9 @@ func writePublicBackendSkillFixture(t *testing.T, root, name, body string) {
 	}
 }
 
-func lastPublicBackendUserContent(messages []*agent.Message) string {
+func lastPublicBackendUserContent(messages []*agentschema.Message) string {
 	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index] != nil && messages[index].Role == agent.User {
+		if messages[index] != nil && messages[index].Role == agentschema.User {
 			return messages[index].Content
 		}
 	}
@@ -629,7 +635,7 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-test", Name: "root", Instructions: "answer",
-			Model: model, ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-test", Version: 1},
+			Model: model, ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-test", Version: 1},
 		},
 		Conversation: conversation,
 		Request:      agentchatRequest("public-command", "hello"),
@@ -673,8 +679,8 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 		t.Fatalf("input callbacks = %d", inputCallbacks)
 	}
 	messages := sess.GetMessages()
-	if len(messages) != 2 || messages[0].Role != agent.User || messages[0].Content != "hello" ||
-		messages[1].Role != agent.Assistant || messages[1].Content != "public runtime answer" {
+	if len(messages) != 2 || messages[0].Role != agentschema.User || messages[0].Content != "hello" ||
+		messages[1].Role != agentschema.Assistant || messages[1].Content != "public runtime answer" {
 		t.Fatalf("canonical session messages = %#v", messages)
 	}
 	types := make([]string, len(events))
@@ -698,11 +704,11 @@ func TestAgentRuntimeBindsProviderTraceToDurablePublicRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &publicBackendTestModel{responses: []*agent.Message{{
-		Role: agent.Assistant, Content: "traced answer",
+	model := &publicBackendTestModel{responses: []*agentschema.Message{{
+		Role: agentschema.Assistant, Content: "traced answer",
 		Extra: map[string]any{"openai-request-id": "provider-request-1"},
-		ResponseMeta: &agent.ResponseMeta{FinishReason: "stop", Usage: &agent.TokenUsage{
-			PromptTokens: 20, PromptTokenDetails: agent.PromptTokenDetails{CachedTokens: 12},
+		ResponseMeta: &agentschema.ResponseMeta{FinishReason: "stop", Usage: &agentschema.TokenUsage{
+			PromptTokens: 20, PromptTokenDetails: agentschema.PromptTokenDetails{CachedTokens: 12},
 			CompletionTokens: 4, TotalTokens: 24,
 		}},
 	}}}
@@ -716,8 +722,8 @@ func TestAgentRuntimeBindsProviderTraceToDurablePublicRun(t *testing.T) {
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-provider-trace", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-provider-trace", Version: 1},
-			Middlewares: []agent.Middleware{agent.IdentifyMiddleware(
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-provider-trace", Version: 1},
+			Middlewares: []agentmiddleware.Middleware{agentmiddleware.IdentifyMiddleware(
 				agentrun.NewModelInputLoggingMiddleware(
 					agentrun.AgentKindIDE,
 					providers.ModelConfig{Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses, Model: "test-model"},
@@ -725,7 +731,7 @@ func TestAgentRuntimeBindsProviderTraceToDurablePublicRun(t *testing.T) {
 					0,
 					agentprompts.SystemPromptComposition{},
 				),
-				agent.CapabilityIdentity{Kind: "middleware.provider-trace", Version: 1},
+				agentschema.CapabilityIdentity{Kind: "middleware.provider-trace", Version: 1},
 			)},
 		},
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
@@ -800,7 +806,7 @@ func TestAgentRuntimeLoadsExplicitSkillsBeforeFirstModelCallAndPersistsCards(t *
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-explicit-skills", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-explicit-skills", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-explicit-skills", Version: 1},
 		},
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, cfg, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("explicit-skills-command", message),
@@ -852,13 +858,13 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	ask := publictools.Ask()
-	model := &publicBackendTestModel{responses: []*agent.Message{
-		agent.AssistantMessage("", []agent.ToolCall{{
-			ID: "provider-plan-ask", Type: "function", Function: agent.FunctionCall{
+	model := &publicBackendTestModel{responses: []*agentschema.Message{
+		agentschema.AssistantMessage("", []agentschema.ToolCall{{
+			ID: "provider-plan-ask", Type: "function", Function: agentschema.FunctionCall{
 				Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":"Choose scope","options":[{"value":"minimal","label":"Minimal","description":"Only the shared flow.","recommended":true},{"value":"full","label":"Full","description":"Include adjacent controls."}]}]}`,
 			},
 		}}),
-		agent.AssistantMessage("<proposed_plan># Plan\n\n1. Apply the shared flow.</proposed_plan>", nil),
+		agentschema.AssistantMessage("<proposed_plan># Plan\n\n1. Apply the shared flow.</proposed_plan>", nil),
 	}}
 	orchestrator := agenttoolruntime.NewOrchestratorMiddleware(agenttoolruntime.OrchestratorConfig{
 		AgentKind: agentrun.AgentKindIDE,
@@ -885,10 +891,10 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-plan-ask", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-plan-ask", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-plan-ask", Version: 1},
 			Tools:         ask,
-			Middlewares: []agent.Middleware{agent.IdentifyMiddleware(
-				orchestrator, agent.CapabilityIdentity{Kind: "middleware.public-backend-plan-ask", Version: 1},
+			Middlewares: []agentmiddleware.Middleware{agentmiddleware.IdentifyMiddleware(
+				orchestrator, agentschema.CapabilityIdentity{Kind: "middleware.public-backend-plan-ask", Version: 1},
 			)},
 		},
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, &config.Config{Workspace: workspace}, agentrun.AgentKindIDE),
@@ -947,7 +953,7 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 		t.Fatalf("outcome = %#v", outcome)
 	}
 	model.mu.Lock()
-	inputs := append([][]*agent.Message(nil), model.inputs...)
+	inputs := append([][]*agentschema.Message(nil), model.inputs...)
 	model.mu.Unlock()
 	if len(inputs) != 2 || !strings.Contains(lastPublicBackendUserContent(inputs[1]), "Plan the refactor") {
 		t.Fatalf("model inputs = %#v", inputs)
@@ -984,8 +990,8 @@ func TestAgentRuntimeSteerPreemptsAndContinuesSamePublicRun(t *testing.T) {
 	model := &publicBackendSteerModel{started: make(chan struct{}), release: make(chan struct{})}
 	definition := agent.Definition{
 		Key: "public-backend-steer", Name: "root", Model: model,
-		ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-steer", Version: 1},
-		Middlewares: []agent.Middleware{agent.IdentifyMiddleware(
+		ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-steer", Version: 1},
+		Middlewares: []agentmiddleware.Middleware{agentmiddleware.IdentifyMiddleware(
 			agentrun.NewModelInputLoggingMiddleware(
 				agentrun.AgentKindIDE,
 				providers.ModelConfig{Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses, Model: "steer-model"},
@@ -993,7 +999,7 @@ func TestAgentRuntimeSteerPreemptsAndContinuesSamePublicRun(t *testing.T) {
 				0,
 				agentprompts.SystemPromptComposition{},
 			),
-			agent.CapabilityIdentity{Kind: "middleware.public-backend-steer", Version: 1},
+			agentschema.CapabilityIdentity{Kind: "middleware.public-backend-steer", Version: 1},
 		)},
 	}
 	options := agentrun.Options{
@@ -1069,9 +1075,9 @@ func TestAgentRuntimeSteerPreemptsAndContinuesSamePublicRun(t *testing.T) {
 		t.Fatalf("steer cycle restoration = %#v", restored)
 	}
 	messages := sess.GetMessages()
-	if len(messages) != 3 || messages[0].Role != agent.User || messages[0].Content != "initial request" ||
-		messages[1].Role != agent.User || messages[1].Content != "new direction" ||
-		messages[2].Role != agent.Assistant || messages[2].Content != "steered answer" {
+	if len(messages) != 3 || messages[0].Role != agentschema.User || messages[0].Content != "initial request" ||
+		messages[1].Role != agentschema.User || messages[1].Content != "new direction" ||
+		messages[2].Role != agentschema.Assistant || messages[2].Content != "steered answer" {
 		t.Fatalf("steer canonical messages = %#v", messages)
 	}
 	eventsMu.Lock()
@@ -1123,8 +1129,8 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 	model := &publicBackendNextTurnModel{started: make(chan struct{}), release: make(chan struct{})}
 	definition := agent.Definition{
 		Key: "public-backend-follow-up", Name: "root", Model: model,
-		ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-follow-up", Version: 1},
-		Middlewares: []agent.Middleware{agent.IdentifyMiddleware(
+		ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-follow-up", Version: 1},
+		Middlewares: []agentmiddleware.Middleware{agentmiddleware.IdentifyMiddleware(
 			agentrun.NewModelInputLoggingMiddleware(
 				agentrun.AgentKindIDE,
 				providers.ModelConfig{Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses, Model: "follow-up-model"},
@@ -1132,7 +1138,7 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 				0,
 				agentprompts.SystemPromptComposition{},
 			),
-			agent.CapabilityIdentity{Kind: "middleware.public-backend-follow-up", Version: 1},
+			agentschema.CapabilityIdentity{Kind: "middleware.public-backend-follow-up", Version: 1},
 		)},
 	}
 	options := agentrun.Options{
@@ -1258,7 +1264,7 @@ func TestAgentRuntimeCancelQueuedRemovesAcceptedFollowUp(t *testing.T) {
 	model := &publicBackendNextTurnModel{started: make(chan struct{}), release: make(chan struct{})}
 	definition := agent.Definition{
 		Key: "public-backend-cancel-queued", Name: "root", Model: model,
-		ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-cancel-queued", Version: 1},
+		ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-cancel-queued", Version: 1},
 	}
 	options := agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: t.TempDir(),
@@ -1357,7 +1363,7 @@ func TestAgentRuntimeNextTurnChainsASeparatePublicRunToOneDisplayTask(t *testing
 	model := &publicBackendNextTurnModel{started: make(chan struct{}), release: make(chan struct{})}
 	definition := agent.Definition{
 		Key: "public-backend-next-turn", Name: "root", Model: model,
-		ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-next-turn", Version: 1},
+		ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-next-turn", Version: 1},
 	}
 	options := agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
@@ -1453,7 +1459,7 @@ func TestAgentRuntimeRestartRetainsTranscriptAndRunsNewInput(t *testing.T) {
 	cycle := Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-replay", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-replay", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-replay", Version: 1},
 		},
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("replay-command", "hello once"),
@@ -1537,7 +1543,7 @@ func TestAgentRuntimeRestartContinuesUnfinishedRunOnlyWhenRequested(t *testing.T
 		t.Fatal(err)
 	}
 	blocking := &publicBackendBlockingModel{started: make(chan struct{})}
-	modelIdentity := agent.CapabilityIdentity{Kind: "model.public-backend-cold-recovery", Version: 1}
+	modelIdentity := agentschema.CapabilityIdentity{Kind: "model.public-backend-cold-recovery", Version: 1}
 	initialDefinition := agent.Definition{
 		Key: "public-backend-cold-recovery", Name: "root", Model: blocking, ModelIdentity: modelIdentity,
 	}
@@ -1594,7 +1600,7 @@ func TestAgentRuntimeRestartContinuesUnfinishedRunOnlyWhenRequested(t *testing.T
 		t.Fatal(err)
 	}
 
-	recoveredModel := &publicBackendTestModel{responses: []*agent.Message{agent.AssistantMessage("recovered answer", nil)}}
+	recoveredModel := &publicBackendTestModel{responses: []*agentschema.Message{agentschema.AssistantMessage("recovered answer", nil)}}
 	recoveredDefinition := agent.Definition{
 		Key: initialDefinition.Key, Name: "root", Model: recoveredModel, ModelIdentity: modelIdentity,
 	}
@@ -1669,7 +1675,7 @@ func TestAgentRuntimeDisplayCancellationExplicitlyAbortsDurableRun(t *testing.T)
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
 		Definition: agent.Definition{
 			Key: "public-backend-cancel", Name: "root", Model: model,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-cancel", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.public-backend-cancel", Version: 1},
 		},
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("cancel-command", "wait"), Options: options,

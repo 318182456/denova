@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"testing"
 
+	agentattachment "denova/internal/agents/attachment"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	apptask "denova/internal/app/task"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestExternalStreamPreservesPartialOutputAfterStop(t *testing.T) {
@@ -70,6 +72,28 @@ func TestExternalStreamPreservesPartialOutputAfterStop(t *testing.T) {
 				t.Fatal("continuation lost partial output")
 			}
 		})
+	}
+}
+
+func TestExternalStreamPublishesPersistedAttachmentIdentity(t *testing.T) {
+	service, request, _ := operationFixture(t)
+	request.Message.Attachments = []agentschema.Attachment{{ID: "att-reference", Name: "reference.png", MediaType: "image/png", Size: 5, Path: "attachments/private.png"}}
+	var accepted []agentattachment.Descriptor
+	request.Emit = func(event agentrun.Event) {
+		if event.Type == "agent_cycle_started" {
+			accepted = event.Data.(map[string]any)["attachments"].([]agentattachment.Descriptor)
+		}
+	}
+	request.Adapter = adapterFunc(func(context.Context, Input, Host) (Result, error) { return Result{Text: "Seen."}, nil })
+	operation, err := service.Start(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := operation.Wait(t.Context()); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("operation failed: %#v", outcome)
+	}
+	if len(accepted) != 1 || accepted[0] != (agentattachment.Descriptor{ID: "att-reference", Name: "reference.png", MediaType: "image/png", Size: 5}) {
+		t.Fatalf("accepted attachment descriptors = %#v", accepted)
 	}
 }
 

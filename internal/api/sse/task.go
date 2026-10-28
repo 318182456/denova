@@ -36,12 +36,7 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task) 
 		writeTaskCursorError(c, task, err)
 		return
 	}
-	c.Response.Header.Set("Content-Type", "text/event-stream")
-	c.Response.Header.Set("Cache-Control", "no-cache")
-	c.Response.Header.Set("Connection", "keep-alive")
-	c.Response.ImmediateHeaderFlush = true
-
-	pr, pw := io.Pipe()
+	pw := NewSubscriptionStream(ctx, c, func() { task.Unsubscribe(subscription) })
 	// A newly submitted POST may finish before subscription attaches; its
 	// buffered output is still new to this user action. GET attaches/reconnects
 	// must restore existing output without starting audio again.
@@ -52,7 +47,6 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task) 
 			if recovered := recover(); recovered != nil {
 				slog.ErrorContext(ctx, fmt.Sprintf("[agent-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered))
 			}
-			task.Unsubscribe(subscription)
 			_ = pw.Close()
 		}()
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil))
@@ -86,8 +80,6 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task) 
 		}
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason()))
 	}()
-
-	c.Response.SetBodyStream(pr, -1)
 }
 
 // StreamTaskUI writes Task replay and live updates using the AI SDK UI message
@@ -106,20 +98,14 @@ func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task
 		writeTaskCursorError(c, task, err)
 		return
 	}
-	c.Response.Header.Set("Content-Type", "text/event-stream")
-	c.Response.Header.Set("Cache-Control", "no-cache")
-	c.Response.Header.Set("Connection", "keep-alive")
 	c.Response.Header.Set("x-vercel-ai-ui-message-stream", "v1")
-	c.Response.ImmediateHeaderFlush = true
-
-	pr, pw := io.Pipe()
+	pw := NewSubscriptionStream(ctx, c, func() { task.Unsubscribe(subscription) })
 
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				slog.ErrorContext(ctx, fmt.Sprintf("[agent-ui-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered))
 			}
-			task.Unsubscribe(subscription)
 			_ = pw.Close()
 		}()
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil))
@@ -153,8 +139,6 @@ func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task
 		}
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason()))
 	}()
-
-	c.Response.SetBodyStream(pr, -1)
 }
 
 func writeTaskCheckpoint(w io.Writer, checkpoint apptask.DisplayCheckpoint, writeSSE func(apptask.Event) error) (bool, error) {

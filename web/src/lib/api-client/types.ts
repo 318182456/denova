@@ -453,7 +453,8 @@ export interface ContextAnalysisPart {
   content: string
   note?: string
   bytes: number
-  chars: number
+  /** Estimated tokens in the displayed text, excluding request framing and image pixels. */
+  token_estimate: number
   /** Provider-neutral fields and safe opaque-state metadata for diagnostics. */
   parts?: ContextAnalysisPart[]
 }
@@ -740,6 +741,7 @@ export interface VersionRestorePlan {
   current_dirty: boolean
   backup_message?: string
   warnings?: string[]
+  retained_media?: string[]
 }
 
 export interface VersionRestoreResult {
@@ -753,6 +755,7 @@ export interface VersionRestoreResult {
 }
 
 export interface VersionDiff {
+  files_complete?: boolean
   version: VersionEntry
   base_version?: VersionEntry
   comparison: VersionDiffComparison
@@ -780,14 +783,20 @@ export interface VersionFileDiff {
 
 export type VersionDiffComparison = 'workspace' | 'parent'
 
+export interface LoreCategory {
+  id: string
+  name?: string
+}
+
 export interface LoreItem {
   id: string
   enabled: boolean
-  type: 'character' | 'world' | 'location' | 'faction' | 'rule' | 'item' | 'other'
+  type: string
   type_source: 'heuristic' | 'semantic' | 'manual' | 'legacy'
   name: string
   importance: 'major' | 'important' | 'minor'
   load_mode: 'resident' | 'auto' | 'manual'
+  index_memberships?: LoreIndexMembership[]
   tags: string[]
   brief_description: string
   keywords: string[]
@@ -795,12 +804,81 @@ export interface LoreItem {
   created_at: string
   updated_at: string
   image?: LoreItemImage
+  materials?: { entries: Array<{ asset_id: string; name?: string; description?: string }>; cover_asset_id?: string }
+  resolved_materials?: LoreMaterial[]
   provenance?: {
     kind: string
     source_name: string
     source_record_id: string
     source_hash: string
   }
+}
+
+export type LoreIndexDetail = 'name' | 'brief' | 'full'
+export interface LoreIndexMembership {
+  group_id: string
+  detail: 'inherit' | LoreIndexDetail
+}
+export interface LoreIndexGroup {
+  id: string
+  name: string
+  purpose: string
+  body_markdown: string
+  default_detail: LoreIndexDetail
+}
+export interface LoreIndexGuide {
+  intro_markdown: string
+  groups: LoreIndexGroup[]
+  automatic_details?: Record<string, LoreIndexDetail>
+  /** Presentation only: custom:<id> or automatic:<mode[:category]>; never membership. */
+  group_order?: string[]
+  item_order?: Record<string, string[]>
+}
+export interface LoreAutomaticGroup {
+  key: string
+  category_id?: string
+  load_mode: 'resident' | 'auto' | 'manual'
+  default_detail: LoreIndexDetail
+  item_ids: string[]
+}
+export interface LoreIndexPreview {
+  markdown: string
+  token_estimate: number
+  automatic_groups: LoreAutomaticGroup[]
+  custom_item_ids: Record<string, string[]>
+  over_budget: boolean
+}
+export interface LoreIndexSnapshot {
+  guide: LoreIndexGuide
+  revision: string
+}
+
+export interface LoreAsset {
+  id: string
+  path?: string
+  url?: string
+  original_name: string
+  mime_type: string
+  size_bytes: number
+  created_at?: string
+  source: { kind: string; meta_path?: string; url?: string }
+}
+export interface LoreMaterial extends LoreAsset {
+  name: string
+  description?: string
+}
+export interface LoreMaterialMutation {
+  url?: string
+  save_locally?: boolean
+  op: 'link' | 'update' | 'remove' | 'cover' | 'cover_if_missing' | 'remote' | 'localize'
+  asset_id?: string
+  name?: string
+  description?: string
+}
+
+export interface LoreItemSpeechGenerateRequest {
+  name: string
+  text: string
 }
 
 export type LoreClassificationMode = 'heuristic' | 'semantic'
@@ -841,6 +919,7 @@ export interface LoreTypeApplyResult {
 }
 
 interface LoreItemImage {
+  image_url?: string
   schema: 'lore_item_image.v1' | string
   image_path: string
   meta_path: string
@@ -966,7 +1045,7 @@ export interface SkillInstallResult {
   installed: SkillSummary[]
 }
 
-export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at' | 'provenance'>
+export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at' | 'provenance' | 'materials' | 'resolved_materials'>
 
 type AutomationScope = 'user' | 'workspace'
 type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
@@ -1143,4 +1222,11 @@ export interface TextSelection {
   startLine: number
   endLine: number
   content: string
+}
+
+/** A plugin page snapshot travels with one durable Project Agent command. */
+export interface AgentPageContext {
+  plugin_id: string
+  page_id: string
+  data: unknown
 }

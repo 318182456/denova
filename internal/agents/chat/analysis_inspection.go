@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/prompts"
+
+	"github.com/alfredxw/denova/agent"
+	sdkcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // BuildInspectedContextAnalysis projects the public Agent Session's exact,
@@ -23,13 +26,13 @@ func BuildInspectedContextAnalysis(
 ) (ContextAnalysis, error) {
 	messages := inspection.ModelRequest.Messages
 	stablePrefix := min(max(0, inspection.ModelRequest.StablePrefixMessages), len(messages))
-	systemMessages := make([]*agent.Message, 0, 1)
+	systemMessages := make([]*agentschema.Message, 0, 1)
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	for index, message := range messages {
 		if message == nil {
 			continue
 		}
-		if message.Role == agent.System {
+		if message.Role == agentschema.System {
 			systemMessages = append(systemMessages, message)
 			continue
 		}
@@ -69,7 +72,7 @@ func BuildInspectedContextAnalysis(
 		}
 	}
 	if maxTokens := inspection.ModelRequest.Options.MaxTokens; maxTokens != nil {
-		totalReserve := agent.CapacityAwareTokenReserve(
+		totalReserve := agentmodel.CapacityAwareTokenReserve(
 			completionReserve+toolResultReserve, *maxTokens, window, threshold,
 		)
 		completionReserve = max(0, totalReserve-toolResultReserve)
@@ -122,7 +125,7 @@ func inspectedContextProvenanceParts(inspection agent.Inspection) []ContextAnaly
 	return parts
 }
 
-func inspectionContainsContextContent(messages []*agent.Message, content string) bool {
+func inspectionContainsContextContent(messages []*agentschema.Message, content string) bool {
 	for _, message := range messages {
 		if message != nil && strings.Contains(message.Content, content) {
 			return true
@@ -161,7 +164,7 @@ func BuildInteractiveInspectedContextAnalysis(
 
 func inspectedSystemPrompt(
 	composition prompts.SystemPromptComposition,
-	messages []*agent.Message,
+	messages []*agentschema.Message,
 ) (string, []ContextAnalysisPart) {
 	contents := make([]string, 0, len(messages))
 	for _, message := range messages {
@@ -185,14 +188,14 @@ func inspectedSystemPrompt(
 	return prompt, parts
 }
 
-func inspectionCompactionRevision(compaction *agent.CompactionState) uint64 {
+func inspectionCompactionRevision(compaction *sdkcompaction.CompactionState) uint64 {
 	if compaction == nil {
 		return 0
 	}
 	return compaction.Revision
 }
 
-func contextAnalysisCompactionFromInspection(compaction *agent.CompactionState) *ContextAnalysisCompaction {
+func contextAnalysisCompactionFromInspection(compaction *sdkcompaction.CompactionState) *ContextAnalysisCompaction {
 	if compaction == nil {
 		return nil
 	}

@@ -6,7 +6,9 @@ import (
 
 	"denova/internal/agents/attachment"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // MediaProjection binds immutable user copies and tool artifacts to one product.
@@ -15,11 +17,11 @@ import (
 type MediaProjection struct {
 	Root      string
 	Scope     attachment.Scope
-	Artifacts agent.ToolArtifactPathResolver
+	Artifacts agenttool.ToolArtifactPathResolver
 }
 
 func (media MediaProjection) Resolve(ctx context.Context, input Input) (Input, error) {
-	project := func(files []agent.Attachment) ([]agent.Attachment, error) {
+	project := func(files []agentschema.Attachment) ([]agentschema.Attachment, error) {
 		if len(files) == 0 {
 			return nil, nil
 		}
@@ -45,8 +47,8 @@ func (media MediaProjection) Resolve(ctx context.Context, input Input) (Input, e
 	return input, nil
 }
 
-func (media MediaProjection) ResolveToolImages(ctx context.Context, images []agent.Attachment) ([]agent.Attachment, error) {
-	result := append([]agent.Attachment(nil), images...)
+func (media MediaProjection) ResolveToolImages(ctx context.Context, images []agentschema.Attachment) ([]agentschema.Attachment, error) {
+	result := append([]agentschema.Attachment(nil), images...)
 	if len(result) == 0 {
 		return result, nil
 	}
@@ -72,7 +74,7 @@ func (media MediaProjection) Prepare(ctx context.Context, input Input, limit int
 }
 
 func (operation *Operation) media() MediaProjection {
-	resolver, _ := operation.request.Session.ToolArtifactStore().(agent.ToolArtifactPathResolver)
+	resolver, _ := operation.request.Session.ToolArtifactStore().(agenttool.ToolArtifactPathResolver)
 	return MediaProjection{Root: operation.request.AttachmentRoot, Scope: attachment.SessionScope(operation.request.Session.ID), Artifacts: resolver}
 }
 
@@ -80,7 +82,7 @@ func (operation *Operation) projectMedia(ctx context.Context, input Input) (Inpu
 	return operation.media().Prepare(ctx, input, operation.request.ProviderInputMaxBytes)
 }
 
-func projectToolImages(ctx context.Context, sess *session.Session, images []agent.Attachment) ([]agent.Attachment, error) {
-	resolver, _ := sess.ToolArtifactStore().(agent.ToolArtifactPathResolver)
+func projectToolImages(ctx context.Context, sess *session.Session, images []agentschema.Attachment) ([]agentschema.Attachment, error) {
+	resolver, _ := sess.ToolArtifactStore().(agenttool.ToolArtifactPathResolver)
 	return (MediaProjection{Artifacts: resolver}).ResolveToolImages(ctx, images)
 }

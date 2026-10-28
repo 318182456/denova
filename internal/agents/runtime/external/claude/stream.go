@@ -9,7 +9,9 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type contentBlock struct {
@@ -66,7 +68,7 @@ type streamFrame struct {
 	// reuse the name for a string, such as ui_invalidate's "ui.render".
 	Event   json.RawMessage `json:"event"`
 	Result  string          `json:"result"`
-	IsError bool   `json:"is_error"`
+	IsError bool            `json:"is_error"`
 	Usage   *struct {
 		Input      int `json:"input_tokens"`
 		Output     int `json:"output_tokens"`
@@ -90,8 +92,8 @@ type streamOutput struct {
 	wrapperOffsets   map[string]int
 	seenWrappers     map[string]bool
 	terminal         bool
-	usage            *agent.TokenUsage
-	plan             []agent.TodoItem
+	usage            *agentschema.TokenUsage
+	plan             []agentevent.TodoItem
 	planCalls        map[string]contentBlock
 	planObserved     bool
 }
@@ -169,7 +171,7 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 	case "result":
 		s.terminal = true
 		if u := f.Usage; u != nil {
-			s.usage = &agent.TokenUsage{PromptTokens: u.Input + u.CacheRead + u.CacheWrite, CompletionTokens: u.Output, TotalTokens: u.Input + u.CacheRead + u.CacheWrite + u.Output}
+			s.usage = &agentschema.TokenUsage{PromptTokens: u.Input + u.CacheRead + u.CacheWrite, CompletionTokens: u.Output, TotalTokens: u.Input + u.CacheRead + u.CacheWrite + u.Output}
 			s.usage.PromptTokenDetails.CachedTokens = u.CacheRead
 		}
 		if f.IsError || f.Subtype != "success" {
@@ -258,7 +260,7 @@ func (s *streamOutput) result() external.Result {
 	}
 	result := external.Result{Text: text.String(), Usage: s.usage, SessionID: s.sessionID}
 	if s.planObserved {
-		result.Plan = &agent.TodoState{Items: append([]agent.TodoItem{}, s.plan...)}
+		result.Plan = &agentevent.TodoState{Items: append([]agentevent.TodoItem{}, s.plan...)}
 	}
 	return result
 }

@@ -5,12 +5,11 @@ import (
 	"testing"
 
 	agentrun "denova/internal/agents/run"
-	interactivestate "denova/internal/interactive/state"
-
 	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
+	interactivestate "denova/internal/interactive/state"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
 )
 
 func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
@@ -44,7 +43,7 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.BindAgentCompaction(&agent.CompactionState{
+	if err := conversation.BindAgentCompaction(&agentcompaction.CompactionState{
 		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", SourceMessageCount: 2,
 	}); err != nil {
 		t.Fatal(err)

@@ -14,6 +14,11 @@ import {
 const t = (key: string) => key
 
 describe('agent runtime error localization', () => {
+  it('explains changed configuration in live and recovered paused tasks', () => {
+    const reason = 'agent Definition does not match the active transcript: behavior_key changed'
+    expect(localizeAgentRuntimeError({ message: reason }, 'fallback', t)).toBe('chat.runtime.configurationChanged')
+    expect(localizeAgentRuntimeReason(reason, 'fallback', t)).toBe('chat.runtime.configurationChanged')
+  })
   it('localizes product runtime error keys for live and recovered errors', () => {
     expect(localizeAgentRuntimeError({ error_key: 'agentRuntime.operationFailed' }, 'fallback', t))
       .toBe('agentRuntime.operationFailed')

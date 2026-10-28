@@ -17,7 +17,7 @@ interface BrowserDiagnostics {
 
 interface E2EFixtures {
   browserDiagnostics: BrowserDiagnostics
-  _sharedSettings: void
+  _sharedState: void
 }
 
 interface BrowserDiagnostic {
@@ -35,14 +35,30 @@ const knownExpectedBrowserDiagnostics = [
 
 /** Every browser-backed test fails on uncaught errors, console errors, and unexpected 5xx responses. */
 export const test = base.extend<E2EFixtures>({
-  // Restore shared defaults after closing the browser so late UI saves cannot
+  // Restore shared state after closing the browser so late UI saves cannot
   // leak into the next test. Project-owned settings stay with their unique Project.
-  _sharedSettings: [async ({ context, request }, use) => {
+  _sharedState: [async ({ context, request }, use) => {
     const beforeResponse = await request.get('/api/settings')
     expect(beforeResponse.ok(), await beforeResponse.text()).toBe(true)
     const before = (await beforeResponse.json()).user as Settings
+    const beforeCatalog = await request.get('/api/platform/manage/catalog')
+    expect(beforeCatalog.ok(), await beforeCatalog.text()).toBe(true)
+    const plugins = new Map<string, { enabled: boolean; removed: boolean }>((await beforeCatalog.json())
+      .filter((item: { kind: string }) => item.kind === 'plugin')
+      .map((item: { id: string; enabled: boolean; removed?: boolean }) => [item.id, { enabled: Boolean(item.enabled), removed: Boolean(item.removed) }]))
     await use()
     await context.close()
+    // Disabled installations still reserve their tool names. Restore package
+    // availability and remove each journey's new plugins after its UI closes.
+    const afterCatalog = await request.get('/api/platform/manage/catalog')
+    expect(afterCatalog.ok(), await afterCatalog.text()).toBe(true)
+    for (const item of await afterCatalog.json()) {
+      if (item.kind !== 'plugin') continue
+      const original = plugins.get(item.id) ?? { enabled: false, removed: true }
+      if (Boolean(item.enabled) === original.enabled && Boolean(item.removed) === original.removed) continue
+      const restored = await request.patch(`/api/platform/manage/packages/plugin/${item.id}`, { data: original })
+      expect(restored.ok(), await restored.text()).toBe(true)
+    }
     const afterResponse = await request.get('/api/settings')
     expect(afterResponse.ok(), await afterResponse.text()).toBe(true)
     const after = await afterResponse.json()
@@ -55,10 +71,11 @@ export const test = base.extend<E2EFixtures>({
       expect(sharedSettings((await restored.json()).user)).toEqual(sharedSettings(before))
     }
   }, { auto: true }],
-  browserDiagnostics: [async ({ page, context, _sharedSettings }, use, testInfo) => {
+  browserDiagnostics: [async ({ page, context, _sharedState }, use, testInfo) => {
     const diagnostics: BrowserDiagnostic[] = []
     const allowed = [...knownExpectedBrowserDiagnostics]
     const staleStreamURLs = new Map<string, boolean>()
+    const indexConflicts = new Map<string, Array<{ typed: boolean; recovered: boolean }>>()
     const responseChecks: Promise<void>[] = []
     // Page-level mocks take precedence; any unmocked public dependency fails
     // immediately instead of depending on CDN/DNS availability during a run.
@@ -91,6 +108,22 @@ export const test = base.extend<E2EFixtures>({
             && body?.code === 'agent_runtime.rehydrate_required')
         }).catch(() => { staleStreamURLs.set(response.url(), false) }))
       }
+      // Index and item edits share a file revision. A typed conflict is expected
+      // only when a later successful index write confirms that recovery finished.
+      if (response.request().method() === 'PUT'
+        && /^\/api\/projects\/[^/]+\/book\/lore\/index$/.test(new URL(response.url()).pathname)) {
+        if (response.status() === 409) {
+          const conflict = { typed: false, recovered: false }
+          const conflicts = indexConflicts.get(response.url()) ?? []
+          conflicts.push(conflict)
+          indexConflicts.set(response.url(), conflicts)
+          responseChecks.push(response.json().then(body => {
+            conflict.typed = body?.code === 'api.resource.revisionConflict' || body?.code === 'revision_conflict'
+          }).catch(() => { conflict.typed = false }))
+        } else if (response.ok()) {
+          for (const conflict of indexConflicts.get(response.url()) ?? []) conflict.recovered = true
+        }
+      }
       if (response.status() < 500) return
       diagnostics.push({
         kind: 'http.5xx',
@@ -115,9 +148,13 @@ export const test = base.extend<E2EFixtures>({
       })
     }
 
+    const recoveredIndexURLs = new Set([...indexConflicts]
+      .filter(([, conflicts]) => conflicts.every(conflict => conflict.typed && conflict.recovered))
+      .map(([url]) => url))
+
     const unexpected = diagnostics
       .filter((diagnostic) => !(diagnostic.kind === 'console.error'
-        && staleStreamURLs.get(diagnostic.url ?? '') === true
+        && (staleStreamURLs.get(diagnostic.url ?? '') === true || recoveredIndexURLs.has(diagnostic.url ?? ''))
         && diagnostic.text.startsWith('Failed to load resource: the server responded with a status of 409 (Conflict)')))
       .map((diagnostic) => `${diagnostic.kind}: ${diagnostic.text}`)
       .filter((diagnostic) => !allowed.some((pattern) => matches(pattern, diagnostic)))
@@ -127,9 +164,9 @@ export const test = base.extend<E2EFixtures>({
 
 function sharedSettings(settings: Settings): Settings {
   // Host authentication is intentionally outside this snapshot.
-  // These are the public defaults changed by cross-surface browser journeys.
-  const keys = ['language', 'theme', 'agent_runtimes', 'agent_models', 'model_endpoints', 'model_profiles', 'terminal_shell'] as const
-  return Object.fromEntries(keys.filter(key => settings[key] !== undefined).map(key => [key, settings[key]]))
+  // Restore every mutable default, including media, tools and context policies.
+  const hostKeys = new Set(['remote_access_username', 'remote_access_password', 'remote_access_password_set', 'allow_lan_access', 'backend_port', 'frontend_port'])
+  return Object.fromEntries(Object.entries(settings).filter(([key]) => !hostKeys.has(key)))
 }
 
 function matches(pattern: RegExp, value: string): boolean {

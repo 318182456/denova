@@ -9,14 +9,15 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestNativeGuidanceIsCanonicalBeforeSubsequentWork(t *testing.T) {
 	service, request, _ := operationFixture(t)
 	guidance := Guidance{Request: agentchat.ChatRequest{CommandID: "live-guidance", Message: "Keep the ending"}, Count: 1}
 	request.PrepareGuidance = func(_ context.Context, input agentchat.ChatRequest) (StartRequest, error) {
-		return StartRequest{Input: Input{Text: input.Message}, Message: agent.Message{Role: agent.User, Content: input.Message}, Metadata: session.MessageMetadata{MessageID: input.CommandID + "-input"}}, nil
+		return StartRequest{Input: Input{Text: input.Message}, Message: agentschema.Message{Role: agentschema.User, Content: input.Message}, Metadata: session.MessageMetadata{MessageID: input.CommandID + "-input"}}, nil
 	}
 	request.Adapter = adapterFunc(func(ctx context.Context, _ Input, host Host) (Result, error) {
 		pending := true

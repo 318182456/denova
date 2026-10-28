@@ -33,7 +33,7 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 	target, err := s.activeAgentCommandTarget(command.StoryID, command.BranchID)
 	if errors.Is(err, ErrNoActiveAgentOperation) {
 		view := s.app.InteractiveAgentActiveView(ctx, command.StoryID, command.BranchID)
-		if view.RuntimeProjectionOK && view.Runtime.Phase == agentrun.RunPhaseSuspended {
+		if view.RuntimeProjectionOK && (command.Kind == agentexecution.CommandCancelQueued || view.Runtime.Phase == agentrun.RunPhaseSuspended) {
 			s.app.mu.RLock()
 			target = interactiveAgentCommandTarget{executionRuntime: s.app.executionRuntime, info: InteractiveTaskInfo{
 				ProjectID: view.Runtime.Binding.ProjectID, Workspace: s.app.workspace,

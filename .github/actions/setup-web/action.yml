@@ -1,5 +1,9 @@
-name: Setup frontend
-description: Install the pinned frontend toolchain and locked dependencies.
+name: Setup pnpm project
+description: Install the pinned Node toolchain and locked project dependencies.
+inputs:
+  directory:
+    description: pnpm project directory
+    default: web
 runs:
   using: composite
   steps:
@@ -10,6 +14,8 @@ runs:
       with:
         node-version: '22'
         cache: pnpm
-        cache-dependency-path: web/pnpm-lock.yaml
+        cache-dependency-path: ${{ inputs.directory }}/pnpm-lock.yaml
     - shell: bash
-      run: pnpm --dir web install --frozen-lockfile
+      env:
+        PROJECT_DIRECTORY: ${{ inputs.directory }}
+      run: pnpm --dir "$PROJECT_DIRECTORY" install --frozen-lockfile

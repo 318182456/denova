@@ -13,7 +13,8 @@ import (
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/agents/toolruntime"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // History captures admission facts and a canonical source interval, without
@@ -150,11 +151,11 @@ func (history History) Messages(ctx context.Context) ([]Message, error) {
 			if source.Message != nil {
 				message := source.Message
 				role, content := string(message.Role), message.Content
-				if message.Role == agent.ToolRole {
+				if message.Role == agentschema.ToolRole {
 					role, content = "user", "Confirmed tool observation ("+message.ToolName+"):\n"+content
 				}
 				projected := Message{Role: role, Text: content, Cursor: uint64(source.Cursor)}
-				if message.Role == agent.ToolRole {
+				if message.Role == agentschema.ToolRole {
 					projected.ToolImages = message.Attachments
 				} else {
 					projected.Attachments = message.Attachments

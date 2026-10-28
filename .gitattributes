@@ -1,1 +1,4 @@
 docker/*.sh text eol=lf
+# Go's tidy diff compares bytes; keep module manifests consistent on Windows.
+go.mod text eol=lf
+go.sum text eol=lf

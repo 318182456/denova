@@ -162,6 +162,26 @@ type ReplayStats struct {
 	BytesRead   int64
 }
 
+// CheckpointProjection is a disposable reduction of canonical records. The
+// owner supplies the codec; storage only verifies the checkpoint's file prefix
+// and feeds committed tail records. New returns a fresh projection so storage
+// never aliases runtime state. Restore must reject incompatible versions.
+type CheckpointProjection interface {
+	New() CheckpointProjection
+	Reset() error
+	Restore(json.RawMessage) error
+	Apply(Record) error
+	Checkpoint() (json.RawMessage, error)
+}
+
+// IndexedLog accelerates recovery without changing Replay's complete-history
+// contract. Recover initializes an owned projection; neither it nor its cache
+// is a source of durable facts. Readers may use CurrentCheckpoint when supplied
+// by the projection, while execution retains complete historical receipts.
+type IndexedLog interface {
+	Recover(context.Context, CheckpointProjection) error
+}
+
 // Store owns the catalog and append-only Log for every Session Key.
 // List and Delete are part of the contract because closing an execution lease
 // is not equivalent to deleting user data. Delete is idempotent; implementations

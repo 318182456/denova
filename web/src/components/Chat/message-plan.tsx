@@ -1,3 +1,4 @@
+import { useVirtualizedMessageState } from './VirtualizedMessageState'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { CheckCircle2, ClipboardCheck, Circle, Loader2, Pencil, RefreshCw, X } from 'lucide-react'
@@ -76,7 +77,7 @@ export function ContextCompactionBlock({ message }: { message: ContextCompaction
 export function ProposedPlanBlock({ projectId, message, highlightDialogue, onApprove, onContinue, onExit, onLayoutChange }: { projectId: string; message: ProposedPlanChatMessage; highlightDialogue?: boolean; onApprove?: (message: ChatMessage) => void; onContinue?: (message: ChatMessage) => void; onExit?: () => void; onLayoutChange?: () => void }) {
   const { t } = useTranslation()
   const display = planDisplayContent(message.content || '')
-  const [localAction, setLocalAction] = useState<ChatPlanAction | undefined>(message.plan_action)
+  const [localAction, setLocalAction] = useVirtualizedMessageState<ChatPlanAction | undefined>('plan-action', message.plan_action)
   const planAction = message.plan_action || localAction
   useEffect(() => {
     if (message.plan_action) setLocalAction(message.plan_action)

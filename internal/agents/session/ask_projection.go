@@ -8,7 +8,7 @@ import (
 	"denova/internal/agents/conversationjournal"
 	"denova/internal/agents/sessionjournal"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 )
 
 // Display delivery can stop before a paused interaction is answered. Read the
@@ -24,7 +24,7 @@ func applyJournalAskAnswers(entries []HistoryEntry, projection *sessionjournal.P
 	if len(pending) == 0 || projection == nil {
 		return nil
 	}
-	resolved := make(map[string]agent.InteractionResolution)
+	resolved := make(map[string]agentinteraction.InteractionResolution)
 	finished := make(map[string]bool)
 	for _, stream := range projection.Streams {
 		for id, interaction := range stream.Recovery.Interactions {
@@ -36,8 +36,8 @@ func applyJournalAskAnswers(entries []HistoryEntry, projection *sessionjournal.P
 				return err
 			}
 			var response struct {
-				State      string                      `json:"state"`
-				Resolution agent.InteractionResolution `json:"resolution"`
+				State      string                                 `json:"state"`
+				Resolution agentinteraction.InteractionResolution `json:"resolution"`
 			}
 			if err := json.Unmarshal(record.Data, &response); err != nil {
 				return fmt.Errorf("decode Agent interaction answer: %w", err)

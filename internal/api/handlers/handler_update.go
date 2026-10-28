@@ -10,8 +10,23 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/api/sse"
+	"denova/internal/app/activity"
 	"denova/internal/update"
 )
+
+func (h *Handlers) HandleUpdateNotes(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.Activity().UpdateNotes(ctx, c.Query("from"), c.Query("to"), requestLocale(c))
+	if err != nil {
+		slog.WarnContext(ctx, "update_notes_failed", "from_version", c.Query("from"), "to_version", c.Query("to"), "error", err)
+		if errors.Is(err, activity.ErrUpdateNotesRange) {
+			writeErrorKey(c, consts.StatusBadRequest, "api.update.notesRangeInvalid")
+		} else {
+			writeErrorKey(c, consts.StatusBadGateway, "api.update.notesFailed")
+		}
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
 
 func (h *Handlers) HandleUpdateCheck(ctx context.Context, c *app.RequestContext) {
 	result, err := h.app.CheckUpdate(ctx)
@@ -34,7 +49,16 @@ func (h *Handlers) HandleUpdateInstall(ctx context.Context, c *app.RequestContex
 }
 
 func (h *Handlers) HandleUpdateApply(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.ApplyUpdate(ctx)
+	request := struct {
+		When string `json:"when"`
+	}{When: "now"}
+	if len(c.Request.Body()) != 0 {
+		if err := c.BindJSON(&request); err != nil {
+			writeErrorKey(c, consts.StatusBadRequest, "api.update.applyFailed")
+			return
+		}
+	}
+	result, err := h.app.ScheduleUpdateRestart(ctx, request.When)
 	if err != nil {
 		slog.ErrorContext(ctx, "[handlers/handler_update.go] update apply failed", "error", err)
 		writeErrorKey(c, consts.StatusBadGateway, "api.update.applyFailed", "detail", err.Error())
@@ -86,5 +110,16 @@ func (h *Handlers) HandleUpdateUpload(ctx context.Context, c *app.RequestContext
 		writeErrorKey(c, status, key, "detail", err.Error())
 		return
 	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
+func (h *Handlers) HandleUpdateStatus(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.UpdateStatus()
+	if err != nil {
+		slog.ErrorContext(ctx, "update_status_failed", "error", err)
+		writeErrorKey(c, consts.StatusInternalServerError, "api.update.checkFailed", "detail", err.Error())
+		return
+	}
+	c.Header("Cache-Control", "no-store")
 	writeJSON(c, consts.StatusOK, result)
 }

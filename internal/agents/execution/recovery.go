@@ -5,7 +5,8 @@ import (
 	"strconv"
 
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 const (
@@ -39,7 +40,7 @@ type RuntimeRecoveryAction struct {
 type RuntimeRecoveryDisplayMetadata struct {
 	Message              string
 	RegenerateFromTurnID string
-	Attachments          []agent.Attachment
+	Attachments          []agentschema.Attachment
 }
 
 func RuntimeRecoveryActions(snapshot agentrun.RuntimeStatus) []RuntimeRecoveryAction {

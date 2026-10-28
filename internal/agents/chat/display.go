@@ -2,18 +2,18 @@ package chat
 
 import (
 	"context"
-	agentrun "denova/internal/agents/run"
-	agenttoolruntime "denova/internal/agents/toolruntime"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	agentplan "denova/internal/agents/plan"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	agenttoolruntime "denova/internal/agents/toolruntime"
+
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // displaySegmentIDEventKey carries the stable identity shared by the live
@@ -51,7 +51,7 @@ type displayToolArgsAppender interface {
 }
 
 type displayToolResultUpdater interface {
-	UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error
+	UpdateDisplayToolResult(id, name, status, result string, presentation *agenttool.ToolPresentation) error
 }
 
 type displayToolIllustrationUpdater interface {
@@ -799,7 +799,7 @@ func eventDataAskInteraction(data interface{}) *session.AskInteraction {
 	return &interaction
 }
 
-func eventDataToolPresentation(data interface{}) *agent.ToolPresentation {
+func eventDataToolPresentation(data interface{}) *agenttool.ToolPresentation {
 	typed, ok := data.(map[string]interface{})
 	if !ok {
 		return nil
@@ -812,7 +812,7 @@ func eventDataToolPresentation(data interface{}) *agent.ToolPresentation {
 	if err != nil {
 		return nil
 	}
-	var presentation agent.ToolPresentation
+	var presentation agenttool.ToolPresentation
 	if err := json.Unmarshal(raw, &presentation); err != nil {
 		return nil
 	}

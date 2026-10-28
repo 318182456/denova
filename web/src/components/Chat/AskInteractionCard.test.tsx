@@ -2,8 +2,33 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setConfiguredLocale } from '@/i18n'
 import { AskInteractionCard } from './AskInteractionCard'
+import { VirtualizedMessageRow, VirtualizedMessageState } from './VirtualizedMessageState'
+import type { AgentAskResolution, AskChatMessage } from '@/lib/api'
 
 afterEach(() => act(() => setConfiguredLocale('zh-CN')))
+
+it('retains a draft and an in-flight answer while a virtual row unmounts', async () => {
+  const message: AskChatMessage = { id: 'ask-row', role: 'ask', ask: {
+    schema: 'ask.pending.v1', id: 'ask-call', tool_call_id: 'ask-call', agent_kind: 'ide', status: 'pending', allow_other: true,
+    questions: [{ id: 'q1', question: 'Which chapter?' }],
+  } }
+  let complete!: (value: AgentAskResolution) => void
+  const resolve = vi.fn(() => new Promise<AgentAskResolution>(done => { complete = done }))
+  const draw = (visible: boolean) => <VirtualizedMessageState>{visible && <VirtualizedMessageRow value="ask-row"><AskInteractionCard message={message} onResolve={resolve} /></VirtualizedMessageRow>}</VirtualizedMessageState>
+  const { rerender } = render(draw(true))
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Keep chapter three' } })
+  rerender(draw(false))
+  rerender(draw(true))
+  expect(screen.getByRole('textbox')).toHaveValue('Keep chapter three')
+  fireEvent.click(screen.getByRole('button', { name: '提交' }))
+  expect(resolve).toHaveBeenCalledTimes(1)
+  rerender(draw(false))
+  rerender(draw(true))
+  expect(screen.getByRole('textbox')).toBeDisabled()
+  await act(async () => complete({ schema: 'ask.result.v1', id: 'ask-call', status: 'answered', answers: [] }))
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  expect(resolve).toHaveBeenCalledWith(message, { status: 'answered', answers: [{ question_id: 'q1', custom_input: 'Keep chapter three' }] })
+})
 
 describe('tool effect verification', () => {
   it.each([

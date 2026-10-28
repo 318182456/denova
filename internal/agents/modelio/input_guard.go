@@ -3,10 +3,10 @@ package modelio
 import (
 	"fmt"
 
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-
 	"denova/config"
+
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // ProviderInputLimitError is returned before a provider sees an input that
@@ -24,7 +24,7 @@ func (e *ProviderInputLimitError) Error() string {
 	return fmt.Sprintf("provider input exceeds hard context limit: agent=%s bytes=%d/%d estimated_tokens=%d/%d", e.AgentKind, e.Bytes, e.MaxBytes, e.Tokens, e.MaxTokens)
 }
 
-func ValidateInput(agentKind string, model providers.ModelConfig, messages []*agent.Message, tools []*agent.ToolInfo, maxBytes, maxTokens int) error {
+func ValidateInput(agentKind string, model providers.ModelConfig, messages []*agentschema.Message, tools []*agentschema.ToolInfo, maxBytes, maxTokens int) error {
 	if maxBytes <= 0 {
 		maxBytes = config.DefaultAgentContextMaxProviderInputBytes
 	}
@@ -45,7 +45,7 @@ func ValidateInput(agentKind string, model providers.ModelConfig, messages []*ag
 // standalone model-only agents that do not pass through Agent middleware. Every
 // provider call must validate the complete text/vision context at its last host
 // boundary; upstream prompt builders being bounded is useful but insufficient.
-func ValidateConfiguredInput(cfg *config.Config, agentKind string, messages []*agent.Message, tools []*agent.ToolInfo) error {
+func ValidateConfiguredInput(cfg *config.Config, agentKind string, messages []*agentschema.Message, tools []*agentschema.ToolInfo) error {
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	model, err := ConfigFromResolved(modelSettings)

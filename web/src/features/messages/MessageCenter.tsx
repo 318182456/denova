@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CircleAlert, Clock3, Loader2, Sparkles, Star, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Sheet, SheetClose, SheetTrigger, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +16,7 @@ import { DENOVA_GITHUB_URL } from '@/lib/product-links'
 import { cn } from '@/lib/utils'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
+import { displayVersion, UpdateNotesView } from '@/features/updates/UpdateNotes'
 
 type MessageFilter = 'all' | 'action' | 'automation' | 'product'
 
@@ -210,6 +212,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                   ) : <div className="divide-y px-3">
                     {visibleItems.map((item) => {
                       const Icon = item.action_required ? CircleAlert : item.type === 'automation' ? Clock3 : Sparkles
+                      const summary = item.type === 'update' && item.previous_version ? t('settings.updates.notes.fromVersion', { version: displayVersion(item.previous_version) }) : item.summary
                       return <button
                         key={item.id}
                         data-message-id={item.id}
@@ -221,7 +224,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                         <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground', item.action_required && 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]')}><Icon className="size-4" /></span>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2"><span className="line-clamp-2 flex-1 text-sm font-semibold leading-5">{messageTitle(item, t)}</span>{!item.read_at && <span className="size-2 shrink-0 rounded-full bg-primary"><span className="sr-only">{t('messages.unread')}</span></span>}</span>
-                          {item.summary && <span className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{item.summary}</span>}
+                          {summary && <span className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{summary}</span>}
                           <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"><Badge variant="secondary" className="text-[11px]">{messageTypeLabel(item, t)}</Badge><span>{formatMessagePublishedAt(item.published_at)}</span></span>
                         </span>
                       </button>
@@ -243,8 +246,10 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                       setOpen(false)
                     }}><ArrowUpRight />{t(activeItem.action_required ? 'messages.openAutomationAction' : 'messages.openAutomation')}</Button>
                   )}
-                  {activeItem.type === 'changelog' && <div className="mb-5"><GitHubStarPrompt /><DonationPrompt /></div>}
-                  <MarkdownRenderer content={activeItem.body} />
+                  {activeItem.type === 'changelog' && <SupportPrompt />}
+                  {activeItem.type === 'update' && activeItem.version && activeItem.previous_version
+                    ? <UpdateNotesView key={activeItem.id} range={{ fromVersion: activeItem.previous_version, toVersion: activeItem.version }} />
+                    : <MarkdownRenderer content={activeItem.body} />}
                 </article>
               ) : <Empty className="h-full"><EmptyHeader><EmptyMedia variant="icon"><Bell /></EmptyMedia><EmptyTitle>{t('messages.selectEmpty')}</EmptyTitle></EmptyHeader></Empty>}
             </div>
@@ -254,47 +259,50 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
   )
 }
 
-function DonationPrompt() {
+function SupportPrompt() {
   const { t } = useTranslation()
   return (
     <section
-      className="mb-4 flex flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--nova-surface-2)_88%,transparent)] p-3 text-xs leading-5 text-[var(--nova-text-muted)] shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
-      aria-label={t('messages.donation.title')}
+      className="mb-5 flex flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--nova-surface-2)_88%,transparent)] p-3 text-xs leading-5 text-[var(--nova-text-muted)] shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+      aria-label={t('messages.support.title')}
     >
-      <div className="min-w-0">
-        <div className="text-sm font-medium text-[var(--nova-text)]">{t('messages.donation.title')}</div>
-        <p className="m-0 mt-1">{t('messages.donation.description')}</p>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div>
+          <div className="text-sm font-medium text-[var(--nova-text)]">{t('messages.support.title')}</div>
+          <p className="m-0 mt-1">{t('messages.support.description')}</p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="self-start">
+          <a href={DENOVA_GITHUB_URL} target="_blank" rel="noopener noreferrer">
+            <Star data-icon="inline-start" />
+            {t('messages.github.star')}
+          </a>
+        </Button>
       </div>
-      <img
-        src="/donate.png"
-        alt={t('messages.donation.alt')}
-        loading="lazy"
-        className="h-auto max-h-24 w-auto max-w-[120px] shrink-0 self-center rounded-md border border-[var(--nova-border-soft)] bg-white p-1 sm:max-h-32"
-      />
-    </section>
-  )
-}
-
-function GitHubStarPrompt() {
-  const { t } = useTranslation()
-  return (
-    <section
-      className="mb-4 flex flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--nova-surface-2)_88%,transparent)] p-3 text-xs leading-5 text-[var(--nova-text-muted)] shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
-      aria-label={t('messages.github.title')}
-    >
-      <div className="min-w-0">
-        <div className="text-sm font-medium text-[var(--nova-text)]">{t('messages.github.title')}</div>
-        <p className="m-0 mt-1">{t('messages.github.description')}</p>
-      </div>
-      <a
-        href={DENOVA_GITHUB_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5 text-xs font-medium text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:self-center"
-      >
-        <Star className="h-3.5 w-3.5" />
-        {t('messages.github.star')}
-      </a>
+      <Dialog>
+        <DialogTrigger asChild><button
+          type="button"
+          aria-label={t('messages.donation.openPreview')}
+          className="shrink-0 cursor-pointer self-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+        >
+          <img
+            src="/donate.png"
+            alt={t('messages.donation.alt')}
+            loading="lazy"
+            className="h-auto max-h-32 w-auto max-w-40 rounded-md border border-[var(--nova-border-soft)] bg-white p-1 sm:max-h-40"
+          />
+        </button></DialogTrigger>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[min(calc(100vw-2rem),28rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="pr-6">{t('messages.support.title')}</DialogTitle>
+            <DialogDescription>{t('messages.support.description')}</DialogDescription>
+          </DialogHeader>
+          <img
+            src="/donate.png"
+            alt={t('messages.donation.alt')}
+            className="mx-auto h-auto max-h-[50dvh] max-w-full rounded-md object-contain"
+          />
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -304,6 +312,7 @@ function countUnread(items: ProductMessage[]) {
 }
 
 function messageTitle(item: ProductMessage, t: (key: string, options?: Record<string, string>) => string) {
+  if (item.type === 'update') return t('settings.updates.notes.completedTitle', { version: displayVersion(item.version || item.title) })
   if (item.type === 'changelog') {
     const label = item.title.toLowerCase() === 'unreleased' ? t('messages.unreleased') : item.title
     return t('messages.changelogTitle', { version: label })
@@ -319,7 +328,7 @@ function messageMeta(item: ProductMessage, t: (key: string, options?: Record<str
 }
 
 function messageTypeLabel(item: ProductMessage, t: (key: string, options?: Record<string, string>) => string) {
-  if (item.type === 'changelog') return t('messages.type.changelog')
+  if (item.type === 'changelog' || item.type === 'update') return t('messages.type.changelog')
   if (item.type === 'automation_action') return t('messages.type.automationAction')
   if (item.type === 'automation') return t('messages.type.automation')
   return item.type

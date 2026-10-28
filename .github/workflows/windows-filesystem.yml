@@ -17,7 +17,7 @@ on:
       - "internal/workspace/change/**"
       - "agent/go.mod"
       - "agent/go.sum"
-      - "agent/tools/**"
+      - "agent/tool/builtin/**"
   pull_request:
     paths:
       - ".github/workflows/windows-filesystem.yml"
@@ -32,7 +32,7 @@ on:
       - "internal/workspace/change/**"
       - "agent/go.mod"
       - "agent/go.sum"
-      - "agent/tools/**"
+      - "agent/tool/builtin/**"
   workflow_dispatch:
 
 permissions:
@@ -72,4 +72,4 @@ jobs:
 
       - name: Verify Agent workspace filesystem boundaries
         working-directory: agent
-        run: go test ./tools -count=1
+        run: go test ./tool/builtin -count=1

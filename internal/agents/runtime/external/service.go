@@ -18,7 +18,9 @@ import (
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/agents/toolruntime"
 	"denova/internal/book"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	sdktool "github.com/alfredxw/denova/agent/tool"
 )
 
 // Service owns live operations and question wakeups only. Acceptance, command
@@ -57,9 +59,9 @@ type StartRequest struct {
 	Input                Input
 	// LoadHistory reads the captured pre-admission source only on reconstruction.
 	LoadHistory           func(context.Context) ([]Message, error)
-	Message               agent.Message
+	Message               agentschema.Message
 	Metadata              session.MessageMetadata
-	Definitions           []agent.ToolDefinition
+	Definitions           []sdktool.ToolDefinition
 	ToolPolicy            toolruntime.OrchestratorConfig
 	ReviewThreadID        string
 	Emit                  func(agentrun.Event)
@@ -79,7 +81,7 @@ func (service *Service) Start(ctx context.Context, request StartRequest) (*Opera
 	if err := agentrun.ValidateCommandID(request.CommandID); err != nil {
 		return nil, err
 	}
-	if request.Message.Role != agent.User || request.Metadata.MessageID == "" {
+	if request.Message.Role != agentschema.User || request.Metadata.MessageID == "" {
 		return nil, errors.New("external operation requires its canonical user message")
 	}
 	definitions, wire, err := prepareTools(ctx, request.Definitions)

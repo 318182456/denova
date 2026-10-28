@@ -24,6 +24,7 @@ export interface StorySummary {
   reply_target_chars: number
   choice_count: number
   speech_settings?: StorySpeechSettings
+  presentation_settings?: StoryPresentationSettings
   image_settings?: StoryImageSettings
   check_settings?: Partial<StoryCheckSettings>
   opening: StoryOpeningConfig
@@ -210,6 +211,7 @@ export interface InteractiveStoryUpdateInput {
   reply_target_chars?: number
   choice_count?: number
   speech_settings?: StorySpeechSettings
+  presentation_settings?: StoryPresentationSettings
   image_settings?: StoryImageSettings
   check_settings?: StoryCheckSettings
   opening?: StoryOpeningConfig
@@ -285,6 +287,8 @@ export interface ActorStateField {
   default?: unknown
   min?: number
   max?: number
+  /** Numeric capacity Field ID in the same Actor/template; mutually exclusive with max. */
+  max_field?: string
   options?: string[]
   description?: string
   update_instruction?: string
@@ -377,6 +381,7 @@ export interface TurnEvent {
   user_context_only?: boolean
   narrative: string
   thinking?: string
+  execution_cursor?: string
   run_id?: string
   agent_kind?: string
   display_events?: TurnDisplayEvent[]
@@ -400,7 +405,40 @@ export interface UpdateBranchPlanResult {
   context_revision: number
 }
 
+export interface StoryPresentationSettings {
+  /** Allow Agent background changes; manual choices and the current image remain available. */
+  background: boolean
+  /** Initial background before the first committed stage; never overrides a saved turn. */
+  default_background?: PresentationMaterial
+  characters: boolean
+  /** Allow Agent ambient changes; playback remains an explicit device action. */
+  ambient?: boolean
+  default_ambient?: PresentationMaterial
+}
+
+export interface PresentationMaterial {
+  item_id: string
+  asset_id: string
+  path: string
+  name: string
+  /** Original-image focal point; absent means center. Saved with this scene. */
+  focus?: { x: number; y: number }
+}
+
+/** Explicit creator edits; omitted layers retain their committed selection. */
+export type TurnPresentationPatch = {
+  background?: PresentationMaterial | null
+  ambient?: PresentationMaterial | null
+}
+
+export interface TurnPresentation {
+  background?: PresentationMaterial
+  characters?: PresentationMaterial[]
+  ambient?: PresentationMaterial
+}
+
 export interface TurnResult {
+  presentation?: TurnPresentation
   state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
   choices: string[]
 }

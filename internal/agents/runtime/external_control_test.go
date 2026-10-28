@@ -17,7 +17,10 @@ import (
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+
+	sdkexecution "github.com/alfredxw/denova/agent/engine/execution"
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type externalCycleFunc func(context.Context) agentrun.Outcome
@@ -36,11 +39,11 @@ func TestGameCapabilitiesReopenFromOnlyTheStoryJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	goal, err := state.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalSet, Objective: "Complete and verify the scene"})
+	goal, err := state.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalSet, Objective: "Complete and verify the scene"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := observePlanFixture(t, state, []agent.TodoItem{{ID: "verify", Text: "Verify the scene", Status: agent.TodoPending}}); err != nil {
+	if err := observePlanFixture(t, state, []agentevent.TodoItem{{ID: "verify", Text: "Verify the scene", Status: agentevent.TodoPending}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -68,15 +71,15 @@ func TestGameCapabilitiesReopenFromOnlyTheStoryJournal(t *testing.T) {
 	if err != nil || !present || !reflect.DeepEqual(got, goal) {
 		t.Fatalf("restored Goal: %+v, %v", got, err)
 	}
-	raw, present, err := state.Read(t.Context(), agent.TodoCapability)
+	raw, present, err := state.Read(t.Context(), sdkexecution.TodoCapability)
 	if err != nil || !present {
 		t.Fatalf("restored Todo missing: %v", err)
 	}
-	var todo agent.TodoState
+	var todo agentevent.TodoState
 	if err := json.Unmarshal(raw, &todo); err != nil {
 		t.Fatal(err)
 	}
-	if todo.Revision != 1 || !reflect.DeepEqual(todo.Items, []agent.TodoItem{{ID: "verify", Text: "Verify the scene", Status: agent.TodoPending}}) {
+	if todo.Revision != 1 || !reflect.DeepEqual(todo.Items, []agentevent.TodoItem{{ID: "verify", Text: "Verify the scene", Status: agentevent.TodoPending}}) {
 		t.Fatalf("restored Todo: %+v", todo)
 	}
 }
@@ -110,7 +113,7 @@ func TestExternalControlsPauseQueueReopenAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
-	input := ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "initial", Message: "Continue the story", Locale: "zh-CN", InputVisibility: agentrun.InputModelOnly, AttachedFiles: []agent.Attachment{{ID: "attachment", Path: "attachments/source.txt"}}}}
+	input := ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "initial", Message: "Continue the story", Locale: "zh-CN", InputVisibility: agentrun.InputModelOnly, AttachedFiles: []agentschema.Attachment{{ID: "attachment", Path: "attachments/source.txt"}}}}
 	run, err := control.Start(t.Context(), input, func(ctx context.Context, input ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (ExternalCycle, error) {
 		return externalCycleFunc(func(ctx context.Context) agentrun.Outcome {
 			close(started)
@@ -215,14 +218,14 @@ func TestExternalControlsPauseQueueReopenAndResume(t *testing.T) {
 
 func TestExternalProductTodoAndGoalUseCanonicalState(t *testing.T) {
 	_, sess, state, options, _ := controlFixture(t)
-	goal, err := state.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalSet, Objective: "Verify the complete result"})
+	goal, err := state.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalSet, Objective: "Verify the complete result"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := observePlanFixture(t, state, []agent.TodoItem{{ID: "first", Text: "Read", Status: agent.TodoInProgress}, {ID: "second", Text: "Verify", Status: agent.TodoPending}}); err != nil {
+	if err := observePlanFixture(t, state, []agentevent.TodoItem{{ID: "first", Text: "Read", Status: agentevent.TodoInProgress}, {ID: "second", Text: "Verify", Status: agentevent.TodoPending}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := observePlanFixture(t, state, []agent.TodoItem{{ID: "second", Text: "Verify", Status: agent.TodoInProgress}, {ID: "first", Text: "Read", Status: agent.TodoCompleted}}); err != nil {
+	if err := observePlanFixture(t, state, []agentevent.TodoItem{{ID: "second", Text: "Verify", Status: agentevent.TodoInProgress}, {ID: "first", Text: "Read", Status: agentevent.TodoCompleted}}); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := SessionState(options, sess)
@@ -233,15 +236,15 @@ func TestExternalProductTodoAndGoalUseCanonicalState(t *testing.T) {
 	if err != nil || !present || got.ID != goal.ID || got.Objective != goal.Objective {
 		t.Fatalf("Goal: %+v %v", got, err)
 	}
-	raw, present, err := reloaded.Read(t.Context(), agent.TodoCapability)
+	raw, present, err := reloaded.Read(t.Context(), sdkexecution.TodoCapability)
 	if err != nil || !present {
 		t.Fatalf("Todo missing: %v", err)
 	}
-	var todo agent.TodoState
+	var todo agentevent.TodoState
 	if err := json.Unmarshal(raw, &todo); err != nil {
 		t.Fatal(err)
 	}
-	if todo.Revision != 2 || !reflect.DeepEqual(todo.Items, []agent.TodoItem{{ID: "second", Text: "Verify", Status: agent.TodoInProgress}, {ID: "first", Text: "Read", Status: agent.TodoCompleted}}) {
+	if todo.Revision != 2 || !reflect.DeepEqual(todo.Items, []agentevent.TodoItem{{ID: "second", Text: "Verify", Status: agentevent.TodoInProgress}, {ID: "first", Text: "Read", Status: agentevent.TodoCompleted}}) {
 		t.Fatalf("Todo: %+v", todo)
 	}
 }
@@ -297,7 +300,7 @@ func TestExternalFollowUpUsesToolBoundaryWhileNextTurnWaits(t *testing.T) {
 	}
 }
 
-func observePlanFixture(t *testing.T, state ProductState, items []agent.TodoItem) error {
+func observePlanFixture(t *testing.T, state ProductState, items []agentevent.TodoItem) error {
 	t.Helper()
 	return state.ObservePlan(t.Context(), external.PlanEvent(items))
 }

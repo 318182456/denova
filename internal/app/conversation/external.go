@@ -2,12 +2,12 @@ package conversationapp
 
 import (
 	"context"
-	"denova/config"
 	"fmt"
 	"strings"
 	"time"
 
-	agents "denova/internal/agents"
+	"denova/config"
+	"denova/internal/agents"
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
@@ -17,8 +17,9 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
 	appagentruntime "denova/internal/app/agentruntime"
-	agent "github.com/alfredxw/denova/agent"
+
 	publiccontext "github.com/alfredxw/denova/agent/context"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func prepareExternal(ctx context.Context, runtime Runtime, request agentchat.ChatRequest, conversation *agentconversation.SessionConversation, assembly agents.ExternalAssembly, options agentrun.Options, emit func(agentrun.Event)) (external.StartRequest, error) {
@@ -63,7 +64,7 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 		return external.StartRequest{}, err
 	}
 	if assembly.Context != nil {
-		shared, err := assembly.Context.Materialize(ctx, agent.ContextRequest{})
+		shared, err := assembly.Context.Materialize(ctx, publiccontext.ContextRequest{})
 		if err != nil {
 			return external.StartRequest{}, err
 		}
@@ -72,14 +73,14 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 	var instruction strings.Builder
 	for _, fragment := range fragments {
 		switch fragment.Placement {
-		case agent.ContextLeadingMessage, agent.ContextStateMessage:
+		case agentschema.ContextLeadingMessage, agentschema.ContextStateMessage:
 			if len(fragment.Content) > fragment.HardLimit {
 				return external.StartRequest{}, fmt.Errorf("external context exceeds source limit: %s", fragment.Source)
 			}
 			instruction.WriteString("\n\n")
 			instruction.WriteString(fragment.Content)
-		case agent.ContextAuditOnly:
-		case agent.ContextFinalUserPrefix, agent.ContextFinalUserMessage, agent.ContextCompactionCheckpoint:
+		case agentschema.ContextAuditOnly:
+		case agentschema.ContextFinalUserPrefix, agentschema.ContextFinalUserMessage, agentschema.ContextCompactionCheckpoint:
 			return external.StartRequest{}, fmt.Errorf("unsupported external shared context placement %q", fragment.Placement)
 		default:
 			return external.StartRequest{}, fmt.Errorf("unknown external context placement %q", fragment.Placement)
@@ -88,7 +89,7 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 	text := ""
 	for i := len(prepared.ModelContext.Messages) - 1; i >= 0; i-- {
 		message := prepared.ModelContext.Messages[i]
-		if message != nil && message.Role == agent.User {
+		if message != nil && message.Role == agentschema.User {
 			text = message.Content
 			break
 		}
@@ -96,15 +97,19 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 	if text == "" {
 		return external.StartRequest{}, fmt.Errorf("external turn has no assembled user input")
 	}
+	definitions, err := assembly.PrepareTools(ctx)
+	if err != nil {
+		return external.StartRequest{}, err
+	}
 	return external.StartRequest{
 		ProjectID: runtime.ProjectID, AttachmentRoot: runtime.ProjectStore, Session: runtime.Session, CommandID: request.CommandID,
 		Fingerprint: agentexecution.RequestSemanticFingerprint(request),
 		Input:       external.Input{Instructions: assembly.Composition.Instruction(), Text: instruction.String() + "\n\n" + text, Attachments: request.AttachedFiles},
-		Message:     agent.Message{Role: agent.User, Content: request.Message, Attachments: request.AttachedFiles},
+		Message:     agentschema.Message{Role: agentschema.User, Content: request.Message, Attachments: request.AttachedFiles},
 		Metadata: session.MessageMetadata{MessageID: request.CommandID + "-input", AgentKind: runtime.AgentKind,
 			ContextOnly:    request.InputVisibility == agentrun.InputModelOnly,
 			DisplayContent: request.DisplayMessage, UserReferences: agentchat.UserMessageReferences(request)},
-		Definitions: assembly.Tools, ReviewThreadID: options.ReviewThreadID, Emit: emit,
+		Definitions: definitions, ReviewThreadID: options.ReviewThreadID, Emit: emit,
 		ToolPolicy: toolruntime.OrchestratorConfig{AgentKind: runtime.AgentKind, PolicyKind: runtime.AgentKind,
 			Workspace: runtime.Workspace, ToolSettings: assembly.ToolSettings, EnforceToolSettings: true,
 			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.Config)},

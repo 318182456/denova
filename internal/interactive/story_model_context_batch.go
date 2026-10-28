@@ -3,7 +3,6 @@ package interactive
 import (
 	"bytes"
 	"crypto/sha256"
-	"denova/internal/agents/sessionjournal"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,21 +11,27 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
+	"denova/internal/agents/sessionjournal"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 var ErrModelContextBatchIdentityConflict = errors.New("model context batch identity conflict")
 
-// ModelContextBatchIntent is one complete assistant tool-call batch staged
-// after its player input and before the final narrative exists. Sequence is
+// ModelContextBatchIntent is one complete Agent context batch staged after
+// its player input and before the final Turn exists. Sequence is
 // scoped to the durable Agent cycle and makes retries deterministic.
 type ModelContextBatchIntent struct {
-	Identity      DomainCommitIdentity      `json:"identity"`
-	BranchID      string                    `json:"branch_id"`
-	PlayerInputID string                    `json:"player_input_id"`
-	Sequence      int                       `json:"sequence"`
-	Messages      []ModelContextMessage     `json:"messages"`
-	Checkpoint    agent.CanonicalCheckpoint `json:"-"`
+	Identity      DomainCommitIdentity               `json:"identity"`
+	BranchID      string                             `json:"branch_id"`
+	PlayerInputID string                             `json:"player_input_id"`
+	Sequence      int                                `json:"sequence"`
+	Messages      []ModelContextMessage              `json:"messages"`
+	Checkpoint    agentcanonical.CanonicalCheckpoint `json:"-"`
+	// Draft accepts the first narrative in the same transaction as its model
+	// messages and checkpoint. Product selection stays with the caller.
+	Draft *TurnDraft `json:"-"`
 }
 
 // ModelContextBatchEvent is an append-only side event. It deliberately does
@@ -83,7 +88,7 @@ func NewModelContextBatchIntents(
 }
 
 // NewAgentContextBatchIntent creates one exact canonical batch for context
-// state, tool protocol, or delegated task completion messages.
+// state, tool protocol, accepted continuations, or delegated task completions.
 func NewAgentContextBatchIntent(
 	identity DomainCommitIdentity,
 	branchID string,
@@ -116,7 +121,7 @@ func newAgentContextBatchIntent(
 }
 
 func validateAgentContextMessages(messages []ModelContextMessage) error {
-	values := make([]*agent.Message, 0, len(messages))
+	values := make([]*agentschema.Message, 0, len(messages))
 	for _, message := range messages {
 		value := AgentMessageFromModelContext(message)
 		if UserGuidanceCommand(value) != "" {
@@ -127,7 +132,7 @@ func validateAgentContextMessages(messages []ModelContextMessage) error {
 	if len(values) == 0 {
 		return nil
 	}
-	if err := agent.ValidateContextCommitMessages(values); err != nil {
+	if err := agentcanonical.ValidateContextCommitMessages(values); err != nil {
 		return fmt.Errorf("%w: %v", ErrModelContextBatchIdentityConflict, err)
 	}
 	return nil
@@ -174,7 +179,7 @@ func splitCanonicalModelContextBatches(messages []ModelContextMessage) ([][]Mode
 	return batches, nil
 }
 
-// AppendModelContextBatch durably publishes one complete tool batch without
+// AppendModelContextBatch durably publishes one complete context batch without
 // advancing the story branch. Exact retries return the original receipt.
 func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatchIntent) (ModelContextBatchReceipt, error) {
 	canonical, err := newAgentContextBatchIntent(intent.Identity, intent.BranchID, intent.Sequence, intent.Messages)
@@ -246,6 +251,16 @@ func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatch
 	}
 	meta.UpdatedAt = now
 	newEvents := []any{event}
+	if intent.Draft != nil {
+		draft := *intent.Draft
+		if draft.Identity != canonical.Identity {
+			return ModelContextBatchReceipt{}, errors.New("context batch draft belongs to a different Agent cycle")
+		}
+		if err := validateTurnDraft(draft); err != nil {
+			return ModelContextBatchReceipt{}, err
+		}
+		newEvents = append(newEvents, TurnDraftEvent{V: schemaVersion, Type: StoryEventTypeTurnDraft, ID: newID("draft"), ParentID: branch.Head, BranchID: canonical.BranchID, Ts: now, Draft: draft})
+	}
 	newEvents = append(newEvents, continuationEvents...)
 	agentRecords, err := sessionjournal.CheckpointRecords(&s.storyJournals[storyID].projection.AgentSessions, intent.Checkpoint, event.ID)
 	if err != nil {

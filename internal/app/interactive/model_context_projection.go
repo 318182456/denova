@@ -4,44 +4,46 @@ import (
 	"fmt"
 	"strings"
 
-	agents "denova/internal/agents"
+	"denova/internal/agents"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
+
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // ModelContextProjection renders the canonical branch in message order.
 // Agent owns checkpoint eligibility and coverage, including unfinished Turns.
 // This adapter only restores interrupted inputs at their accepted branch slot.
 type ModelContextProjection struct {
-	Messages             []*agent.Message
+	Messages             []*agentschema.Message
 	PendingInputMessages []string
 }
 
 type interactivePendingContext struct {
 	turnBoundary int
-	messages     []*agent.Message
+	messages     []*agentschema.Message
 }
 
-func BuildModelContextProjection(history interactive.StoryModelHistory, compaction *agent.CompactionState, snapshot interactive.Snapshot,
+func BuildModelContextProjection(history interactive.StoryModelHistory, compaction *agentcompaction.CompactionState, snapshot interactive.Snapshot,
 	policy toolresult.ContextPolicy, current agentrun.CycleIdentity,
 ) (ModelContextProjection, error) {
-	return buildModelContextProjection(history, compaction, snapshot, policy, current, func(input interactive.PlayerInputAcceptedEvent) *agent.Message {
-		return agent.UserMessageWithAttachments(interruptedPlayerInputModelMessage(input), input.Attachments)
+	return buildModelContextProjection(history, compaction, snapshot, policy, current, func(input interactive.PlayerInputAcceptedEvent) *agentschema.Message {
+		return agentschema.UserMessageWithAttachments(interruptedPlayerInputModelMessage(input), input.Attachments)
 	})
 }
 
 // Canonical storage supplies raw input text; product inspection may explain
 // that an older accepted input produced no narrative. Neither edits the journal.
-func buildModelContextProjection(history interactive.StoryModelHistory, compaction *agent.CompactionState, snapshot interactive.Snapshot,
-	policy toolresult.ContextPolicy, current agentrun.CycleIdentity, inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
+func buildModelContextProjection(history interactive.StoryModelHistory, compaction *agentcompaction.CompactionState, snapshot interactive.Snapshot,
+	policy toolresult.ContextPolicy, current agentrun.CycleIdentity, inputMessage func(interactive.PlayerInputAcceptedEvent) *agentschema.Message,
 ) (ModelContextProjection, error) {
 	if history.StartTurn != 0 || history.EndTurn < 0 || history.EndTurn > history.TotalTurns || len(history.Turns) != history.EndTurn {
 		return ModelContextProjection{}, fmt.Errorf("invalid canonical Game history: start=%d end=%d total=%d turns=%d", history.StartTurn, history.EndTurn, history.TotalTurns, len(history.Turns))
 	}
-	resolvedAt := make(map[int][]*agent.Message)
+	resolvedAt := make(map[int][]*agentschema.Message)
 	for owner, turn := range history.Turns {
 		for _, resolved := range turn.ResolvedPlayerInputContexts {
 			boundary, err := interactivePlayerInputTurnBoundary(history, resolved.Input)
@@ -62,7 +64,7 @@ func buildModelContextProjection(history interactive.StoryModelHistory, compacti
 	if err != nil {
 		return ModelContextProjection{}, err
 	}
-	pendingAt := make(map[int][]*agent.Message)
+	pendingAt := make(map[int][]*agentschema.Message)
 	for _, entry := range pending {
 		pendingAt[entry.turnBoundary] = append(pendingAt[entry.turnBoundary], entry.messages...)
 	}
@@ -74,12 +76,7 @@ func buildModelContextProjection(history interactive.StoryModelHistory, compacti
 			break
 		}
 		turn := history.Turns[boundary]
-		messages := []*agent.Message{agent.UserMessageWithAttachments(turn.User, turn.Attachments)}
-		messages = append(messages, settledTurnToolContextMessages(turn.ModelContextMessages)...)
-		assistant := agent.AssistantMessage(turn.Narrative, nil)
-		assistant.Extra = providers.ContinuationExtra(turn.ProviderContinuation)
-		messages = append(messages, assistant)
-		projection.Messages = append(projection.Messages, toolresult.ApplyContextPolicy(messages, policy)...)
+		projection.Messages = append(projection.Messages, interactive.ModelTurnMessages(turn, policy)...)
 	}
 	if compaction != nil {
 		// The live suffix is owned by Agent and may extend beyond this Story view.
@@ -97,13 +94,7 @@ func buildModelContextProjection(history interactive.StoryModelHistory, compacti
 // canonical final narrative is appended separately below, so replaying the
 // same prose inside submit_interactive_turn would duplicate every settled Turn.
 func settledTurnToolContextMessages(messages []interactive.ModelContextMessage) []*agents.Message {
-	projected := schemaMessagesFromInteractiveContext(messages)
-	for _, message := range projected {
-		if message != nil && message.Role == agents.RoleAssistant && len(message.ToolCalls) > 0 {
-			message.Content = ""
-		}
-	}
-	return projected
+	return interactive.SettledTurnToolMessages(messages)
 }
 
 func projectInteractivePendingContext(
@@ -111,7 +102,7 @@ func projectInteractivePendingContext(
 	snapshot interactive.Snapshot,
 	policy toolresult.ContextPolicy,
 	current agentrun.CycleIdentity,
-	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
+	inputMessage func(interactive.PlayerInputAcceptedEvent) *agentschema.Message,
 ) ([]interactivePendingContext, []string, error) {
 	batches := make(map[string][]interactive.ModelContextBatchEvent, len(snapshot.PendingPlayerInputs))
 	for _, batch := range snapshot.PendingModelContextBatches {
@@ -149,13 +140,9 @@ func interactivePendingInputMatchesCycle(input interactive.PlayerInputAcceptedEv
 func interactivePlayerInputContextMessages(
 	input interactive.PlayerInputAcceptedEvent,
 	batches []interactive.ModelContextBatchEvent,
-	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
+	inputMessage func(interactive.PlayerInputAcceptedEvent) *agentschema.Message,
 ) []*agents.Message {
-	messages := []*agents.Message{inputMessage(input)}
-	for _, batch := range batches {
-		messages = append(messages, schemaMessagesFromInteractiveContext(batch.Messages)...)
-	}
-	return messages
+	return interactive.PlayerInputContextMessages(batches, inputMessage(input))
 }
 
 func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, input interactive.PlayerInputAcceptedEvent) (int, error) {
@@ -172,11 +159,11 @@ func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, i
 // settledTurnContextWindow uses the same product codec as journal replay,
 // restricted to the accepted cycle. Tool IDs may repeat in older turns, so
 // matching IDs across the whole window would corrupt their retained results.
-func settledTurnContextWindow(messages []*agent.Message, activeUserIndex int, narrative string, extra map[string]any) ([]*agent.Message, error) {
-	if activeUserIndex < 0 || activeUserIndex >= len(messages)-1 || messages[activeUserIndex].Role != agent.User {
+func settledTurnContextWindow(messages []*agentschema.Message, activeUserIndex int, narrative string, extra map[string]any) ([]*agentschema.Message, error) {
+	if activeUserIndex < 0 || activeUserIndex >= len(messages)-1 || messages[activeUserIndex].Role != agentschema.User {
 		return nil, fmt.Errorf("canonical output requires an exact active user boundary")
 	}
-	result := make([]*agent.Message, len(messages))
+	result := make([]*agentschema.Message, len(messages))
 	for index, message := range messages {
 		result[index] = message.Clone()
 		if index > activeUserIndex && index < len(messages)-1 {
@@ -185,7 +172,7 @@ func settledTurnContextWindow(messages []*agent.Message, activeUserIndex int, na
 			}
 		}
 	}
-	final := agent.AssistantMessage(narrative, nil)
+	final := agentschema.AssistantMessage(narrative, nil)
 	final.Extra = providers.ContinuationExtra(extra)
 	result[len(result)-1] = final
 	return result, nil

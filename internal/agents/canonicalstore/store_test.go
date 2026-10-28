@@ -15,7 +15,9 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/project"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -43,7 +45,7 @@ func TestStoreEmbedsRootRecordsAndKeepsChildrenInProjectState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Append(agent.UserMessage("canonical input")); err != nil {
+	if err := productSession.Append(agentschema.UserMessage("canonical input")); err != nil {
 		t.Fatal(err)
 	}
 	if err := productStore.Close(); err != nil {
@@ -183,7 +185,7 @@ func TestStoreScopesDiscoveryToTheSelectedSessionTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Append(agent.UserMessage("target input")); err != nil {
+	if err := productSession.Append(agentschema.UserMessage("target input")); err != nil {
 		t.Fatal(err)
 	}
 	if err := productStore.Close(); err != nil {
@@ -365,19 +367,27 @@ func TestStoreMigratesReleasedProductCompactionIntoEmbeddedCapability(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Append(agent.UserMessage("discarded before clear")); err != nil {
+	if err := productSession.Append(agentschema.UserMessage("discarded before clear")); err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Clear(); err != nil {
+	// Released files can contain a plain clear record between canonical transactions.
+	{
+		path := filepath.Join(layout.SessionsDir(), productSession.ID+".jsonl")
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, append(contents, []byte("{\"type\":\"clear\",\"created_at\":\"2026-01-02T03:04:05Z\"}\n")...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := productSession.Append(agentschema.UserMessage("first retained input")); err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Append(agent.UserMessage("first retained input")); err != nil {
+	if err := productSession.Append(agentschema.AssistantMessage("first retained answer", nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Append(agent.AssistantMessage("first retained answer", nil)); err != nil {
-		t.Fatal(err)
-	}
-	if err := productSession.Append(agent.UserMessage("tail")); err != nil {
+	if err := productSession.Append(agentschema.UserMessage("tail")); err != nil {
 		t.Fatal(err)
 	}
 	if err := productStore.Close(); err != nil {
@@ -444,7 +454,7 @@ func TestStoreMigratesReleasedProductCompactionIntoEmbeddedCapability(t *testing
 		if err := json.Unmarshal(record.Data, &payload); err != nil {
 			return err
 		}
-		if payload.Capability != agent.CompactionCapability {
+		if payload.Capability != agentcompaction.CompactionCapability {
 			return nil
 		}
 		capabilityRecords++

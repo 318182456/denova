@@ -1,5 +1,8 @@
+import market from './zh-CN/market'
+import gameDefaults from './zh-CN/gameDefaults'
 import speech from './zh-CN/speech'
 import common from './zh-CN/common'
+import platform from './zh-CN/platform'
 import agentRuntime from './zh-CN/agentRuntime'
 import remoteAccess from './zh-CN/remoteAccess'
 import chat from './zh-CN/chat'
@@ -43,10 +46,14 @@ import narrativeStyle from './zh-CN/narrativeStyle'
 import agentChat from './zh-CN/agentChat'
 import agentApproval from './zh-CN/agentApproval'
 import files from './zh-CN/files'
+import statistics from './zh-CN/statistics'
 import trajectory from './zh-CN/trajectory'
 
 const zhCN = {
   ...common,
+  ...market,
+  ...gameDefaults,
+  ...platform,
   ...speech,
   ...agentRuntime,
   ...remoteAccess,
@@ -92,6 +99,7 @@ const zhCN = {
   ...agentApproval,
   ...files,
   ...trajectory,
+  ...statistics,
   'agents.tool.availability.runtimeCheck': '运行时检查',
 } as const
 

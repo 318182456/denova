@@ -54,7 +54,7 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled || !conversationConfig?.initialized || selector.saving}
+          disabled={disabled || (!conversationConfig?.initialized && !conversationConfig?.error) || selector.saving}
           className="group flex h-8 min-w-0 max-w-44 flex-[0_1_auto] items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
           aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           data-model-profile-trigger="true"
@@ -93,6 +93,7 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
           }}
         />}
         <DropdownMenuSeparator />
+        {conversationConfig?.error && <DropdownMenuGroup><DropdownMenuItem disabled={conversationConfig.loading} onSelect={() => void conversationConfig.reload()}>{selector.t('common.retry')}</DropdownMenuItem></DropdownMenuGroup>}
         {runActive ? (
           <>
             <div role="note" className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
@@ -234,7 +235,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     enabled,
     ready: external || settings !== null,
     external,
-    selectionDisabled: disabled || Boolean(savingSelection) || Boolean(conversationConfig?.saving) || (external && (runActive || (!engineModels && !profilesLoaded))),
+    selectionDisabled: disabled || !conversationConfig?.initialized || Boolean(savingSelection) || Boolean(conversationConfig?.saving) || (external && (runActive || (!engineModels && !profilesLoaded))),
     options,
     currentProfile,
     currentModelLabel,

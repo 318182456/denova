@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	agenttools "github.com/alfredxw/denova/agent/tools"
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 // trajectoryLineResult projects an already selected contiguous JSONL window.

@@ -3,6 +3,7 @@ import type { ActiveChatTask, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryRe
 import type { AgentChatTransport } from '@/lib/agent-ui'
 import { isAbortError } from './agent-chat-state'
 import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
+import type { AgentStreamCompletion } from './use-agent-stream'
 
 export interface WritingDisplayRehydrateRequest {
   signal: number
@@ -23,12 +24,12 @@ interface WritingAgentRuntimeRecoveryOptions {
   onDisplayRehydrated: () => void
   onDisplayTerminalRestored: (request: WritingDisplayRehydrateRequest) => void
   onSettled: () => void
-  prepareStreamResumeBoundary: () => void
   runtimeRecoverySignal: number
   resumeStream: () => Promise<void>
   transport: AgentChatTransport
   transportError?: Error
   transportStatus: 'ready' | 'submitted' | 'streaming' | 'error'
+  transportCompletion: AgentStreamCompletion
   transportStreaming: boolean
   client?: AgentChatClient
 }
@@ -44,23 +45,29 @@ export function useWritingAgentRuntimeRecovery({
   onDisplayRehydrated,
   onDisplayTerminalRestored,
   onSettled,
-  prepareStreamResumeBoundary,
   runtimeRecoverySignal,
   resumeStream,
   transport,
   transportError,
   transportStatus,
+  transportCompletion,
   transportStreaming,
   client = writingAgentChatClient,
 }: WritingAgentRuntimeRecoveryOptions) {
   const [runtimeProjection, setRuntimeProjection] = useState<ActiveChatTask | null>(null)
   const [recoveryPending, setRecoveryPending] = useState(false)
   const [recoveryAttempt, setRecoveryAttempt] = useState(0)
+  const [retryVersion, setRetryVersion] = useState(0)
+  const [recoveryFailed, setRecoveryFailed] = useState(false)
+  const failuresRef = useRef(0)
+  const recoveryFailedRef = useRef(false)
+  const generationRef = useRef(0)
+  const requestsRef = useRef(new Set<AbortController>())
   const runtimeProjectionRef = useRef<ActiveChatTask | null>(null)
   const streamCycleProjectionVersionRef = useRef(0)
   const recoveryActionInFlightRef = useRef(false)
-  const attachmentInFlightRef = useRef<{ key: string; promise: Promise<boolean> } | null>(null)
-  const checkInFlightRef = useRef<{ sessionID: string; promise: Promise<void> } | null>(null)
+  const attachmentInFlightRef = useRef<{ key: string; generation: number; promise: Promise<boolean> } | null>(null)
+  const checkInFlightRef = useRef<{ sessionID: string; generation: number; promise: Promise<void> } | null>(null)
   const attachedRecoveryRetryNeededRef = useRef(false)
   const retryNeededRef = useRef(false)
   const immediateRetryProjectionRef = useRef('')
@@ -75,6 +82,10 @@ export function useWritingAgentRuntimeRecovery({
   const onSettledRef = useRef(onSettled)
   const activeSessionIdRef = useRef(activeSessionId)
   const explicitlyResumedSessionIdRef = useRef('')
+  if (activeSessionIdRef.current !== activeSessionId) {
+    generationRef.current += 1
+    for (const request of requestsRef.current) request.abort()
+  }
   activeSessionIdRef.current = activeSessionId
   transportStatusRef.current = transportStatus
   transportErrorRef.current = transportError
@@ -106,6 +117,7 @@ export function useWritingAgentRuntimeRecovery({
   }, [])
 
   const markRecoveryRetry = useCallback((retryImmediately: boolean, projectionFingerprint?: string) => {
+    if (recoveryFailedRef.current) return
     retryNeededRef.current = true
     setRecoveryPending(true)
     if (!retryImmediately) return
@@ -115,49 +127,69 @@ export function useWritingAgentRuntimeRecovery({
     setRecoveryAttempt((current) => current + 1)
   }, [])
 
+  const recordRecoveryFailure = useCallback(() => {
+    failuresRef.current += 1
+    retryNeededRef.current = true
+    setRetryVersion(current => current + 1)
+    if (failuresRef.current >= 5) {
+      recoveryFailedRef.current = true
+      setRecoveryFailed(true)
+      retryNeededRef.current = false
+      setRecoveryPending(false)
+    } else setRecoveryPending(true)
+  }, [])
+
+  useEffect(() => () => {
+    generationRef.current += 1
+    for (const request of requestsRef.current) request.abort()
+  }, [])
+
   const attachDisplayStream = useCallback(
     async (failureContext: string, sessionID: string, taskID: string, beforeResume?: () => void): Promise<boolean> => {
-      const key = `${sessionID}:${taskID}`
-      // resumeStream owns one AI SDK response until it settles. Repeated
+      const generation = generationRef.current
+      const current = () => activeSessionIdRef.current === sessionID && generationRef.current === generation
+      const key = `${generation}:${sessionID}:${taskID}`
+      // resumeStream owns one display response until it settles. Repeated
       // inspections may arrive before React reports streaming; share that
-      // attachment instead of racing two readers on the same Chat instance.
-      while (attachmentInFlightRef.current) {
+      // attachment instead of racing two readers on the same connection.
+      while (attachmentInFlightRef.current && attachmentInFlightRef.current.generation === generation) {
         if (attachmentInFlightRef.current.key === key) return attachmentInFlightRef.current.promise
         await attachmentInFlightRef.current.promise
       }
-      if (activeSessionIdRef.current !== sessionID) return false
+      if (!current()) return false
       const attachment = (async () => {
         const statusAtStart = transportStatusRef.current
         const errorAtStart = transportErrorRef.current
         const projectionAtStart = writingRecoveryProjectionFingerprint(runtimeProjectionRef.current)
         try {
           // Every explicit reconnect replaces provisional text/reasoning/tool args
-          // with authoritative history first. AI SDK reconnect streams append new
+          // with authoritative history first. Reconnect streams append new
           // parts; without this reset, partial `hel` followed by replayed `hello`
           // renders as `helhello` and tool arguments can be duplicated as well.
           await loadHistoryAuthoritative(sessionID)
-          if (activeSessionIdRef.current !== sessionID) return false
+          if (!current()) return false
           if (displayOmissionActiveRef.current) onDisplayRehydrated()
-          prepareStreamResumeBoundary()
           beforeResume?.()
           await Promise.resolve(resumeStream())
-          // AI SDK resolves resumeStream on an HTTP/reconnect failure and reports
+          if (!current()) return false
+          // The display connection resolves resumeStream on an HTTP/reconnect failure and reports
           // the failure through ChatStatus. Preserve the durable projection and
           // wait for an explicit retry opportunity instead of spinning here.
           if (transportStatusRef.current !== 'error') return true
           if (statusAtStart === 'error' && transportErrorRef.current === errorAtStart) return false
+          recordRecoveryFailure()
           markRecoveryRetry(true, projectionAtStart)
           return false
         } catch (error) {
-          if (activeSessionIdRef.current !== sessionID) return false
+          if (!current()) return false
           if (isAbortError(error)) return false
           console.warn(`[use-agent-runtime-recovery.ts] ${failureContext}`, error)
-          markRecoveryRetry(false)
+          recordRecoveryFailure()
           if (isRehydrateRequired(error)) setRecoveryAttempt((current) => current + 1)
           return false
         }
       })()
-      const tracked = { key, promise: attachment }
+      const tracked = { key, generation, promise: attachment }
       attachmentInFlightRef.current = tracked
       try {
         return await attachment
@@ -165,50 +197,61 @@ export function useWritingAgentRuntimeRecovery({
         if (attachmentInFlightRef.current === tracked) attachmentInFlightRef.current = null
       }
     },
-    [loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, prepareStreamResumeBoundary, resumeStream],
+    [loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, recordRecoveryFailure, resumeStream],
   )
 
   const inspectAndAttach = useCallback(
-    async (canonicalizeWhenIdle: boolean, attachStream = true, requestedSessionID = activeSessionIdRef.current) => {
+    async (mode: 'recover' | 'settle' | 'sync' | 'probe', attachStream = true, requestedSessionID = activeSessionIdRef.current) => {
       const sessionID = requestedSessionID.trim()
-      while (checkInFlightRef.current?.sessionID === sessionID) await checkInFlightRef.current.promise
+      if (checkInFlightRef.current?.sessionID === sessionID && checkInFlightRef.current.generation === generationRef.current) return checkInFlightRef.current.promise
       if (activeSessionIdRef.current !== sessionID) return
+      const generation = generationRef.current
+      const controller = new AbortController()
+      requestsRef.current.add(controller)
+      const current = () => activeSessionIdRef.current === sessionID && generationRef.current === generation &&
+        ((mode !== 'settle' && mode !== 'sync') || (transportStatusRef.current !== 'submitted' && transportStatusRef.current !== 'streaming'))
+      const previousProjection = runtimeProjectionRef.current
       const inspection = (async () => {
-        if (attachStream) setRecoveryPending(true)
+        // A terminal chunk already certifies a complete display. Refresh controls
+        // quietly; only a real recovery boundary may replace that live history.
+        if (attachStream && (mode === 'recover' || mode === 'probe')) setRecoveryPending(true)
         try {
-          let projection = await client.getActiveChatTask(sessionID)
-          if (activeSessionIdRef.current !== sessionID) return
+          let projection = await client.getActiveChatTask(sessionID, controller.signal)
+          if (!current()) return
           runtimeProjectionRef.current = projection
           setRuntimeProjection(projection)
           const shouldObserve = Boolean(projection.active || projection.task_id?.trim() || projection.runtime_recoverable)
           if (shouldObserve) wasStreamingRef.current = true
 
-          let failedProjection = ''
           let recovered: Awaited<ReturnType<typeof recoverWritingProjection>>
           while (true) {
             const projectionFingerprint = writingRecoveryProjectionFingerprint(projection)
-            if (!attachStream && projectionFingerprint === failedProjection) {
-              attachedRecoveryRetryNeededRef.current = false
-              setRecoveryPending(false)
-              return
-            }
             try {
-              recovered = await recoverWritingProjection(projection, (action) => client.recoverChatAgentRuntime(action, sessionID))
+              recovered = await recoverWritingProjection(projection, (action) => client.recoverChatAgentRuntime(action, sessionID, controller.signal))
               break
             } catch (error) {
-              if (attachStream || !isRecoveryProjectionRefreshError(error)) throw error
-              failedProjection = projectionFingerprint
-              projection = await client.getActiveChatTask(sessionID)
-              if (activeSessionIdRef.current !== sessionID) return
+              if (!isRecoveryProjectionRefreshError(error)) throw error
+              projection = await client.getActiveChatTask(sessionID, controller.signal)
+              if (!current()) return
               runtimeProjectionRef.current = projection
               setRuntimeProjection(projection)
+              // A stale recovery action requires a new projection, regardless
+              // of whether this inspection also owns display attachment.
+              if (writingRecoveryProjectionFingerprint(projection) === projectionFingerprint) {
+                if (attachStream) throw error
+                attachedRecoveryRetryNeededRef.current = false
+                setRecoveryPending(false)
+                return
+              }
             }
           }
+          if (!current()) return
           runtimeProjectionRef.current = recovered.projection
           setRuntimeProjection(recovered.projection)
           if (recovered.taskID) {
             retryNeededRef.current = false
             if (attachStream) {
+              setRecoveryPending(true)
               transport.setActiveStreamTarget(recovered.taskID, undefined, { session_id: sessionID })
               void attachDisplayStream('failed to attach writing Agent stream; preserving recovery state', sessionID, recovered.taskID)
             } else {
@@ -228,14 +271,19 @@ export function useWritingAgentRuntimeRecovery({
           wasStreamingRef.current = false
           if (attachStream) transport.clearActiveStreamTarget()
           onSettledRef.current()
-          if (canonicalizeWhenIdle) {
+          // Session-list metadata also echoes locally completed turns. The
+          // journal cursor distinguishes those echoes from external changes.
+          const historyChanged = previousProjection?.cursor === undefined || previousProjection.cursor !== recovered.projection.cursor
+          if (mode === 'recover' || (mode === 'sync' && historyChanged)) {
+            setRecoveryPending(true)
             await loadHistoryAuthoritative(sessionID)
-            if (activeSessionIdRef.current !== sessionID) return
+            if (!current()) return
             displayOmissionActiveRef.current = false
           }
+          failuresRef.current = 0
           setRecoveryPending(false)
         } catch (error) {
-          if (activeSessionIdRef.current !== sessionID) return
+          if (!current()) return
           if (!isAbortError(error)) {
             console.warn(
               '[use-agent-runtime-recovery.ts] failed to inspect or recover writing Agent runtime; waiting for a safe retry opportunity',
@@ -244,19 +292,20 @@ export function useWritingAgentRuntimeRecovery({
             retryNeededRef.current = true
             attachedRecoveryRetryNeededRef.current = !attachStream
             wasStreamingRef.current = true
-            setRecoveryPending(true)
+            recordRecoveryFailure()
           }
         }
       })()
-      const trackedInspection = { sessionID, promise: inspection }
+      const trackedInspection = { sessionID, generation, promise: inspection }
       checkInFlightRef.current = trackedInspection
       try {
         await inspection
       } finally {
+        requestsRef.current.delete(controller)
         if (checkInFlightRef.current === trackedInspection) checkInFlightRef.current = null
       }
     },
-    [attachDisplayStream, client, loadHistoryAuthoritative, transport],
+    [attachDisplayStream, client, loadHistoryAuthoritative, recordRecoveryFailure, transport],
   )
 
   useEffect(() => {
@@ -268,8 +317,12 @@ export function useWritingAgentRuntimeRecovery({
     setRecoveryPending(true)
     if (!request.settled) displayOmissionActiveRef.current = true
 
+    const generation = generationRef.current
+    const current = () => generationRef.current === generation
     const finish = (completed: boolean) => {
+      if (!current()) return
       displayRehydrateInFlightRef.current = false
+      if (recoveryFailedRef.current) return
       if (!completed) {
         retryNeededRef.current = true
         setRecoveryPending(true)
@@ -283,7 +336,7 @@ export function useWritingAgentRuntimeRecovery({
       const sessionID = activeSessionIdRef.current.trim()
       void loadHistoryAuthoritative(sessionID)
         .then(() => {
-          if (activeSessionIdRef.current !== sessionID) {
+          if (!current() || activeSessionIdRef.current !== sessionID) {
             finish(false)
             return
           }
@@ -297,9 +350,10 @@ export function useWritingAgentRuntimeRecovery({
           finish(true)
         })
         .catch((error) => {
+          if (!current()) return
           if (!isAbortError(error)) {
             console.warn('[use-agent-runtime-recovery.ts] failed to canonically rehydrate a settled Writing display', error)
-            markRecoveryRetry(false)
+            recordRecoveryFailure()
           }
           finish(false)
         })
@@ -319,6 +373,7 @@ export function useWritingAgentRuntimeRecovery({
     onDisplayRehydrated,
     onDisplayTerminalRestored,
     recoveryAttempt,
+    recordRecoveryFailure,
     transport,
     transportStreaming,
   ])
@@ -332,6 +387,9 @@ export function useWritingAgentRuntimeRecovery({
       return
     }
     displayRehydrateInFlightRef.current = false
+    failuresRef.current = 0
+    recoveryFailedRef.current = false
+    setRecoveryFailed(false)
     retryNeededRef.current = false
     attachedRecoveryRetryNeededRef.current = false
     streamCycleProjectionVersionRef.current += 1
@@ -372,6 +430,10 @@ export function useWritingAgentRuntimeRecovery({
   useEffect(() => {
     if (displayRehydrateRef.current) return
     if (transportStatus === 'submitted') {
+      // Quiet settlement does not block the next submission. Fence its pending
+      // projection read before it can revoke the new turn's operation identity.
+      generationRef.current += 1
+      for (const request of requestsRef.current) request.abort()
       immediateRetryProjectionRef.current = ''
       retryNeededRef.current = false
       wasStreamingRef.current = false
@@ -379,6 +441,9 @@ export function useWritingAgentRuntimeRecovery({
       return
     }
     if (transportResponseStreaming) {
+      failuresRef.current = 0
+      recoveryFailedRef.current = false
+      setRecoveryFailed(false)
       immediateRetryProjectionRef.current = ''
       const sessionID = activeSessionIdRef.current.trim()
       if (!sessionID) {
@@ -413,19 +478,19 @@ export function useWritingAgentRuntimeRecovery({
         cancelled = true
       }
     }
-    if (!wasStreamingRef.current) return
-    void inspectAndAttach(true)
-  }, [activeSessionId, client, inspectAndAttach, recoveryAttempt, transport, transportResponseStreaming, transportStatus])
+    if (!wasStreamingRef.current || recoveryFailedRef.current) return
+    void inspectAndAttach(transportStatus === 'ready' && transportCompletion === 'terminal' && !retryNeededRef.current ? 'settle' : 'recover')
+  }, [activeSessionId, client, inspectAndAttach, recoveryAttempt, transport, transportCompletion, transportResponseStreaming, transportStatus])
 
   useEffect(() => {
     if (runtimeRecoverySignal <= 0) return
     // The current AI SDK reader remains attached. Only advance the exact
     // server-projected head action; never open another display stream.
-    void inspectAndAttach(false, false)
+    void inspectAndAttach('probe', false)
   }, [inspectAndAttach, runtimeRecoverySignal])
 
   useEffect(() => {
-    if (!recoveryPending) return
+    if (!recoveryPending || recoveryFailed) return
     const retry = () => {
       if (displayRehydrateRef.current) {
         if (!displayRehydrateInFlightRef.current && !transportStreaming) {
@@ -434,7 +499,7 @@ export function useWritingAgentRuntimeRecovery({
         return
       }
       if (attachedRecoveryRetryNeededRef.current) {
-        void inspectAndAttach(false, false)
+        void inspectAndAttach('probe', false)
         return
       }
       if (transportStreaming) return
@@ -444,24 +509,32 @@ export function useWritingAgentRuntimeRecovery({
     const retryWhenVisible = () => {
       if (document.visibilityState === 'visible') retry()
     }
+    const delay = Math.min(10_000, 1000 * 2 ** Math.max(0, failuresRef.current - 1) * (0.75 + Math.random() * 0.5))
+    const timer = setTimeout(retry, delay)
     window.addEventListener('online', retry)
     window.addEventListener('focus', retry)
     document.addEventListener('visibilitychange', retryWhenVisible)
     return () => {
+      clearTimeout(timer)
       window.removeEventListener('online', retry)
       window.removeEventListener('focus', retry)
       document.removeEventListener('visibilitychange', retryWhenVisible)
     }
-  }, [inspectAndAttach, recoveryPending, transportStreaming])
+  }, [inspectAndAttach, recoveryPending, recoveryFailed, retryVersion, recoveryAttempt, transportStreaming])
 
   const resumeActiveChat = useCallback(async (sessionID = activeSessionIdRef.current) => {
-    if (transportStreaming) return
+    if (transportStreaming && !recoveryFailedRef.current) return
+    failuresRef.current = 0
+    recoveryFailedRef.current = false
+    setRecoveryFailed(false)
     const targetSessionID = sessionID.trim()
     // Explicit callers use the Session identity just confirmed by the server.
     // Advance the async fence immediately instead of waiting for React to
     // commit the matching state render; this also invalidates late work from A.
     explicitlyResumedSessionIdRef.current = targetSessionID
     if (activeSessionIdRef.current !== targetSessionID) {
+      generationRef.current += 1
+      for (const request of requestsRef.current) request.abort()
       displayOmissionActiveRef.current = false
       displayRehydrateInFlightRef.current = false
       retryNeededRef.current = false
@@ -472,8 +545,14 @@ export function useWritingAgentRuntimeRecovery({
       transport.clearActiveStreamTarget()
       activeSessionIdRef.current = targetSessionID
     }
-    await inspectAndAttach(false, true, targetSessionID)
+    await inspectAndAttach('probe', !transportStreaming, targetSessionID)
   }, [inspectAndAttach, transport, transportStreaming])
+
+  /** Reconciles external metadata updates without replaying an observed turn. */
+  const synchronizeActiveChat = useCallback(async () => {
+    if (transportStreaming || recoveryPending || recoveryFailedRef.current) return
+    await inspectAndAttach('sync')
+  }, [inspectAndAttach, recoveryPending, transportStreaming])
 
   const executeRecoveryAction = useCallback(async (kind: 'abort' | 'resume') => {
     const action = runtimeProjection?.recovery_actions?.find((candidate) => candidate.kind === kind)
@@ -482,8 +561,13 @@ export function useWritingAgentRuntimeRecovery({
     recoveryActionInFlightRef.current = true
     try {
       const sessionID = activeSessionIdRef.current.trim()
-      const receipt = await client.recoverChatAgentRuntime(action, sessionID)
-      if (activeSessionIdRef.current !== sessionID) return false
+      const generation = generationRef.current
+      const controller = new AbortController()
+      requestsRef.current.add(controller)
+      let receipt: AgentRuntimeRecoveryReceipt
+      try { receipt = await client.recoverChatAgentRuntime(action, sessionID, controller.signal) }
+      finally { requestsRef.current.delete(controller) }
+      if (activeSessionIdRef.current !== sessionID || generationRef.current !== generation) return false
       if (!sameRecoveryAction(receipt.recovery_action, action)) {
         throw new Error('The writing Agent recovery action changed while aborting')
       }
@@ -525,7 +609,9 @@ export function useWritingAgentRuntimeRecovery({
     resumeTask: useCallback(() => executeRecoveryAction('resume'), [executeRecoveryAction]),
     projectStreamCycle,
     recoveryPending,
+    recoveryFailed,
     resumeActiveChat,
+    synchronizeActiveChat,
     runtimeProjection,
     setRuntimeProjection,
   }

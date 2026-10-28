@@ -6,13 +6,14 @@ import { useTranslation } from 'react-i18next'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu'
 import { checkAgentEngine, fetchAgentEngines, fetchEngineModels } from '@/features/agent-runtime/api'
 import { runtimeProfileOptions } from '@/features/agent-runtime/api-profiles'
-import type { AgentEngineID, RuntimeSelection } from '@/features/agent-runtime/types'
-import type { ConversationConfigController } from '@/features/conversation-config/types'
+import type { AgentEngineID } from '@/features/agent-runtime/types'
+import type { ConversationConfigChanges, ConversationConfigController } from '@/features/conversation-config/types'
 import { fetchModelCatalog, fetchProjectSettings, fetchSettings } from '@/features/settings/api'
-import { modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { selectableModelProfiles } from '@/features/settings/model-profiles'
+import { normalizeThinkingLevel } from '@/features/settings/thinking-levels'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
-type RuntimeChoice = { kind: AgentEngineID; selection?: RuntimeSelection; reason?: string; unchecked?: boolean }
+type RuntimeChoice = { kind: AgentEngineID; changes?: ConversationConfigChanges; reason?: string; unchecked?: boolean }
 
 /** Resolves effective defaults without changing Agent preferences. API profiles do
  * not require CLI authentication; the server validates admission before commit. */
@@ -31,12 +32,21 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
   return Promise.all((['native', 'codex', 'claude'] as const).map(async (kind): Promise<RuntimeChoice> => {
     try {
       if (kind === 'native') {
-        const profile = modelProfilesWithDefault(effective).find(item => item.id === (snapshot?.profile_id || 'default'))
-        return profile?.model ? { kind, selection: { kind } } : { kind, reason: 'agentRuntime.modelUnavailable' }
+        const profiles = selectableModelProfiles(effective).filter(item => item.model?.trim())
+        const current = profiles.find(item => item.id === snapshot?.profile_id)
+        const profile = current
+          ?? profiles.find(item => item.id === (effective.agent_models?.default?.profile_id || 'default'))
+          ?? profiles.find(item => item.id === 'default')
+        if (!profile) return { kind, reason: 'agentRuntime.modelUnavailable' }
+        // Repair the saved Native model in the same revision-checked switch.
+        return { kind, changes: { runtime: { kind },
+          ...(!current ? { profile_id: profile.id, thinking_level: 'default' } :
+            !normalizeThinkingLevel(snapshot?.thinking_level) ? { thinking_level: 'default' } : {}),
+        } }
       }
       const engine = items.find(item => item.id === kind)
       const status = engine?.status ?? 'unchecked'
-      let model = preferences?.[kind]
+      const model = preferences?.[kind]
       if (status === 'unchecked') return { kind, reason: 'agentRuntime.status.unchecked', unchecked: true }
       if (status !== 'ready' && !(model?.profile_id && status === 'auth_required')) {
         return { kind, reason: engine?.reason_key || `agentRuntime.status.${status}` }
@@ -44,17 +54,23 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
       if (model?.profile_id) {
         const profileID = model.profile_id
         const catalog = await fetchModelCatalog()
-        if (!runtimeProfileOptions(kind, settings, catalog).some(item => item.id === `profile:${profileID}`)) {
-          return { kind, reason: 'agentRuntime.apiProfileUnavailable' }
+        if (runtimeProfileOptions(kind, settings, catalog).some(item => item.id === `profile:${profileID}`)) {
+          return { kind, changes: { runtime: kind === 'codex' ? { kind, codex: model } : { kind, claude: model } } }
         }
-      } else {
-        const catalog = await fetchEngineModels(kind)
-        const modelID = model?.model || catalog.default_id || catalog.items[0]?.id
-        const found = catalog.items.find(item => item.id === modelID)
-        if (!found || (model?.effort && !found.efforts.includes(model.effort))) return { kind, reason: 'agentRuntime.modelUnavailable' }
-        model = model || { model: found.id }
       }
-      return { kind, selection: kind === 'codex' ? { kind, codex: model } : { kind, claude: model } }
+      if (status !== 'ready') return { kind, reason: engine?.reason_key || `agentRuntime.status.${status}` }
+      const catalog = await fetchEngineModels(kind)
+      const found = catalog.items.find(item => item.id === model?.model)
+        ?? catalog.items.find(item => item.id === catalog.default_id)
+        ?? catalog.items[0]
+      if (!found) return { kind, reason: 'agentRuntime.modelUnavailable' }
+      const resolved = { model: found.id,
+        ...(found.id === model?.model && model.effort && found.efforts.includes(model.effort) ? { effort: model.effort } : {}),
+      }
+      return { kind, changes: { runtime: kind === 'codex'
+        ? { kind, codex: { ...resolved, ...(preferences?.codex?.sandbox ? { sandbox: preferences.codex.sandbox } : {}) } }
+        : { kind, claude: resolved },
+      } }
     } catch (cause) {
       console.warn('[conversation-config] load runtime choice failed', { kind, cause })
       return { kind, reason: 'agentRuntime.connectionFailed' }
@@ -95,21 +111,21 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
   }, [open, revision, controller.binding, controller.snapshot?.custom_agent_id, controller.snapshot?.agent_kind, controller.snapshot?.profile_id, t])
 
   const act = async (choice: RuntimeChoice) => {
-    if (selectionDisabled || choice.kind === current) return
+    if (selectionDisabled || (choice.kind === current && !controller.error)) return
     setPending(choice.kind)
     setError('')
     try {
       if (choice.unchecked) {
         try { await checkAgentEngine(choice.kind) } finally { setRevision(value => value + 1) }
-      } else if (choice.selection) {
+      } else if (choice.changes) {
         // Re-resolve on submission so changed settings cannot apply stale defaults.
         const fresh = (await loadChoices(controller)).find(item => item.kind === choice.kind)
-        if (!fresh?.selection) {
+        if (!fresh?.changes) {
           setError(t(fresh?.reason || 'agentRuntime.notReady'))
           setRevision(value => value + 1)
           return
         }
-        if (await controller.patch({ runtime: fresh.selection })) {
+        if (await controller.patch(fresh.changes)) {
           console.info('[conversation-config] runtime switched', { from: current, to: choice.kind, binding: controller.binding })
           setOpen(false)
         }
@@ -129,7 +145,8 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
       <DropdownMenuSubContent avoidCollisions={!narrow} className="max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto w-64 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)] max-[700px]:w-56 max-[700px]:[translate:calc(-1*var(--radix-popper-anchor-width))_0]">
         <DropdownMenuGroup>
           {(loading ? [] : choices).map(choice => <div key={choice.kind}>
-            <DropdownMenuItem disabled={selectionDisabled || choice.kind === current || (!choice.selection && !choice.unchecked)}
+            {/* A failed defaults write can leave the conversation switched. Allow reselecting it to retry. */}
+            <DropdownMenuItem disabled={selectionDisabled || (choice.kind === current && !controller.error) || (!choice.changes && !choice.unchecked)}
               aria-label={t(`agentRuntime.${choice.kind}`)} aria-current={choice.kind === current ? 'true' : undefined}
               onSelect={event => { event.preventDefault(); void act(choice) }}>
               <span className="min-w-0 flex-1">{t(`agentRuntime.${choice.kind}`)}</span>

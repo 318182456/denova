@@ -18,8 +18,12 @@ import (
 	agenttool "denova/internal/agents/tool"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 type publicBackend struct {
@@ -59,7 +63,7 @@ type publicCycleRegistration struct {
 
 type pendingPublicRunStart struct {
 	runID   string
-	started agent.RunStarted
+	started agentevent.RunStarted
 }
 
 type publicRunHandle struct {
@@ -158,7 +162,7 @@ func NewEphemeralRuntime() *Runtime {
 	return &Runtime{public: backend}
 }
 
-func denovaProviderCacheKey(key agent.SessionKey) (string, error) {
+func denovaProviderCacheKey(key agentsession.Key) (string, error) {
 	providerKey := key
 	if strings.HasPrefix(key.Namespace, "task.") {
 		parent, err := agentdelegation.ParentSession(key)
@@ -217,7 +221,7 @@ func (backend *publicBackend) resolveDefinition(
 	if commandID == "" {
 		commandID = strings.TrimSpace(request.Agent.Run.CommandID)
 	}
-	inspection := agent.IsInspection(ctx)
+	inspection := agentexecution.IsInspection(ctx)
 	var registration *publicCycleRegistration
 	if inspection {
 		registration, err = inspectionRegistrationFromContext(ctx, request.Agent.Session.Key, data)
@@ -296,7 +300,7 @@ func (backend *publicBackend) ResolveDefinition(
 func (backend *publicBackend) ResolveCanonicalInput(
 	ctx context.Context,
 	request agentlifecycle.DefinitionRequest,
-) (agent.CanonicalAdapter, error) {
+) (agentcanonical.CanonicalAdapter, error) {
 	if strings.HasPrefix(request.Agent.Session.Key.Namespace, "task.") {
 		// A child Session owns its prompt as ordinary public Agent transcript.
 		// It must never append that prompt through the parent product canonical
@@ -378,7 +382,7 @@ func (backend *publicBackend) preparedCycleCanonicalInput(
 	request agent.PrepareRequest,
 	cycle Cycle,
 	registration *publicCycleRegistration,
-) (agent.CanonicalAdapter, error) {
+) (agentcanonical.CanonicalAdapter, error) {
 	options := cycle.Options.Normalize(cycle.Options.Workspace)
 	var err error
 	var committer agentlifecycle.ConversationCommitter
@@ -579,26 +583,26 @@ func firstPublicCycleValue(values ...string) string {
 	return ""
 }
 
-func publicCapabilityIdentity(kind string, value any) agent.CapabilityIdentity {
+func publicCapabilityIdentity(kind string, value any) agentschema.CapabilityIdentity {
 	encoded, _ := json.Marshal(value)
 	digest := sha256.Sum256(encoded)
-	return agent.CapabilityIdentity{Kind: kind, Version: 1, ConfigHash: hex.EncodeToString(digest[:])}
+	return agentschema.CapabilityIdentity{Kind: kind, Version: 1, ConfigHash: hex.EncodeToString(digest[:])}
 }
 
-func denovaCanonicalIdentity(key agent.SessionKey) agent.CapabilityIdentity {
+func denovaCanonicalIdentity(key agentsession.Key) agentschema.CapabilityIdentity {
 	return publicCapabilityIdentity("denova.canonical", key)
 }
 
 func publicResultOutcome(result agent.Result, err error, content, thinking string) agentrun.Outcome {
 	status := agentrun.OutcomeFailed
 	switch result.Status {
-	case agent.ResultCompleted:
+	case agentschema.ResultCompleted:
 		status = agentrun.OutcomeCompleted
-	case agent.ResultAborted:
+	case agentschema.ResultAborted:
 		status = agentrun.OutcomeAborted
-	case agent.ResultSuspended:
+	case agentschema.ResultSuspended:
 		status = agentrun.OutcomeSuspended
-	case agent.ResultIncomplete, agent.ResultBlocked:
+	case agentschema.ResultIncomplete, agentschema.ResultBlocked:
 		status = agentrun.OutcomeFailed
 	}
 	return agentrun.NewOutcome(status, err, result.Reason, content, thinking)
@@ -615,7 +619,7 @@ func mapPublicReceipt(run *agent.Run) agentrun.CommandReceipt {
 	}
 }
 
-func mapPublicCommandReceipt(receipt agent.CommandReceipt) agentrun.CommandReceipt {
+func mapPublicCommandReceipt(receipt agentevent.CommandReceipt) agentrun.CommandReceipt {
 	return agentrun.CommandReceipt{
 		CommandID: agentrun.CommandID(receipt.CommandID), OperationID: agentrun.OperationID(receipt.RunID),
 		Cursor: agentrun.Cursor(receipt.Cursor),

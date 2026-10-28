@@ -6,7 +6,7 @@ An Agent runtime you can embed in Go applications. Start with one call, then add
 
 ## 1. Quickstart: complete one task
 
-Requires Go 1.26.6 or later. Install in your own Go module:
+Requires Go 1.26.9 or later. Install in your own Go module:
 
 ```sh
 go get github.com/alfredxw/denova/agent
@@ -24,8 +24,10 @@ import (
 	"os"
 
 	"github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-	"github.com/alfredxw/denova/agent/providers/builtin"
+	"github.com/alfredxw/denova/agent/lifecycle/event"
+	"github.com/alfredxw/denova/agent/model/providers"
+	"github.com/alfredxw/denova/agent/model/providers/builtin"
+	"github.com/alfredxw/denova/agent/schema"
 )
 
 func main() {
@@ -48,8 +50,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for event := range run.Events() {
-		if delta, ok := event.Payload.(agent.AssistantDelta); ok {
+	for item := range run.Events() {
+		if delta, ok := item.Payload.(event.AssistantDelta); ok {
 			fmt.Print(delta.Delta)
 		}
 	}
@@ -57,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if result.Status != agent.ResultCompleted {
+	if result.Status != schema.ResultCompleted {
 		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
 	}
 	fmt.Println()
@@ -72,7 +74,7 @@ The next two examples reuse `ctx`, `model`, and the error-handling style above, 
 
 A user requests a paragraph, then asks for a shorter version. Put both tasks in the same Session so the second turn can build on the first.
 
-Also import `github.com/alfredxw/denova/agent/tools` and `github.com/alfredxw/denova/agent/session/file` with the alias `sessionfile`:
+Also import `github.com/alfredxw/denova/agent/session`, `github.com/alfredxw/denova/agent/tool/builtin` as `tools`, and `github.com/alfredxw/denova/agent/session/file` with the alias `sessionfile`:
 
 ```go
 store, err := sessionfile.New("./data/sessions")
@@ -89,7 +91,7 @@ if err != nil {
 }
 defer assistant.Close(context.Background())
 
-key := agent.NamedSession("draft-42")
+key := session.Named("draft-42")
 conversation, err := assistant.Session(ctx, key)
 if err != nil {
 	log.Fatal(err)
@@ -103,11 +105,11 @@ for _, prompt := range []string{
 	if err != nil {
 		log.Fatal(err)
 	}
-	for event := range run.Events() {
-		switch payload := event.Payload.(type) {
-		case agent.AssistantDelta:
+	for item := range run.Events() {
+		switch payload := item.Payload.(type) {
+		case event.AssistantDelta:
 			fmt.Print(payload.Delta)
-		case agent.InteractionRequested:
+		case event.InteractionRequested:
 			showQuestion(payload.Request) // Host UI; answer through Session.Respond.
 		}
 	}
@@ -115,7 +117,7 @@ for _, prompt := range []string{
 	if err != nil {
 		log.Fatal(err)
 	}
-	if result.Status != agent.ResultCompleted {
+	if result.Status != schema.ResultCompleted {
 		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
 	}
 	fmt.Println()
@@ -133,9 +135,9 @@ if err != nil {
 }
 ```
 
-`response` is an `agent.InteractionResponse`: set `Answers` for ordinary questions (using the request's QuestionID and option Value, or Text), `Permission` for permission choices, or `Cancelled: true` for cancellation. A Run keeps waiting for unanswered questions; calling only `Wait` is insufficient.
+Import `github.com/alfredxw/denova/agent/lifecycle/interaction` for the response type. `response` is an [`interaction.InteractionResponse`](lifecycle/interaction/interaction.go): set `Answers` for ordinary questions (using the request's QuestionID and option Value, or Text), `Permission` for permission choices, or `Cancelled: true` for cancellation. A Run keeps waiting for unanswered questions; calling only `Wait` is insufficient.
 
-A Session executes one Run at a time; finish the previous turn before starting another. The file Store retains the conversation. After restarting, reopen it with the same directory and `NamedSession("draft-42")`. Without a Store option, Sessions live only in memory.
+A Session executes one Run at a time; finish the previous turn before starting another. The file Store retains the conversation. After restarting, reopen it with the same directory and `session.Named("draft-42")`. Without a Store option, Sessions live only in memory.
 
 **How do you handle user actions during execution?**
 
@@ -146,9 +148,9 @@ These are separate UI actions using the current `run` or `conversation`:
 | “Change direction” | `run.Steer(ctx, agent.Text("Focus on beginners."))` |
 | “One more constraint” | `conversation.Queue(ctx, agent.Text("Keep it under 200 words."))` |
 | “Translate it afterward” | `conversation.FollowUp(ctx, agent.Text("Then translate it into Chinese."))` |
-| “Remove that extra input” | Call `queued.Cancel(ctx, agent.QueueControlRequest{})` on the handle returned by Queue |
-| “Handle that input now” | `queued.Interrupt(ctx, agent.QueueControlRequest{})` |
-| “Stop this task” | `run.Abort(ctx, agent.AbortRequest{Reason: "User cancelled."})` |
+| “Remove that extra input” | Call `queued.Cancel(ctx, event.QueueControlRequest{})` on the handle returned by Queue |
+| “Handle that input now” | `queued.Interrupt(ctx, event.QueueControlRequest{})` |
+| “Stop this task” | `run.Abort(ctx, event.AbortRequest{Reason: "User cancelled."})` |
 
 Handle each method's return values and errors. `Queue` only retains input while idle; `FollowUp` starts a new task while idle. For network retries, set a stable `IdempotencyKey` on the Input or control request. A receipt means accepted, not completed.
 
@@ -182,8 +184,8 @@ Suspension closes the old Session handle; reacquire it with `assistant.Session(c
 | --- | --- |
 | Restore the page | `conversation.Snapshot(ctx)` returns current state and pending questions; subscribe with `Observe(ctx, snapshot.Cursor)` and consume both Events and Errors |
 | Retrieve a Run handle | `conversation.AttachRun(ctx, runID)` attaches without resuming |
-| List conversations | `assistant.ListSessions(ctx, agent.SessionSelector{All: true})` |
-| Clear the conversation | `conversation.Clear(ctx)` keeps identity, clears Todo, and retains Goal |
+| List conversations | `assistant.ListSessions(ctx, session.Selector{All: true})` |
+| Start another conversation | `assistant.Session(ctx, session.Named("another-conversation-id"))` uses an independent identity and preserves the original conversation |
 | Close the conversation | `conversation.Close(ctx)` retains data but terminates the current task; suspend first if it needs continuation |
 | Delete the conversation | `conversation.Delete(ctx)` permanently deletes it; call only for an explicit delete action |
 
@@ -201,7 +203,7 @@ This **integration example** uses dependencies supplied by your application:
 - `projectContext` supplies project rules and state; `skillCatalog` lists available Skills, and `skillLoader` loads their content.
 - `commandRunner` executes commands, `taskExecutor` handles child tasks, and `artifactStorage` retains complete tool output. Their interfaces and existing implementations are linked below the code.
 
-Also import the `agent` module's `compaction`, `goal`, `permission`, and `toolresult` packages, plus `tools` and `sessionfile` from example 2.
+Also import the `agent` module's `context/compaction`, `engine/execution`, `engine/goal`, `tool/permission`, and `tool/result` (aliased as `toolresult`), plus `context` aliased as `agentcontext`, and reuse `session`, `tools`, and `sessionfile` from example 2.
 
 ```go
 store, err := sessionfile.New("./data/sessions")
@@ -234,22 +236,22 @@ assistant, err := agent.New(ctx, agent.Definition{
 	Compaction: compaction.Standard(compaction.StandardConfig{
 		ContextWindowTokens: contextTokens,
 	}),
-	Elision: &agent.ElisionPolicy{ContextWindowTokens: contextTokens},
-	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
+	Elision: &agentcontext.ElisionPolicy{ContextWindowTokens: contextTokens},
+	Execution: execution.ExecutionPolicy{ToolParallelism: 4},
 }, agent.WithSessionStore(store))
 if err != nil {
 	log.Fatal(err)
 }
 defer assistant.Close(context.Background())
 
-conversation, err := assistant.Session(ctx, agent.NamedSession("project-review-42"))
+conversation, err := assistant.Session(ctx, session.Named("project-review-42"))
 if err != nil {
 	log.Fatal(err)
 }
 run, err := conversation.Run(ctx, agent.Input{
 	Text: "Review this project's documentation, check its examples, and report inconsistencies.",
-	Goal: &agent.GoalMutation{
-		Kind:      agent.GoalSet,
+	Goal: &schema.GoalMutation{
+		Kind:      schema.GoalSet,
 		Objective: "Complete the documentation review with evidence and a list of unresolved issues.",
 	},
 })
@@ -272,18 +274,18 @@ This configuration supports the following workflow:
 
 | Dependency | Interface / reusable implementation |
 | --- | --- |
-| Project context | [`agent.ContextSource`](definition.go): attribute each fragment's source, purpose, and capacity; inject stable rules separately from changing state |
-| Skills | [`tools.SkillLoader`](tools/skill_tool.go): load full content by name; the application supplies the catalog |
-| Commands | [`tools.CommandRunner`](tools/shell_tools.go); use [`NewLocalCommandRunner`](tools/shell_local_runner.go) for local execution |
-| Child tasks | [`tools.TaskExecutor`](tools/task_tool.go); use [`NewLocalTasks`](tools/task_local_executor.go) for local execution |
-| Large result storage | [`agent.ToolArtifactStorage`](tool_artifact.go) |
-| Compaction customization (optional) | Uses the active model by default; replace [`compaction.Summarizer`](compaction/standard.go) or implement [`agent.CompactionManager`](compaction.go) |
+| Project context | [`agentcontext.ContextSource`](context/definition.go): attribute each fragment's source, purpose, and capacity; inject stable rules separately from changing state |
+| Skills | [`tools.SkillLoader`](tool/builtin/skill_tool.go): load full content by name; the application supplies the catalog |
+| Commands | [`tools.CommandRunner`](tool/builtin/shell_tools.go); use [`NewLocalCommandRunner`](tool/builtin/shell_local_runner.go) for local execution |
+| Child tasks | [`tools.TaskExecutor`](tool/builtin/task_tool.go); use [`NewLocalTasks`](tool/builtin/task_local_executor.go) for local execution |
+| Large result storage | [`tool.ToolArtifactStorage`](tool/tool_artifact.go) |
+| Compaction customization (optional) | Uses the active model by default; replace [`compaction.Summarizer`](context/compaction/standard.go) or implement [`compaction.CompactionManager`](context/compaction/compaction.go) |
 
 For writing, research, or support, primarily replace Instructions, Context, Skills, and Tools; remove capabilities you do not need. For file editing, select `WorkspaceReadWrite` and supply a `MutationAdapter`. A read-only workspace does not constrain Shell; command permissions still belong to the runner and permission policy.
 
-Use the static Definition above for simple cases. Implement [`Source`](definition.go) when models and capabilities must vary by Session. For existing product conversation storage, integrate [`CanonicalAdapter`](canonical.go) and [`session.Store`](session/store.go) so product history and Agent recovery records share one journal.
+Use the static Definition above for simple cases. Implement [`Source`](engine/definition.go) when models and capabilities must vary by Session. For existing product conversation storage, integrate [`CanonicalAdapter`](session/canonical/canonical.go) and [`session.Store`](session/store.go) so product history and Agent recovery records share one journal.
 
-Query historical results with `Session.CommandSnapshot(ctx, commandID)` or `RunSnapshot(ctx, runID)`. These reads neither start work nor require historical Runs to remain resident. After durable settlement, Agent releases execution state while the canonical journal retains the full history. `AttachRun` returns a caller-owned terminal view for settled work; suspended work retains its recovery facts. Storage adapters may implement [`RecoveryLog`](session_recovery_index.go) with a rebuildable `RecoveryIndex` and revision-based record reads to accelerate cold recovery. Historical index entries contain no input, output, or tool-result bodies. Ordinary `session.Log` implementations still recover through streaming replay; the built-in file store collects transient record locations during replay, then reads only the target transaction for historical lookups.
+Query historical results with `Session.CommandSnapshot(ctx, commandID)` or `RunSnapshot(ctx, runID)`. These reads neither start work nor require historical Runs to remain resident. After durable settlement, Agent releases execution state while the canonical journal retains the full history. `AttachRun` returns a caller-owned terminal view for settled work; suspended work retains its recovery facts. Storage adapters may implement [`RecoveryLog`](lifecycle/session_recovery_index.go) with a rebuildable `RecoveryIndex` and revision-based record reads to accelerate cold recovery. Historical index entries contain no input, output, or tool-result bodies. Ordinary `session.Log` implementations still recover through streaming replay; the built-in file store uses `session.IndexedLog` with an owned checkpoint reducer to recover from a verified disposable index plus the committed tail. Read-only inspection uses a bounded current index; execution keeps historical receipts and reads original transactions for exact lookups. Missing or incompatible indexes rebuild from the unchanged canonical JSONL.
 
 ### Three levels of compaction integration
 
@@ -295,8 +297,8 @@ Compaction: compaction.Standard(compaction.StandardConfig{ContextWindowTokens: 1
 Compaction: compaction.Standard(compaction.StandardConfig{
     ContextWindowTokens: 128_000,
     Summarizer: compaction.SummarizerFunc{
-        Capability: agent.CapabilityIdentity{Kind: "app.summary", Version: 1},
-        Func: func(ctx context.Context, input compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+        Capability: schema.CapabilityIdentity{Kind: "app.summary", Version: 1},
+        Func: func(ctx context.Context, input compaction.SummaryRequest) (compaction.CompactionCheckpoint, error) {
             return summarizeSelectedSource(ctx, input.Messages, input.Current)
         },
     },
@@ -322,6 +324,47 @@ Denova's native writing, game and persistent child Agents share the existing aut
 
 ### Native image input
 
-[`Attachment`](attachment.go) carries user images and `ToolResult.Attachments` carries tool images. `InputSize.Tokens` includes visual tokens; `InputSize.Bytes` counts the JSON envelope without image Base64. Both compaction and final input checks share these estimates. Custom models can implement `ModelInputEstimator`; unknown models reserve 32K tokens per image.
+[`Attachment`](schema/attachment.go) carries user images and `ToolResult.Attachments` carries tool images. `InputSize.Tokens` includes visual tokens; `InputSize.Bytes` counts the JSON envelope without image Base64. Both compaction and final input checks share these estimates. Custom models can implement [`model.ModelInputEstimator`](model/input_estimate.go); unknown models estimate 1,844 tokens per image.
 
 The `read` tool in `tools.Workspace` reads UTF-8 text and PNG, JPEG, GIF, or WebP images (up to 20 MiB each). Image reads require `Definition.Artifacts` with local path resolution: the tool saves an immutable snapshot before returning native image input. User attachment paths are relative to `AttachmentRoot`; tool image paths are relative to their artifact storage boundary. Journals retain relative references and SHA256, never runtime absolute paths or Base64. Responses and Anthropic include images inside tool results; Chat Completions projects image messages after the entire tool result batch to preserve call pairing.
+
+Built-in protocol adapters verify the original image SHA256 before sending and create in-memory resized copies according to known model rules. They retain the original bytes when resizing is unnecessary, preserve JPEG display orientation, and use the first GIF frame. Local conversion accepts source images up to 64 megapixels to bound decoding memory. Original files, attachment paths, and journals remain unchanged. Adapters enforce image and actual HTTP request limits for official endpoints; custom gateways report their own limits. Invalid images and oversized requests return stable error codes for the host application to localize.
+
+## 4. Package responsibilities and extension points
+
+The root [`agent.go`](agent.go) exposes `New`, `Definition / Source`, `Agent / Session / Run`, and common input/output values. It is a convenience entry point whose type aliases preserve handle identity. Implementations and extension contracts belong to these domain packages.
+
+| Top-level package | Responsibility and subpackages |
+| --- | --- |
+| `lifecycle` | Session / Run, admission, queues, task trees, and journal commits; `event`, `interaction`, and `trace` own events, interaction, and diagnostics |
+| `engine` | Definition preparation, model/tool cycles, and checkpoints; `middleware`, `execution`, and `goal` own execution extensions, policy, and goals |
+| `model` | Model contracts and request snapshots; `providers` adapts protocols and `stream` supplies streams |
+| `tool` | Tool contracts and registration; `builtin`, `permission`, `result`, `script`, and `plugins` supply tools and supporting capabilities |
+| `context` | Context sources; `history` computes history projections, coordinates, and elision; `compaction` supplies compaction policy |
+| `session` | Journal storage contracts; `file` implements file storage and `canonical` integrates atomic product commits |
+| `schema` | Shared messages, inputs, attachments, and result values |
+| `state` | Live file-backed Agent configuration, validation, and atomic management writes |
+
+The core dependency direction is `agent → lifecycle → engine → context/history`. Lifecycle owns admission, concurrency, and journal commits. Each execution request supplies a narrow commit interface; lifecycle commits complete checkpoints without interpreting their private fields. History holds no Session handles, locks, or storage. `internal` contains async, retry, filesystem, and protocol implementation details plus integration tests.
+
+Use `agent.New` for ordinary integration, or `lifecycle.New` to depend explicitly on the lifecycle layer. Hosts with their own scheduling and storage can use the public [`engine.New(engine.Config{Source: definition, Session: key})`](engine/definition_engine.go). Direct engine callers must:
+
+- Serialize cycles for each Session and keep command, operation, cycle, and recovery snapshot identities consistent.
+- Complete canonical input materialization and admission before execution. When those capabilities are configured, call `PlanInputMaterialization` / `MaterializeInput` and `PrepareAdmission`.
+- Persist required state before `EventSink` acknowledges success. `TranscriptUpdated`, `AssistantFinal.State`, and capability updates form recovery state; consuming only text events is insufficient.
+- Implement `CanonicalHost` to commit product changes and recovery checkpoints atomically. Omit it only when no product canonical journal is used.
+
+The [public API integration test](internal/integration/engine_test.go) demonstrates opaque checkpoint persistence, continuing a conversation with a newly created engine, and stopping before model execution when a journal rejects a checkpoint. Engine does not own host queues, task trees, or external runtime selection.
+
+This package refactor preserves journal versions, JSON fields, capability identifiers, and data paths; existing data needs no migration. SDK callers must update imports to the paths above. The module does not retain forwarding packages at old paths.
+
+### Development and tests
+
+Unit tests live alongside their implementations. Integration tests covering compaction, continuation, images, and tool-result elision through public APIs live in [`internal/integration`](internal/integration). Run these commands from `agent/`:
+
+```sh
+go test ./...
+go vet ./...
+```
+
+Run only those integration tests with `go test ./internal/integration`. They are also included in `go test ./...` and the existing CI without additional build tags.

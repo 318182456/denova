@@ -14,7 +14,9 @@ import (
 	"denova/config"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type threadReply struct {
@@ -79,11 +81,11 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 		// Host tools own project access and receipts; the engine cwd is scratch space.
 		"developerInstructions": "Use the provided host tools for all project reads and changes. The process working directory is temporary scratch space, not the project. Host tools enforce the selected permissions and report actual access failures; do not infer that a host tool is read-only from the process sandbox. Do not use built-in file or shell tools to bypass the host tools.",
 		"dynamicTools":          specs,
-		"config":                map[string]any{"tools.update_plan.enabled": input.Mode == external.OperationTurn},
 	}
 	if input.Mode != external.OperationTurn {
 		// Fork retains the source thread's dynamic tool schemas. The empty host
 		// allowlist rejects their execution; the sandbox also blocks built-in writes.
+		// Built-in plan updates stay in the fork and maintenanceHost discards them.
 		params["sandbox"] = config.CodexReadOnly
 		params["developerInstructions"] = "This is read-only context maintenance. Use only the supplied conversation and instructions. Do not call tools or ask questions."
 	}
@@ -153,11 +155,11 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 				kind = "output_text"
 			}
 			content := []map[string]string{{"type": kind, "text": message.Text}}
-			for _, attachment := range append(append([]agent.Attachment(nil), message.Attachments...), message.ToolImages...) {
-				if !agent.IsNativeImageMediaType(attachment.MediaType) {
+			for _, attachment := range append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...) {
+				if !agentschema.IsNativeImageMediaType(attachment.MediaType) {
 					continue
 				}
-				url, err := agent.AttachmentDataURL(attachment)
+				url, err := agentschema.AttachmentDataURL(attachment)
 				if err != nil {
 					return external.Result{}, err
 				}
@@ -222,7 +224,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	return result, err
 }
 
-func turnUsage(result external.Result, previous *agent.TokenUsage) external.Result {
+func turnUsage(result external.Result, previous *agentschema.TokenUsage) external.Result {
 	result.CumulativeUsage = result.Usage
 	if result.Usage == nil || previous == nil {
 		return result
@@ -256,7 +258,7 @@ type toolCompletion struct {
 }
 
 func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnID string, tools map[string]bool, host external.Host) (result external.Result, runErr error) {
-	var usage *agent.TokenUsage
+	var usage *agentschema.TokenUsage
 	defer func() { result.Usage = usage }()
 	toolContext, cancelTools := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -317,7 +319,7 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 			execution := executions[completion.id]
 			content := []map[string]string{{"type": "inputText", "text": completion.result.Text}}
 			for _, attachment := range completion.result.Images {
-				url, err := agent.AttachmentDataURL(attachment)
+				url, err := agentschema.AttachmentDataURL(attachment)
 				if err != nil {
 					return external.Result{}, err
 				}
@@ -502,18 +504,18 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 					// Every operation owns a new thread. Notifications replace the
 					// cumulative total; adding them would count earlier requests twice.
 					total := event.TokenUsage.Total
-					usage = &agent.TokenUsage{PromptTokens: total.Input, CompletionTokens: total.Output, TotalTokens: total.Total}
+					usage = &agentschema.TokenUsage{PromptTokens: total.Input, CompletionTokens: total.Output, TotalTokens: total.Total}
 					usage.PromptTokenDetails.CachedTokens = total.Cached
 					usage.CompletionTokensDetails.ReasoningTokens = total.Reasoning
 				}
 			case "turn/plan/updated":
-				items := make([]agent.TodoItem, 0, len(event.Plan))
+				items := make([]agentevent.TodoItem, 0, len(event.Plan))
 				for index, step := range event.Plan {
-					status := agent.TodoStatus(step.Status)
+					status := agentevent.TodoStatus(step.Status)
 					if step.Status == "inProgress" {
-						status = agent.TodoInProgress
+						status = agentevent.TodoInProgress
 					}
-					items = append(items, agent.TodoItem{ID: fmt.Sprint(index + 1), Text: step.Step, Status: status})
+					items = append(items, agentevent.TodoItem{ID: fmt.Sprint(index + 1), Text: step.Step, Status: status})
 				}
 				if err := host.Emit(external.PlanEvent(items)); err != nil {
 					return external.Result{}, err

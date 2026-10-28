@@ -3,19 +3,20 @@ package interactiveapp
 import (
 	"context"
 	"crypto/sha256"
-	"denova/internal/book/lore"
 	"encoding/hex"
 	"fmt"
-	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	agents "denova/internal/agents"
+	"denova/internal/agents"
 	"denova/internal/agents/session"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
+
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
 )
 
 func (c *Conversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
@@ -84,7 +85,7 @@ const (
 	// The raw resident bodies keep their 1 MiB safety ceiling. This additional
 	// bounded allowance covers deterministic Lore metadata and the standalone
 	// message wrapper while still constraining the exact model-visible fragment.
-	interactiveResidentLoreMessageMaxBytes = lore.ResidentLoreSafetyMaxBytes + interactive.StoryContextMaxBytes
+	interactiveResidentLoreMessageMaxBytes = lore.IndexContextMaxBytes
 )
 
 func SnapshotTurnCount(snapshot interactive.Snapshot) int {
@@ -94,7 +95,7 @@ func SnapshotTurnCount(snapshot interactive.Snapshot) int {
 	return len(snapshot.Turns)
 }
 
-func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *agent.CompactionState, error) {
+func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *agentcompaction.CompactionState, error) {
 	if c == nil || c.store == nil {
 		return interactive.StoryModelHistory{}, nil, fmt.Errorf("interactive story does not exist")
 	}

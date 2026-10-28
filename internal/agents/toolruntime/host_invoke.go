@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log/slog"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // HostToolInvocation records entry into Tool.Run, not whether its effects
@@ -21,7 +23,7 @@ const (
 // NotInvoked permits failure settlement without a domain receipt. Invoked
 // still requires the caller's normal receipt/unknown-effect recovery policy.
 type HostToolResult struct {
-	Result     agent.ToolResult
+	Result     agentschema.ToolResult
 	Invocation HostToolInvocation
 }
 
@@ -29,7 +31,7 @@ type HostToolResult struct {
 // receipt projection to one durably admitted external call. The caller must
 // persist the returned result even when err is non-nil: a mutation may have
 // committed immediately before cancellation or a transport failure.
-func InvokeHostTool(ctx context.Context, policy OrchestratorConfig, identity HostToolIdentity, definition agent.ToolDefinition, args string) (HostToolResult, error) {
+func InvokeHostTool(ctx context.Context, policy OrchestratorConfig, identity HostToolIdentity, definition agenttool.ToolDefinition, args string) (HostToolResult, error) {
 	outcome := HostToolResult{Invocation: HostToolNotInvoked}
 	ctx, err := ContextWithHostToolIdentity(ctx, identity)
 	if err != nil {
@@ -45,13 +47,13 @@ func InvokeHostTool(ctx context.Context, policy OrchestratorConfig, identity Hos
 	if info == nil {
 		return outcome, errors.New("host tool has no schema")
 	}
-	toolContext := &agent.ToolContext{
+	toolContext := &agentmiddleware.ToolContext{
 		Name: info.Name, ProviderCallID: identity.ProviderCallID, ExecutionID: identity.ExecutionID,
-		Definition: agent.ToolDefinitionSnapshot{Info: info, Descriptor: definition.Descriptor},
+		Definition: agenttool.ToolDefinitionSnapshot{Info: info, Descriptor: definition.Descriptor},
 	}
-	var returned agent.ToolResult
+	var returned agentschema.ToolResult
 	middleware := NewOrchestratorMiddleware(policy)
-	endpoint, err := middleware.WrapToolCall(ctx, func(ctx context.Context, args string, opts ...agent.ToolOption) (agent.ToolResult, error) {
+	endpoint, err := middleware.WrapToolCall(ctx, func(ctx context.Context, args string, opts ...agenttool.ToolOption) (agentschema.ToolResult, error) {
 		outcome.Invocation = HostToolInvoked
 		var callErr error
 		returned, callErr = definition.Tool.Run(ctx, args, opts...)

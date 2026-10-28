@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // CommandID is the caller-owned idempotency identity of one Agent command.
@@ -162,7 +164,7 @@ type RuntimeStatus struct {
 	// Session capabilities. Product stores may display them, but must never
 	// persist competing maintenance state.
 	Compaction          *AgentCompactionState
-	PendingInteractions []agent.InteractionRequest
+	PendingInteractions []agentinteraction.InteractionRequest
 }
 
 // AgentCompactionState is the bounded public Session checkpoint projection.
@@ -189,18 +191,18 @@ type InputMaterializationReceipt struct {
 }
 
 var (
-	ErrInvalidCommand       = agent.ErrInvalidInput
+	ErrInvalidCommand       = agentschema.ErrInvalidInput
 	ErrInvalidBinding       = errors.New("invalid Denova Agent binding")
-	ErrStaleOperation       = agent.ErrRunSettled
+	ErrStaleOperation       = agentschema.ErrRunSettled
 	ErrQueueConflict        = errors.New("Denova Agent queue conflict")
-	ErrBusy                 = agent.ErrSessionBusy
-	ErrDomainCommitRejected = agent.ErrCanonicalCommitRejected
+	ErrBusy                 = agentschema.ErrSessionBusy
+	ErrDomainCommitRejected = agentschema.ErrCanonicalCommitRejected
 )
 
 // ValidateCommandID applies the exact durable command envelope without
 // exposing runtime configuration to app or transport packages.
 func ValidateCommandID(commandID string) error {
-	return agent.ValidateIdempotencyKey(commandID)
+	return agentexecution.ValidateIdempotencyKey(commandID)
 }
 
 // ValidateRecoveryIdentity validates the caller-owned identities required by
@@ -209,5 +211,5 @@ func ValidateRecoveryIdentity(commandID, operationID string) error {
 	if err := ValidateCommandID(commandID); err != nil {
 		return err
 	}
-	return agent.ValidateIdempotencyKey(operationID)
+	return agentexecution.ValidateIdempotencyKey(operationID)
 }

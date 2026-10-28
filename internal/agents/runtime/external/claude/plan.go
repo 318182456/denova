@@ -5,7 +5,8 @@ import (
 	"slices"
 
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
 )
 
 // observePlan translates successful native task observations only. Validation,
@@ -20,9 +21,9 @@ func (s *streamOutput) observePlan(host external.Host, call contentBlock, raw js
 		return err
 	}
 	type task struct {
-		ID      string           `json:"id"`
-		Subject string           `json:"subject"`
-		Status  agent.TodoStatus `json:"status"`
+		ID      string                `json:"id"`
+		Subject string                `json:"subject"`
+		Status  agentevent.TodoStatus `json:"status"`
 	}
 	var result struct {
 		Task          *task    `json:"task"`
@@ -36,14 +37,14 @@ func (s *streamOutput) observePlan(host external.Host, call contentBlock, raw js
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return err
 	}
-	items := append([]agent.TodoItem(nil), s.plan...)
+	items := append([]agentevent.TodoItem(nil), s.plan...)
 	switch call.Name {
 	case "TaskCreate":
 		if result.Task == nil || result.Task.ID == "" {
 			return nil
 		}
-		item := agent.TodoItem{ID: result.Task.ID, Text: result.Task.Subject, Status: agent.TodoPending}
-		index := slices.IndexFunc(items, func(existing agent.TodoItem) bool { return existing.ID == item.ID })
+		item := agentevent.TodoItem{ID: result.Task.ID, Text: result.Task.Subject, Status: agentevent.TodoPending}
+		index := slices.IndexFunc(items, func(existing agentevent.TodoItem) bool { return existing.ID == item.ID })
 		if index >= 0 {
 			items[index] = item
 		} else {
@@ -53,7 +54,7 @@ func (s *streamOutput) observePlan(host external.Host, call contentBlock, raw js
 		if !result.Success {
 			return nil
 		}
-		index := slices.IndexFunc(items, func(item agent.TodoItem) bool { return item.ID == input.TaskID })
+		index := slices.IndexFunc(items, func(item agentevent.TodoItem) bool { return item.ID == input.TaskID })
 		if index < 0 {
 			return nil
 		}
@@ -64,23 +65,23 @@ func (s *streamOutput) observePlan(host external.Host, call contentBlock, raw js
 				items[index].Text = input.Subject
 			}
 			if slices.Contains(result.UpdatedFields, "status") {
-				items[index].Status = agent.TodoStatus(input.Status)
+				items[index].Status = agentevent.TodoStatus(input.Status)
 			}
 		}
 	case "TaskList":
 		if result.Tasks == nil {
 			return nil
 		}
-		items = make([]agent.TodoItem, 0, len(result.Tasks))
+		items = make([]agentevent.TodoItem, 0, len(result.Tasks))
 		for _, task := range result.Tasks {
-			items = append(items, agent.TodoItem{ID: task.ID, Text: task.Subject, Status: task.Status})
+			items = append(items, agentevent.TodoItem{ID: task.ID, Text: task.Subject, Status: task.Status})
 		}
 	case "TaskGet":
 		if result.Task == nil {
 			return nil
 		}
-		item := agent.TodoItem{ID: result.Task.ID, Text: result.Task.Subject, Status: result.Task.Status}
-		index := slices.IndexFunc(items, func(existing agent.TodoItem) bool { return existing.ID == item.ID })
+		item := agentevent.TodoItem{ID: result.Task.ID, Text: result.Task.Subject, Status: result.Task.Status}
+		index := slices.IndexFunc(items, func(existing agentevent.TodoItem) bool { return existing.ID == item.ID })
 		if index >= 0 {
 			items[index] = item
 		} else {

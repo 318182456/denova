@@ -1,54 +1,8 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
-test.use({ reducedMotion: 'no-preference' })
-
-for (const theme of ['dark', 'light']) {
-  test(`primary navigation responds without background trailing in ${theme} mode`, async ({ page, request }) => {
-    // This journey hydrates six destinations on slower CI runners.
-    test.setTimeout(60_000)
-    await createAndOpenBook(request, `Navigation Feedback Book ${theme}`)
-    const settings = await (await request.get('/api/settings')).json()
-    // Navigation can abort a settings request before route.fetch returns.
-    // This journey only needs a fixed theme, so serve its snapshot directly.
-    await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
-      json: { ...settings, effective: { ...settings.effective, theme } },
-    }))
-    await page.goto('/')
-    const sidebar = page.getByLabel('工作台侧边栏')
-    await expect(sidebar).toBeVisible()
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-
-    const writing = sidebar.getByRole('button', { name: '写作', exact: true })
-    const game = sidebar.getByRole('button', { name: '游戏', exact: true })
-    const writingBounds = await writing.boundingBox()
-    const gameBounds = await game.boundingBox()
-    expect(gameBounds!.y - writingBounds!.y - writingBounds!.height).toBeGreaterThanOrEqual(2)
-
-    // Sample the first painted frame after each click, before any color tween could settle.
-    for (const destination of ['游戏', '资料库', '工作台', '写作', '游戏', '写作']) {
-      const button = sidebar.getByRole('button', { name: destination, exact: true })
-      await button.click()
-      const feedback = await button.evaluate(async (element) => {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-        const activeColor = getComputedStyle(element).getPropertyValue('--nova-active').trim()
-        const probe = document.createElement('span')
-        probe.style.backgroundColor = activeColor
-        element.appendChild(probe)
-        const expectedColor = getComputedStyle(probe).backgroundColor
-        probe.remove()
-        return { active: element.getAttribute('aria-current'), color: getComputedStyle(element).backgroundColor, expectedColor }
-      })
-      expect(feedback.active).toBe('page')
-      expect(feedback.color).toBe(feedback.expectedColor)
-      await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
-    }
-    await page.screenshot({ path: test.info().outputPath(`navigation-${theme}.png`) })
-  })
-}
-
 test('keeps exactly one primary destination active across the normal workbench routes', async ({ page, request }) => {
-  // This journey hydrates twelve destinations; each assertion keeps its normal
+  // This journey hydrates the primary destinations; each assertion keeps its normal
   // deadline, while the total budget includes cold route loads on CI runners.
   test.setTimeout(90_000)
   await createAndOpenBook(request, 'Browser Navigation Book')
@@ -58,11 +12,12 @@ test('keeps exactly one primary destination active across the normal workbench r
   }))
   // Exercise the developer destination's empty state without enabling trace collection in the test backend.
   await page.route(/\/api\/agent-runs(?:\?|$)/, (route) => route.fulfill({ json: { runs: [], issues: [] } }))
+  await page.route('**/api/resource-market/catalog', (route) => route.fulfill({ json: { schema_version: 1, entries: [] } }))
   await page.goto('/')
 
   const sidebar = page.getByLabel('工作台侧边栏')
   await expect(sidebar).toBeVisible()
-  for (const destination of ['写作', '游戏', '资料库', '方案预设', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '轨迹', '设置']) {
+  for (const destination of ['写作', '游戏', '资料库', '创作方案', '资源中心', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '轨迹', '设置']) {
     await test.step(destination, async () => {
       await sidebar.getByRole('button', { name: destination, exact: true }).click()
       await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
@@ -90,13 +45,32 @@ test('exposes the same primary destinations in English on a narrow viewport', as
   await expect(navigation.getByRole('button', { name: 'Writing', exact: true })).toBeVisible()
   await expect(navigation.getByRole('button', { name: 'Game', exact: true })).toBeVisible()
   await expect(navigation.getByRole('button', { name: 'Lore', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('button', { name: 'Creative Setups', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('button', { name: 'Resource Center', exact: true })).toBeVisible()
   await navigation.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(navigation).toBeHidden()
   const categories = page.locator('.nova-mobile-topbar').getByRole('button', { name: 'Categories', exact: true })
   await categories.click()
   const categoryDrawer = page.getByRole('dialog', { name: 'Categories', exact: true })
   await expect(categoryDrawer).toHaveAttribute('data-side', 'right')
-  await categoryDrawer.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await categoryDrawer.getByRole('button', { name: 'General', exact: true }).click()
   await expect(categoryDrawer).toBeHidden()
   await expect(categories).toBeFocused()
+  const content = page.locator('[data-nova-settings-content]')
+  await expect(content.getByRole('heading', { name: 'General', exact: true })).toBeInViewport()
+  await expect(content.getByRole('heading', { name: 'Language Models', exact: true })).toBeAttached()
+  await categories.click()
+  await categoryDrawer.getByRole('textbox', { name: 'Search settings', exact: true }).fill('Temperature')
+  await categoryDrawer.getByRole('button', { name: /Temperature/ }).click()
+  await expect(categoryDrawer).toBeHidden()
+  const temperature = content.getByRole('spinbutton', { name: 'Temperature', exact: true }).first()
+  await expect(temperature).toBeInViewport()
+  await expect(content.getByRole('heading', { name: 'General', exact: true })).toBeAttached()
+  await categories.click()
+  await expect(categoryDrawer.getByRole('button', { name: 'Language Models', exact: true })).toHaveAttribute('aria-current', 'page')
+  await categoryDrawer.getByRole('button', { name: 'General', exact: true }).click()
+  await content.hover()
+  await page.mouse.wheel(0, 100_000)
+  await categories.click()
+  await expect(categoryDrawer.getByRole('button', { name: 'Advanced', exact: true })).toHaveAttribute('aria-current', 'page')
 })

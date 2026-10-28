@@ -50,8 +50,8 @@ describe('PresetSettingsPanel error feedback', () => {
   })
 
   it.each([
-    ['zh-CN', '新建叙事风格', '创建方案预设失败 · 日志 ID: request-123'],
-    ['en-US', 'New Narrative Style', 'Failed to create preset · Log ID: request-123'],
+    ['zh-CN', '新建叙事风格', '创建创作方案失败 · 日志 ID: request-123'],
+    ['en-US', 'New Narrative Style', 'Failed to create setup · Log ID: request-123'],
   ])('keeps a raw backend error out of the %s create failure', async (locale, createLabel, expected) => {
     const user = userEvent.setup()
     setConfiguredLocale(locale)

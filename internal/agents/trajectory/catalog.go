@@ -20,8 +20,8 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 
-	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 const Scheme = "trajectory://"
@@ -93,7 +93,7 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 	if catalog.Sources == nil {
 		return nil, errors.New("trajectory source provider is required")
 	}
-	return agenttools.NewReadAdapter(agent.CapabilityIdentity{
+	return agenttools.NewReadAdapter(agentschema.CapabilityIdentity{
 		Kind: "denova.read.trajectory", Version: 3,
 		ConfigHash: fmt.Sprintf("limit=%d", effectiveTrajectoryLimit(catalog.Limit)),
 	}, "trajectory", func(_ context.Context, resource string) (bool, error) {

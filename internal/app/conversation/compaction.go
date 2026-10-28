@@ -10,7 +10,8 @@ import (
 	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // Compact dispatches maintenance to the selected peer runtime. Product history
@@ -40,7 +41,7 @@ func (execution Execution) Compact(ctx context.Context, commandID string, option
 		prepared.Runtime = execution.engines.ExternalRuntime(execution.runtime.Config)
 		return external.CompactSession(ctx, prepared, func(ctx context.Context, preparation external.HistoryPreparation) (external.Input, error) {
 			var usageErr error
-			preparation.AddUsage = func(usage *agent.TokenUsage) {
+			preparation.AddUsage = func(usage *agentschema.TokenUsage) {
 				if usage != nil {
 					usageErr = execution.runtime.Session.AppendDisplayEvent(external.UsageDisplay(usage))
 				}

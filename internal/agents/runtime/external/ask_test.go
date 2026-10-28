@@ -16,7 +16,8 @@ import (
 	"denova/internal/agents/conversationconfig"
 	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestResolveAskRoutesOnlyOwnedQuestions(t *testing.T) {
@@ -52,6 +53,8 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 			}{
 				{"text", `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Restrained"}}},
 				{"choice", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"calm"}}}},
+				{"no recommendation", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm"},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"bold"}}}},
+				{"two recommendations", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold","recommended":true}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"bold"}}}},
 				{"multiple", `{"questions":[{"id":"tone","prompt":"Which tones?","multiple":true,"options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"calm", "bold"}}}},
 				{"other", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"other"}, CustomInput: "Reflective"}}},
 			} {
@@ -136,7 +139,7 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 	}
 }
 
-func TestExternalAskCancellationAndClearRejectLateAnswers(t *testing.T) {
+func TestExternalAskCancellationAndNewConversationRejectLateAnswers(t *testing.T) {
 	_, store, sess := pendingAskFixture(t, `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`)
 	defer store.Close()
 	ctx := context.Background()
@@ -149,11 +152,12 @@ func TestExternalAskCancellationAndClearRejectLateAnswers(t *testing.T) {
 	if _, err := interactions.Resolve(ctx, "project-1", sess, "ask-execution-1", []conversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Too late"}}, nil); !errors.Is(err, ErrAskConflict) {
 		t.Fatalf("answer replaced cancellation: %v", err)
 	}
-	if err := sess.Clear(); err != nil {
+	fresh, err := store.GetOrCreate("another-external-conversation")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := interactions.Resolve(ctx, "project-1", sess, "ask-execution-1", nil, &reason); !errors.Is(err, ErrAskNotFound) {
-		t.Fatalf("clear left a live question: %v", err)
+	if _, err := interactions.Resolve(ctx, "project-1", fresh, "ask-execution-1", nil, &reason); !errors.Is(err, ErrAskNotFound) {
+		t.Fatalf("new conversation inherited a live question: %v", err)
 	}
 }
 
@@ -189,7 +193,7 @@ func pendingAskFixtureForEngine(t *testing.T, arguments string, engine config.Ru
 		t.Fatal(err)
 	}
 	if err := sess.UpdateExternal(context.Background(), 1, func(session.ExternalState) (session.ExternalTransaction, error) {
-		return session.ExternalTransaction{Records: []externaljournal.Record{accepted, started}, Message: agent.UserMessage("Draft an opening."), Metadata: session.MessageMetadata{MessageID: "input-1"}}, nil
+		return session.ExternalTransaction{Records: []externaljournal.Record{accepted, started}, Message: agentschema.UserMessage("Draft an opening."), Metadata: session.MessageMetadata{MessageID: "input-1"}}, nil
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -7,13 +7,14 @@ import (
 	"unicode/utf8"
 
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestExternalCheckpointCoversLargeCanonicalMessageAndReusesVerifiedPrefix(t *testing.T) {
 	service, request, _ := operationFixture(t)
 	large := "Keep the document at chapters/opening.md.\n" + strings.Repeat("这是完整的历史资料。", 10000)
-	if err := request.Session.Append(agent.UserMessage(large)); err != nil {
+	if err := request.Session.Append(agentschema.UserMessage(large)); err != nil {
 		t.Fatal(err)
 	}
 	maintenance, turns := 0, 0

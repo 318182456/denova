@@ -10,7 +10,9 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttoolruntime "denova/internal/agents/toolruntime"
-	agent "github.com/alfredxw/denova/agent"
+
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestRejectedCommandsPreserveAcceptedRoutesAndReleaseTheirOwn(t *testing.T) {
@@ -120,7 +122,7 @@ func TestRejectedCommandsPreserveAcceptedRoutesAndReleaseTheirOwn(t *testing.T) 
 		Kind: CommandSteer, CommandID: "too-late", OperationID: operation.Receipt().OperationID,
 		Request: agentchatRequest("too-late", "cannot steer a completed Run"), Options: options,
 	})
-	if !errors.Is(err, agent.ErrRunSettled) {
+	if !errors.Is(err, agentschema.ErrRunSettled) {
 		t.Fatalf("late steering: %v", err)
 	}
 	runtime.public.mu.RLock()

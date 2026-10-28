@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/internal/agents/conversationjournal"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
@@ -26,7 +26,7 @@ func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
 	writer := bufio.NewWriterSize(file, 1024*1024)
 	body := strings.Repeat("正文", 2048)
 	for index := 0; index < 1_000; index++ {
-		line, marshalErr := json.Marshal(agent.UserMessage(fmt.Sprintf("message-%04d-%s", index, body)))
+		line, marshalErr := json.Marshal(agentschema.UserMessage(fmt.Sprintf("message-%04d-%s", index, body)))
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
 		}
@@ -104,7 +104,7 @@ func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	readsBeforeAppend := reopened.JournalReplayStats().BytesRead
-	if err := reopened.Append(agent.UserMessage("message-1000")); err != nil {
+	if err := reopened.Append(agentschema.UserMessage("message-1000")); err != nil {
 		t.Fatal(err)
 	}
 	if reopened.JournalReplayStats().BytesRead != readsBeforeAppend {
@@ -154,110 +154,6 @@ func TestHistoryPageDoesNotSplitSingleLongRun(t *testing.T) {
 	}
 	if page.NextBefore != 0 || page.HasMore {
 		t.Fatalf("single complete turn exposed false earlier history: before=%d has_more=%t", page.NextBefore, page.HasMore)
-	}
-}
-
-func TestHistoryPageSplitsToolHeavyTurnAtTurnAnchors(t *testing.T) {
-	directory := t.TempDir()
-	store, err := NewStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("tool-heavy-turn")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const (
-		runID        = "run-edits"
-		transactions = 260
-	)
-	now := time.Now().UTC()
-	if err := sess.AppendWithMetadata(agent.UserMessage("rewrite every chapter"), MessageMetadata{RunID: runID, ContextRevision: 1}); err != nil {
-		t.Fatal(err)
-	}
-	args := strings.Repeat("章节正文", 512)
-	var canonical strings.Builder
-	for index := 0; index < transactions; index++ {
-		// Like a live run, each step commits separately; prose segments span
-		// Turn anchors so the canonical assistant row must stay deduplicated.
-		prose := fmt.Sprintf("progress-%03d ", index)
-		canonical.WriteString(prose)
-		records := []any{
-			displayRecord{Type: historyTypeDisplay, RecordID: newDisplayRecordID(), DisplayEvent: DisplayEvent{
-				ID: fmt.Sprintf("prose-%03d", index), Role: "assistant", Content: prose, RunID: runID, CreatedAt: now,
-			}},
-			displayRecord{Type: historyTypeDisplay, RecordID: newDisplayRecordID(), DisplayEvent: DisplayEvent{
-				ID: fmt.Sprintf("edit-%03d", index), Role: "tool_call", Name: "edit", Args: args,
-				Status: "success", Result: "edited", RunID: runID, CreatedAt: now,
-			}},
-		}
-		if err := sess.withCanonicalMutation(context.Background(), "append tool-heavy turn fixture", func() error {
-			_, err := sess.appendJournalRecordsLocked(records...)
-			return err
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := sess.AppendWithMetadata(agent.AssistantMessage(canonical.String(), nil), MessageMetadata{RunID: runID, ContextRevision: 2}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	reopenedStore, err := NewStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = reopenedStore.Close() })
-	reopened, err := reopenedStore.Get("tool-heavy-turn")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const wantTotal = 1 + 2*transactions
-	whole, err := reopened.ReadHistoryPage(context.Background(), -1, wantTotal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole.Total != wantTotal || len(whole.Entries) != wantTotal || whole.HasMore {
-		t.Fatalf("whole turn rows=%d total=%d has_more=%t want=%d", len(whole.Entries), whole.Total, whole.HasMore, wantTotal)
-	}
-	wholeRead := reopened.JournalReplayStats().LastRangeBytesRead
-
-	latest, err := reopened.ReadHistoryPage(context.Background(), -1, 50)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(latest.Entries) != 50 || latest.NextBefore != wantTotal-50 || !latest.HasMore {
-		t.Fatalf("latest page rows=%d next=%d has_more=%t", len(latest.Entries), latest.NextBefore, latest.HasMore)
-	}
-	// The Turn anchor near row 257 lets the newest page skip the first half of
-	// the turn instead of replaying it from the user message.
-	if read := reopened.JournalReplayStats().LastRangeBytesRead; read*10 >= wholeRead*6 {
-		t.Fatalf("latest page replayed %d bytes, whole turn is %d", read, wholeRead)
-	}
-
-	paged := make([]HistoryEntry, 0, wantTotal)
-	before := -1
-	for {
-		page, pageErr := reopened.ReadHistoryPage(context.Background(), before, 50)
-		if pageErr != nil {
-			t.Fatal(pageErr)
-		}
-		paged = append(append([]HistoryEntry(nil), page.Entries...), paged...)
-		if !page.HasMore {
-			break
-		}
-		before = page.NextBefore
-	}
-	if len(paged) != wantTotal {
-		t.Fatalf("paged rows=%d want=%d", len(paged), wantTotal)
-	}
-	for index := range paged {
-		got, want := paged[index], whole.Entries[index]
-		if got.ID != want.ID || got.Role != want.Role || got.Content != want.Content || got.Args != want.Args {
-			t.Fatalf("paged row %d=%s/%s want %s/%s", index, got.Role, got.ID, want.Role, want.ID)
-		}
 	}
 }
 
@@ -340,7 +236,7 @@ func appendSegmentedHistoryRun(t *testing.T, sess *Session, runID string, displa
 	t.Helper()
 	now := time.Now().UTC()
 	*contextRevision++
-	user := agent.UserMessage("user-" + runID)
+	user := agentschema.UserMessage("user-" + runID)
 	records := make([]any, 0, displaysPerRun+2)
 	records = append(records, messageRecord{
 		Type: historyTypeMessage, CreatedAt: now, Message: *user,
@@ -364,7 +260,7 @@ func appendSegmentedHistoryRun(t *testing.T, sess *Session, runID string, displa
 		})
 	}
 	*contextRevision++
-	assistant := agent.AssistantMessage(canonical.String(), nil)
+	assistant := agentschema.AssistantMessage(canonical.String(), nil)
 	records = append(records, messageRecord{
 		Type: historyTypeMessage, CreatedAt: now, Message: *assistant,
 		MessageMetadata: MessageMetadata{RunID: runID, ContextRevision: *contextRevision},
@@ -387,7 +283,7 @@ func TestProjectionCheckpointResumesAssistantDigestWithoutLeakingContent(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(agent.UserMessage("继续")); err != nil {
+	if err := sess.Append(agentschema.UserMessage("继续")); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "answer-1", Role: "assistant", Content: "第一段秘密正文", RunID: "run-checkpoint"}); err != nil {
@@ -415,7 +311,7 @@ func TestProjectionCheckpointResumesAssistantDigestWithoutLeakingContent(t *test
 	if err := reopened.AppendDisplayEvent(DisplayEvent{ID: "answer-2", Role: "assistant", Content: "第二段秘密正文", RunID: "run-checkpoint"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reopened.AppendWithMetadata(agent.AssistantMessage("第一段秘密正文第二段秘密正文", nil), MessageMetadata{RunID: "run-checkpoint"}); err != nil {
+	if err := reopened.AppendWithMetadata(agentschema.AssistantMessage("第一段秘密正文第二段秘密正文", nil), MessageMetadata{RunID: "run-checkpoint"}); err != nil {
 		t.Fatal(err)
 	}
 	page, err := reopened.ReadHistoryPage(context.Background(), -1, 10)

@@ -14,21 +14,23 @@ import (
 	"denova/internal/agents/modelio"
 	"denova/internal/agents/toolresult"
 
-	agent "github.com/alfredxw/denova/agent"
-	publiccompaction "github.com/alfredxw/denova/agent/compaction"
+	"github.com/alfredxw/denova/agent"
+	sdkcontext "github.com/alfredxw/denova/agent/context"
+	publiccompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // denovaManager applies the same product visibility policy to the selected
 // source as the primary model request. Agent owns planning and model execution.
 type denovaManager struct {
-	delegate          agent.CompactionManager
+	delegate          publiccompaction.CompactionManager
 	toolContextPolicy toolresult.ContextPolicy
-	identity          agent.CapabilityIdentity
+	identity          agentschema.CapabilityIdentity
 	initializeOnce    sync.Once
 	initializeErr     error
 }
 
-func newDenovaManager(delegate agent.CompactionManager, policy toolresult.ContextPolicy) agent.CompactionManager {
+func newDenovaManager(delegate publiccompaction.CompactionManager, policy toolresult.ContextPolicy) publiccompaction.CompactionManager {
 	if delegate == nil {
 		return nil
 	}
@@ -49,16 +51,16 @@ func (manager *denovaManager) InitializeDefinition(ctx context.Context) error {
 			}
 		}
 		manager.identity = capabilityIdentity("denova.compaction.manager", struct {
-			Delegate    agent.CapabilityIdentity
+			Delegate    agentschema.CapabilityIdentity
 			ToolContext toolresult.ContextPolicy
 		}{manager.delegate.Identity(), manager.toolContextPolicy})
 	})
 	return manager.initializeErr
 }
 
-func (manager *denovaManager) Identity() agent.CapabilityIdentity {
+func (manager *denovaManager) Identity() agentschema.CapabilityIdentity {
 	if err := manager.InitializeDefinition(context.Background()); err != nil {
-		return agent.CapabilityIdentity{}
+		return agentschema.CapabilityIdentity{}
 	}
 	return manager.identity
 }
@@ -72,20 +74,20 @@ func (manager *denovaManager) SummaryLimitBytes() int {
 
 func (manager *denovaManager) Plan(
 	ctx context.Context,
-	request agent.CompactionPlanRequest,
-) (agent.CompactionPlan, error) {
+	request publiccompaction.CompactionPlanRequest,
+) (publiccompaction.CompactionPlan, error) {
 	if err := manager.InitializeDefinition(ctx); err != nil {
-		return agent.CompactionPlan{}, err
+		return publiccompaction.CompactionPlan{}, err
 	}
 	return manager.delegate.Plan(ctx, request)
 }
 
 func (manager *denovaManager) Compact(
 	ctx context.Context,
-	request agent.CompactionCompactRequest,
-) (agent.CompactionCheckpoint, error) {
+	request publiccompaction.CompactionCompactRequest,
+) (publiccompaction.CompactionCheckpoint, error) {
 	if err := manager.InitializeDefinition(ctx); err != nil {
-		return agent.CompactionCheckpoint{}, err
+		return publiccompaction.CompactionCheckpoint{}, err
 	}
 	request.Messages = toolresult.ApplyContextPolicy(request.Messages, manager.toolContextPolicy)
 	return manager.delegate.Compact(ctx, request)
@@ -97,7 +99,7 @@ func (manager *denovaManager) Compact(
 func NewAgentManager(
 	cfg *config.Config,
 	agentKind string,
-) (agent.CompactionManager, error) {
+) (publiccompaction.CompactionManager, error) {
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	return NewAgentManagerForModel(cfg, agentKind, modelSettings.ContextWindowTokens)
 }
@@ -110,7 +112,7 @@ func NewAgentManagerForModel(
 	cfg *config.Config,
 	policyKind string,
 	contextWindowTokens int,
-) (agent.CompactionManager, error) {
+) (publiccompaction.CompactionManager, error) {
 	if contextWindowTokens <= 0 {
 		return nil, errors.New("Denova Compaction context window must be positive")
 	}
@@ -143,7 +145,7 @@ func NewAgentManagerForModel(
 // maintenance. It shares the existing per-Agent compaction switch and concrete
 // model budget; there is no independent product state or user-facing threshold.
 // The soft trigger scales with the summary trigger (60% before the default 85%).
-func NewElisionPolicyForModel(cfg *config.Config, policyKind string, contextWindowTokens int) *agent.ElisionPolicy {
+func NewElisionPolicyForModel(cfg *config.Config, policyKind string, contextWindowTokens int) *sdkcontext.ElisionPolicy {
 	if contextWindowTokens <= 0 {
 		return nil
 	}
@@ -152,17 +154,17 @@ func NewElisionPolicyForModel(cfg *config.Config, policyKind string, contextWind
 		return nil
 	}
 	completionReserve, toolReserve := EstimateProjectionReservesForModel(cfg, policyKind, 0, contextWindowTokens)
-	return &agent.ElisionPolicy{
+	return &sdkcontext.ElisionPolicy{
 		ContextWindowTokens: contextWindowTokens, ReservedTokens: completionReserve + toolReserve,
 		TriggerRatio: settings.CompactionThreshold * (.60 / .85),
 	}
 }
 
-func capabilityIdentity(kind string, configuration any) agent.CapabilityIdentity {
+func capabilityIdentity(kind string, configuration any) agentschema.CapabilityIdentity {
 	encoded, _ := json.Marshal(configuration)
 	digest := sha256.Sum256(encoded)
-	return agent.CapabilityIdentity{Kind: kind, Version: 1, ConfigHash: hex.EncodeToString(digest[:])}
+	return agentschema.CapabilityIdentity{Kind: kind, Version: 1, ConfigHash: hex.EncodeToString(digest[:])}
 }
 
-var _ agent.CompactionManager = (*denovaManager)(nil)
+var _ publiccompaction.CompactionManager = (*denovaManager)(nil)
 var _ agent.DefinitionInitializer = (*denovaManager)(nil)

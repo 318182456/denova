@@ -23,6 +23,8 @@ const (
 	StoryEventTypeBranch                           = "branch"
 	StoryEventTypeHotChoices                       = "hot_choices"
 	StoryEventTypeTurnVersionSelected              = "turn_version_selected"
+	StoryEventTypeTurnPresentationRevised          = "turn_presentation_revised"
+	StoryEventTypeTurnBackgroundRevised            = "turn_background_revised"
 	StoryEventTypeTurnNarrativeRevised             = "turn_narrative_revised"
 	StoryEventTypeTurnDisplayAppended              = "turn_display_appended"
 	StoryEventTypeTurnStateRevised                 = "turn_state_revised"
@@ -40,6 +42,7 @@ const (
 // canonical story event rows. Envelope validation and the journal projection
 // both consult this table, so adding an event requires an explicit context decision.
 var persistedStoryEventModelContextChanges = map[string]bool{
+	StoryEventTypeExtensionRecord:   false,
 	StoryEventTypePlayerInput:       true,
 	StoryEventTypeTurnDraft:         false,
 	StoryEventTypeTurnInterrupted:   true,
@@ -48,19 +51,21 @@ var persistedStoryEventModelContextChanges = map[string]bool{
 	StoryEventTypeModelContextProviderContinuation: false,
 	// The parent Turn already advances the context revision in the same atomic
 	// transaction. This side event only carries its opaque provider state.
-	StoryEventTypeProviderContinuation: false,
-	StoryEventTypeTurn:                 true,
-	StoryEventTypeStateDelta:           true,
-	StoryEventTypeBranch:               true,
-	StoryEventTypeHotChoices:           false,
-	StoryEventTypeTurnVersionSelected:  true,
-	StoryEventTypeTurnNarrativeRevised: true,
-	StoryEventTypeTurnDisplayAppended:  false,
-	StoryEventTypeTurnStateRevised:     true,
-	StoryEventTypeStoryConfigUpdated:   true,
-	StoryEventTypeBranchSwitched:       false,
-	StoryEventTypeBranchArchived:       false,
-	StoryEventTypeBranchHeadMoved:      true,
+	StoryEventTypeProviderContinuation:    false,
+	StoryEventTypeTurn:                    true,
+	StoryEventTypeStateDelta:              true,
+	StoryEventTypeBranch:                  true,
+	StoryEventTypeHotChoices:              false,
+	StoryEventTypeTurnVersionSelected:     true,
+	StoryEventTypeTurnBackgroundRevised:   true,
+	StoryEventTypeTurnPresentationRevised: true,
+	StoryEventTypeTurnNarrativeRevised:    true,
+	StoryEventTypeTurnDisplayAppended:     false,
+	StoryEventTypeTurnStateRevised:        true,
+	StoryEventTypeStoryConfigUpdated:      true,
+	StoryEventTypeBranchSwitched:          false,
+	StoryEventTypeBranchArchived:          false,
+	StoryEventTypeBranchHeadMoved:         true,
 	// The owning Turn already advances the model-context revision in the same
 	// atomic transaction. This private event only carries its next-turn plan.
 	StoryEventTypeBranchPlanUpdated: false,
@@ -111,6 +116,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 	}
 	if err := validateStoryEventEnvelope(envelope); err != nil {
 		return StoryEventRecord{}, err
+	}
+	if envelope.Type == StoryEventTypeExtensionRecord {
+		var event extensionRecordEvent
+		if err := mapToStruct(raw, &event); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateExtensionRecord(event.ExtensionRecord); err != nil {
+			return StoryEventRecord{}, err
+		}
 	}
 	if envelope.Type == StoryEventTypeTurn {
 		var turn TurnEvent

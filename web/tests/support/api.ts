@@ -41,6 +41,14 @@ async function expectSuccessful(response: APIResponse): Promise<void> {
   expect(response.ok(), failureDetails).toBe(true)
 }
 
+export async function enablePlugin(request: APIRequestContext, pluginId: string): Promise<void> {
+  // Tests explicitly activate packages after reinstalling retained releases.
+  const response = await request.patch(`/api/platform/manage/packages/plugin/${encodeURIComponent(pluginId)}`, {
+    data: { enabled: true, removed: false },
+  })
+  await expectSuccessful(response)
+}
+
 export async function createAndOpenBook(request: APIRequestContext, title: string): Promise<E2EBook> {
   // Every call owns its Project, including repeats and retries on one backend.
   const uniqueTitle = `${title} ${randomUUID().slice(0, 8)}`

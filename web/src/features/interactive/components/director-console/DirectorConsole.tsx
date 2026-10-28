@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import loadable from '@loadable/component'
+import { useTranslation } from 'react-i18next'
+import { LoadingState } from '@/components/common/LoadingState'
+import type { LoreItem } from '@/lib/api-client/types'
 import type {
   BranchSummary,
   GamePlanningTemplate,
@@ -6,6 +10,7 @@ import type {
   InteractiveStoryUpdateInput,
   Snapshot,
   StorySummary,
+  TurnPresentationPatch,
   Teller,
 } from '../../types'
 import type { StoryStateDisplayPreference } from '../story-state/display-preference'
@@ -14,13 +19,15 @@ import { DirectorConsoleHeader } from './DirectorConsoleHeader'
 import { DirectorConsoleTabs } from './DirectorConsoleTabs'
 import { OverviewView } from './OverviewView'
 import { readStoredDirectorConsoleTab, writeStoredDirectorConsoleTab } from './persistence'
-import { StoryTuningView } from './StoryTuningView'
 import type { DirectorConsoleTab } from './types'
+
+const StoryTuningView = loadable(() => import('./StoryTuningView'), { resolveComponent: module => module.StoryTuningView })
 
 export interface DirectorConsoleProps {
   projectId?: string
   storyId?: string
   story?: StorySummary
+  loreItems?: LoreItem[]
   planningTemplates?: GamePlanningTemplate[]
   tellers?: Teller[]
   imagePresets?: ImagePreset[]
@@ -31,6 +38,7 @@ export interface DirectorConsoleProps {
   branches: BranchSummary[]
   snapshot: Snapshot | null
   branchPlanEditingDisabled?: boolean
+  onPresentationChange?: (turnId: string, patch: TurnPresentationPatch) => Promise<void>
   onBranchPlanUpdate?: (markdown: string, baseRevision: string) => void | Promise<void>
   stateError?: string
   stateDisplayPreference: StoryStateDisplayPreference
@@ -43,6 +51,7 @@ export function DirectorConsole({
   projectId,
   storyId,
   story,
+  loreItems,
   planningTemplates = [],
   tellers = [],
   imagePresets = [],
@@ -53,6 +62,7 @@ export function DirectorConsole({
   branches,
   snapshot,
   branchPlanEditingDisabled = false,
+  onPresentationChange,
   onBranchPlanUpdate,
   stateError,
   stateDisplayPreference,
@@ -60,6 +70,7 @@ export function DirectorConsole({
   onSwitchBranch,
   onOpenBranchTimeline,
 }: DirectorConsoleProps) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<DirectorConsoleTab>(() => readStoredDirectorConsoleTab(storyId) || 'overview')
 
   useEffect(() => {
@@ -91,6 +102,10 @@ export function DirectorConsole({
   } else if (activeTab === 'controls') {
     activeView = (
       <StoryTuningView
+        fallback={<LoadingState label={t('common.loading')} variant="panel" />}
+        currentTurn={snapshot?.current_turn}
+        onPresentationChange={onPresentationChange}
+        presentationDisabled={branchPlanEditingDisabled}
         projectId={projectId}
         story={story}
         planningTemplates={planningTemplates}
@@ -107,6 +122,9 @@ export function DirectorConsole({
     activeView = (
       <OverviewView
         key={branchId}
+        projectId={projectId}
+        loreItems={loreItems}
+        protagonist={story?.protagonist}
         snapshot={snapshot}
         stateError={stateError}
         plan={snapshot?.branch_plan}

@@ -276,6 +276,10 @@ func (s *Store) storyBranchProjectionLocked(storyID, branchID string) (*storyBra
 }
 
 func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor string, limit int, repairTornTail bool) (loadedStoryHistoryPage, error) {
+	return s.readStoryHistoryForViewLocked(storyID, branchID, beforeCursor, limit, repairTornTail, storyHistoryModel)
+}
+
+func (s *Store) readStoryHistoryForViewLocked(storyID, branchID, beforeCursor string, limit int, repairTornTail bool, view storyHistoryView) (loadedStoryHistoryPage, error) {
 	release, err := s.acquireStoryReadLeaseLocked(storyID)
 	if err != nil {
 		return loadedStoryHistoryPage{}, err
@@ -321,6 +325,11 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 		targetID = cursor.TargetID
 	}
 
+	pageThrough := through
+	scanSize := storyHistoryScanTransactions
+	if view != storyHistoryModel {
+		scanSize = min(limit, storyHistoryScanTransactions)
+	}
 	pathNewestFirst := make([]locatedStoryRecord, 0, limit*2)
 	sideRecords := make([]locatedStoryRecord, 0, limit*2)
 	turnsFound := 0
@@ -338,14 +347,17 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 		}
 	}
 	firstScan := true
-	for through > 0 && (firstScan || len(pendingInputs) > 0 || (nextTargetID != "" && turnsFound < limit)) {
+	versionBoundaryFound := false
+	// Include older rerolls of the first displayed turn, stopping at its parent.
+	// A root turn has no parent, so its versions can extend to the journal start.
+	for through > 0 && (firstScan || len(pendingInputs) > 0 || (nextTargetID != "" && turnsFound < limit) || (view == storyHistoryDisplay && !versionBoundaryFound && turnsFound > 0)) {
 		firstScan = false
 		after := conversationjournal.Cursor(0)
-		if through > storyHistoryScanTransactions {
-			after = through - storyHistoryScanTransactions
+		if through > conversationjournal.Cursor(scanSize) {
+			after = through - conversationjournal.Cursor(scanSize)
 		}
 		records, readErr := handle.journal.ReadRange(context.Background(), conversationjournal.Range{
-			After: after, Through: through, Limit: storyHistoryScanTransactions,
+			After: after, Through: through, Limit: scanSize,
 		})
 		if readErr != nil {
 			return loadedStoryHistoryPage{}, readErr
@@ -361,6 +373,9 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 		located, decodeErr := decodeLocatedStoryRecords(records)
 		if decodeErr != nil {
 			return loadedStoryHistoryPage{}, decodeErr
+		}
+		if view != storyHistoryModel {
+			located = storyDisplayRecords(located)
 		}
 		byID := make(map[string]locatedStoryRecord, len(located))
 		for _, item := range located {
@@ -384,6 +399,13 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 			if item.record.Envelope.Type == StoryEventTypeTurn {
 				turnsFound++
 			}
+		}
+		if view == storyHistoryDisplay && turnsFound >= limit {
+			if _, found := byID[nextTargetID]; found {
+				versionBoundaryFound = true
+			}
+			// Usually only the immediate parent remains; do not read another page.
+			scanSize = 1
 		}
 		through = after
 		if after == 0 {
@@ -424,15 +446,31 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 	} else {
 		snapshot.PendingModelContextBatches = filteredBatches
 	}
+	if view == storyHistoryDisplay {
+		for index := range snapshot.Turns {
+			turn := &snapshot.Turns[index]
+			if summarizeStoryExecution(turn) {
+				turn.ExecutionCursor, err = encodeStoryHistoryCursor(storyHistoryCursor{
+					Version: storyHistoryCursorVersion, Generation: handle.projection.Generation,
+					BranchID: branchID, Through: pageThrough, TargetID: turn.ID,
+				})
+				if err != nil {
+					return loadedStoryHistoryPage{}, err
+				}
+			}
+		}
+		if len(snapshot.Turns) > 0 {
+			snapshot.CurrentTurn = &snapshot.Turns[len(snapshot.Turns)-1]
+		}
+	}
 	turns := snapshot.Turns
 	hasMore := nextTargetID != ""
 	nextCursor := ""
 	if hasMore && len(pathNewestFirst) > 0 {
 		oldest := pathNewestFirst[len(pathNewestFirst)-1]
-		nextThrough := conversationjournal.Cursor(0)
-		if oldest.cursor > 1 {
-			nextThrough = oldest.cursor - 1
-		}
+		// Multiple turns may share a transaction; TargetID selects the next
+		// ancestor without skipping the remainder of that physical record.
+		nextThrough := oldest.cursor
 		nextCursor, err = encodeStoryHistoryCursor(storyHistoryCursor{
 			Version: storyHistoryCursorVersion, Generation: handle.projection.Generation,
 			BranchID: branchID, Through: nextThrough, TargetID: nextTargetID,
@@ -512,7 +550,7 @@ func storyHistoryProjectionRecords(pathNewestFirst, candidates []locatedStoryRec
 			// A bounded recent graph may include neighboring branches. Only the
 			// active ancestry contributes snapshot.Turns or model context.
 			include = record.Envelope.BranchID != branchID || versionKeys[turnVersionKey(branchID, parentIDFromRaw(record.Raw))]
-		case StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
+		case StoryEventTypeTurnPresentationRevised, StoryEventTypeTurnBackgroundRevised, StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
 			include = pathIDs[storyRevisionTurnID(record)]
 		case StoryEventTypeHotChoices:
 			include = pathIDs[parentIDFromRaw(record.Raw)]
@@ -553,6 +591,14 @@ func storyHistoryProjectionRecords(pathNewestFirst, candidates []locatedStoryRec
 
 func storyRevisionTurnID(record StoryEventRecord) string {
 	switch record.Envelope.Type {
+	case StoryEventTypeTurnPresentationRevised:
+		var event TurnPresentationRevisedEvent
+		_ = mapToStruct(record.Raw, &event)
+		return event.TurnID
+	case StoryEventTypeTurnBackgroundRevised:
+		var event TurnBackgroundRevisedEvent
+		_ = mapToStruct(record.Raw, &event)
+		return event.TurnID
 	case StoryEventTypeTurnNarrativeRevised:
 		var event TurnNarrativeRevisedEvent
 		_ = mapToStruct(record.Raw, &event)
@@ -573,7 +619,7 @@ func storyRevisionTurnID(record StoryEventRecord) string {
 func isStoryHistorySideCandidate(eventType string) bool {
 	switch eventType {
 	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeHotChoices,
-		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
+		StoryEventTypeTurnPresentationRevised, StoryEventTypeTurnBackgroundRevised, StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
 		return true
 	default:
 		return false

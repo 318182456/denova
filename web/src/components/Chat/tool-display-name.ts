@@ -19,6 +19,7 @@ const TOOL_NAME_KEYS = {
   list_agents: 'chat.subagent.listLabel',
   config_read: 'chat.tool.name.configRead',
   config_apply: 'chat.tool.name.configApply',
+  query_lore_items: 'chat.tool.name.queryLoreItems',
   list_lore_items: 'chat.tool.name.listLoreItems',
   read_lore_items: 'chat.tool.name.readLoreItems',
   write_lore_items: 'chat.tool.name.writeLoreItems',

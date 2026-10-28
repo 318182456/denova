@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	projectfilesapp "denova/internal/app/projectfiles"
+	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
 
@@ -91,6 +93,19 @@ func (h *Handlers) HandleProjectFileAsset(ctx context.Context, c *app.RequestCon
 		return
 	}
 	c.Response.Header.Set("Cache-Control", "no-cache")
+	c.Response.Header.Set("X-Content-Type-Options", "nosniff")
+	c.Response.Header.Set("Accept-Ranges", "bytes")
+	if requested := c.Request.Header.Peek("Range"); len(requested) > 0 {
+		start, end, err := app.ParseByteRange(requested, len(data))
+		if err != nil {
+			c.Response.Header.Set("Content-Range", fmt.Sprintf("bytes */%d", len(data)))
+			c.SetStatusCode(consts.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		c.Response.Header.SetContentRange(start, end, len(data))
+		c.Data(consts.StatusPartialContent, contentType, data[start:end+1])
+		return
+	}
 	c.Data(consts.StatusOK, contentType, data)
 }
 
@@ -108,6 +123,9 @@ func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestCont
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.saveFailed")
 		return
+	}
+	if result.Changed && scope.Type == projectdomain.TypeBook && strings.HasPrefix(result.Path, "chapters/") && strings.HasSuffix(strings.ToLower(result.Path), ".md") {
+		h.app.Analytics().ContentEdited()
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{
 		"project_id": result.ProjectID,

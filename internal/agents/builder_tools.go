@@ -9,7 +9,8 @@ import (
 	"denova/internal/agents/skillassembly"
 	"denova/internal/agents/toolruntime"
 	producttools "denova/internal/agents/tools"
-	agent "github.com/alfredxw/denova/agent"
+
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // agentToolsSpec assembles product tools and Skills without a model, permission
@@ -19,15 +20,15 @@ type agentToolsSpec struct {
 	SystemPrompt        prompts.SystemPromptComposition
 	Settings            config.ResolvedAgentToolSettings
 	EnableSkills        bool
-	ExtraTools          []agent.ToolDefinition
+	ExtraTools          []agenttool.ToolDefinition
 	ReadAdapters        []producttools.ReadAdapterBinding
 	ReadAdaptersFactory producttools.ReadAdapterFactory
-	ExtraToolsFactory   func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
+	ExtraToolsFactory   func(config.ResolvedAgentToolSettings) ([]agenttool.ToolDefinition, error)
 }
 
 type agentToolsAssembly struct {
 	SystemPrompt prompts.SystemPromptComposition
-	Tools        []agent.ToolDefinition
+	Tools        []agenttool.ToolDefinition
 }
 
 func buildAgentTools(ctx context.Context, cfg *config.Config, spec agentToolsSpec) (agentToolsAssembly, error) {
@@ -37,7 +38,7 @@ func buildAgentTools(ctx context.Context, cfg *config.Config, spec agentToolsSpe
 	if err != nil {
 		return agentToolsAssembly{}, err
 	}
-	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
+	tools := append([]agenttool.ToolDefinition(nil), spec.ExtraTools...)
 	readAdapters := append(skills.ReadAdapters, spec.ReadAdapters...)
 	if spec.ReadAdaptersFactory != nil {
 		extra, err := spec.ReadAdaptersFactory(settings)

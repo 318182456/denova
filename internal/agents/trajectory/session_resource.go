@@ -6,9 +6,9 @@ import (
 	"math"
 	"os"
 
-	agenttools "github.com/alfredxw/denova/agent/tools"
-
 	"denova/internal/agents/session"
+
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 type sessionResourceManifest struct {

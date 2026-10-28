@@ -6,7 +6,7 @@
 
 ## 1. Quickstart：完成一次任务
 
-需要 Go 1.26.6 或更新版本。在自己的 Go module 中安装：
+需要 Go 1.26.9 或更新版本。在自己的 Go module 中安装：
 
 ```sh
 go get github.com/alfredxw/denova/agent
@@ -24,8 +24,10 @@ import (
 	"os"
 
 	"github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-	"github.com/alfredxw/denova/agent/providers/builtin"
+	"github.com/alfredxw/denova/agent/lifecycle/event"
+	"github.com/alfredxw/denova/agent/model/providers"
+	"github.com/alfredxw/denova/agent/model/providers/builtin"
+	"github.com/alfredxw/denova/agent/schema"
 )
 
 func main() {
@@ -48,8 +50,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for event := range run.Events() {
-		if delta, ok := event.Payload.(agent.AssistantDelta); ok {
+	for item := range run.Events() {
+		if delta, ok := item.Payload.(event.AssistantDelta); ok {
 			fmt.Print(delta.Delta)
 		}
 	}
@@ -57,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if result.Status != agent.ResultCompleted {
+	if result.Status != schema.ResultCompleted {
 		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
 	}
 	fmt.Println()
@@ -72,7 +74,7 @@ func main() {
 
 用户先让助手写一段文字，再要求缩短。把两次任务放在同一个 Session，第二轮就能接着第一轮的内容工作。
 
-额外导入 `github.com/alfredxw/denova/agent/tools`，以及别名为 `sessionfile` 的 `github.com/alfredxw/denova/agent/session/file`：
+额外导入 `github.com/alfredxw/denova/agent/session`、别名为 `tools` 的 `github.com/alfredxw/denova/agent/tool/builtin`，以及别名为 `sessionfile` 的 `github.com/alfredxw/denova/agent/session/file`：
 
 ```go
 store, err := sessionfile.New("./data/sessions")
@@ -89,7 +91,7 @@ if err != nil {
 }
 defer assistant.Close(context.Background())
 
-key := agent.NamedSession("draft-42")
+key := session.Named("draft-42")
 conversation, err := assistant.Session(ctx, key)
 if err != nil {
 	log.Fatal(err)
@@ -103,11 +105,11 @@ for _, prompt := range []string{
 	if err != nil {
 		log.Fatal(err)
 	}
-	for event := range run.Events() {
-		switch payload := event.Payload.(type) {
-		case agent.AssistantDelta:
+	for item := range run.Events() {
+		switch payload := item.Payload.(type) {
+		case event.AssistantDelta:
 			fmt.Print(payload.Delta)
-		case agent.InteractionRequested:
+		case event.InteractionRequested:
 			showQuestion(payload.Request) // Host UI; answer through Session.Respond.
 		}
 	}
@@ -115,7 +117,7 @@ for _, prompt := range []string{
 	if err != nil {
 		log.Fatal(err)
 	}
-	if result.Status != agent.ResultCompleted {
+	if result.Status != schema.ResultCompleted {
 		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
 	}
 	fmt.Println()
@@ -133,9 +135,9 @@ if err != nil {
 }
 ```
 
-`response` 是 `agent.InteractionResponse`：普通问题填写 `Answers`（使用请求中的 QuestionID 和选项 Value，或填写 Text）；权限问题填写 `Permission`；取消填写 `Cancelled: true`。问题没回答时，Run 会继续等待，不能只调用 `Wait`。
+响应类型需导入 `github.com/alfredxw/denova/agent/lifecycle/interaction`。`response` 是 [`interaction.InteractionResponse`](lifecycle/interaction/interaction.go)：普通问题填写 `Answers`（使用请求中的 QuestionID 和选项 Value，或填写 Text）；权限问题填写 `Permission`；取消填写 `Cancelled: true`。问题没回答时，Run 会继续等待，不能只调用 `Wait`。
 
-同一 Session 一次执行一个 Run；上一轮结束后再开始下一轮。文件 Store 会保留会话，程序重启后用相同目录和 `NamedSession("draft-42")` 再次打开即可。默认不配置 Store 时只保存在内存中。
+同一 Session 一次执行一个 Run；上一轮结束后再开始下一轮。文件 Store 会保留会话，程序重启后用相同目录和 `session.Named("draft-42")` 再次打开即可。默认不配置 Store 时只保存在内存中。
 
 **执行过程中，如何回应用户操作？**
 
@@ -146,9 +148,9 @@ if err != nil {
 | “换个方向写” | `run.Steer(ctx, agent.Text("Focus on beginners."))` |
 | “再补充一个要求” | `conversation.Queue(ctx, agent.Text("Keep it under 200 words."))` |
 | “完成后再翻译一遍” | `conversation.FollowUp(ctx, agent.Text("Then translate it into Chinese."))` |
-| “取消这条补充” | 对 Queue 返回的句柄调用 `queued.Cancel(ctx, agent.QueueControlRequest{})` |
-| “现在就处理这条补充” | `queued.Interrupt(ctx, agent.QueueControlRequest{})` |
-| “停止当前任务” | `run.Abort(ctx, agent.AbortRequest{Reason: "User cancelled."})` |
+| “取消这条补充” | 对 Queue 返回的句柄调用 `queued.Cancel(ctx, event.QueueControlRequest{})` |
+| “现在就处理这条补充” | `queued.Interrupt(ctx, event.QueueControlRequest{})` |
+| “停止当前任务” | `run.Abort(ctx, event.AbortRequest{Reason: "User cancelled."})` |
 
 这些方法都有返回值和错误，需要处理。`Queue` 在空闲时只保存输入，`FollowUp` 在空闲时会启动新任务。跨网络重试时给 Input 或控制请求设置稳定的 `IdempotencyKey`；收到凭证表示已接收，不表示任务已完成。
 
@@ -182,8 +184,8 @@ fmt.Println(resumed.ID())
 | --- | --- |
 | 恢复页面 | `conversation.Snapshot(ctx)` 获取当前状态和未决问题，再用 `Observe(ctx, snapshot.Cursor)` 订阅后续变化；同时消费 Events 和 Errors |
 | 找回运行句柄 | `conversation.AttachRun(ctx, runID)`；只连接，不自动继续 |
-| 列出会话 | `assistant.ListSessions(ctx, agent.SessionSelector{All: true})` |
-| 清空对话 | `conversation.Clear(ctx)`；保留会话身份，清除 Todo，保留 Goal |
+| 列出会话 | `assistant.ListSessions(ctx, session.Selector{All: true})` |
+| 新建对话 | `assistant.Session(ctx, session.Named("another-conversation-id"))`；使用独立会话身份，保留原会话 |
 | 关闭会话 | `conversation.Close(ctx)`；保留数据，但终结当前任务。要稍后继续，应先暂停 |
 | 删除会话 | `conversation.Delete(ctx)`；永久删除，只在用户明确删除时调用 |
 
@@ -201,7 +203,7 @@ fmt.Println(resumed.ID())
 - `projectContext` 提供项目规则和状态；`skillCatalog` 列出可用 Skill，`skillLoader` 加载其内容。
 - `commandRunner` 执行命令；`taskExecutor` 负责子任务；`artifactStorage` 保存完整工具输出。它们的接口与现成实现见代码后的链接。
 
-额外导入 `agent` 模块下的 `compaction`、`goal`、`permission`、`toolresult` 包，以及示例二的 `tools` 和 `sessionfile`。
+额外导入 `agent` 模块下的 `context/compaction`、`engine/execution`、`engine/goal`、`tool/permission` 包、别名为 `toolresult` 的 `tool/result`，以及别名为 `agentcontext` 的 `context` 包，复用示例二的 `session`、`tools` 和 `sessionfile`。
 
 ```go
 store, err := sessionfile.New("./data/sessions")
@@ -234,22 +236,22 @@ assistant, err := agent.New(ctx, agent.Definition{
 	Compaction: compaction.Standard(compaction.StandardConfig{
 		ContextWindowTokens: contextTokens,
 	}),
-	Elision: &agent.ElisionPolicy{ContextWindowTokens: contextTokens},
-	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
+	Elision: &agentcontext.ElisionPolicy{ContextWindowTokens: contextTokens},
+	Execution: execution.ExecutionPolicy{ToolParallelism: 4},
 }, agent.WithSessionStore(store))
 if err != nil {
 	log.Fatal(err)
 }
 defer assistant.Close(context.Background())
 
-conversation, err := assistant.Session(ctx, agent.NamedSession("project-review-42"))
+conversation, err := assistant.Session(ctx, session.Named("project-review-42"))
 if err != nil {
 	log.Fatal(err)
 }
 run, err := conversation.Run(ctx, agent.Input{
 	Text: "Review this project's documentation, check its examples, and report inconsistencies.",
-	Goal: &agent.GoalMutation{
-		Kind:      agent.GoalSet,
+	Goal: &schema.GoalMutation{
+		Kind:      schema.GoalSet,
 		Objective: "Complete the documentation review with evidence and a list of unresolved issues.",
 	},
 })
@@ -272,18 +274,18 @@ fmt.Println(run.ID())
 
 | 依赖 | 接口 / 可复用实现 |
 | --- | --- |
-| 项目上下文 | [`agent.ContextSource`](definition.go)：每段内容声明来源、用途和容量上限，稳定规则与变化状态分开注入 |
-| Skills | [`tools.SkillLoader`](tools/skill_tool.go)：按名称加载完整内容，清单由应用提供 |
-| 命令执行 | [`tools.CommandRunner`](tools/shell_tools.go)；本地可用 [`NewLocalCommandRunner`](tools/shell_local_runner.go) |
-| 子任务 | [`tools.TaskExecutor`](tools/task_tool.go)；本地可用 [`NewLocalTasks`](tools/task_local_executor.go) |
-| 大结果存储 | [`agent.ToolArtifactStorage`](tool_artifact.go) |
-| 压缩定制（可选） | 默认使用当前模型；可替换 [`compaction.Summarizer`](compaction/standard.go)，或实现 [`agent.CompactionManager`](compaction.go) |
+| 项目上下文 | [`agentcontext.ContextSource`](context/definition.go)：每段内容声明来源、用途和容量上限，稳定规则与变化状态分开注入 |
+| Skills | [`tools.SkillLoader`](tool/builtin/skill_tool.go)：按名称加载完整内容，清单由应用提供 |
+| 命令执行 | [`tools.CommandRunner`](tool/builtin/shell_tools.go)；本地可用 [`NewLocalCommandRunner`](tool/builtin/shell_local_runner.go) |
+| 子任务 | [`tools.TaskExecutor`](tool/builtin/task_tool.go)；本地可用 [`NewLocalTasks`](tool/builtin/task_local_executor.go) |
+| 大结果存储 | [`tool.ToolArtifactStorage`](tool/tool_artifact.go) |
+| 压缩定制（可选） | 默认使用当前模型；可替换 [`compaction.Summarizer`](context/compaction/standard.go)，或实现 [`compaction.CompactionManager`](context/compaction/compaction.go) |
 
 换成写作、研究或客服场景，主要替换 Instructions、Context、Skills 和 Tools；不需要的能力直接移除。需要写文件时，把 Workspace 改为 `WorkspaceReadWrite` 并提供 `MutationAdapter`。工作区只读不限制 Shell，命令权限仍需由执行器和权限策略控制。
 
-简单场景使用上面的静态 Definition 即可。确实需要按会话动态选择模型和能力时，再实现 [`Source`](definition.go)；已有产品会话存储时，再接入 [`CanonicalAdapter`](canonical.go) 和 [`session.Store`](session/store.go)，让产品历史和 Agent 恢复记录共享同一份 journal。
+简单场景使用上面的静态 Definition 即可。确实需要按会话动态选择模型和能力时，再实现 [`Source`](engine/definition.go)；已有产品会话存储时，再接入 [`CanonicalAdapter`](session/canonical/canonical.go) 和 [`session.Store`](session/store.go)，让产品历史和 Agent 恢复记录共享同一份 journal。
 
-历史结果使用 `Session.CommandSnapshot(ctx, commandID)` 或 `RunSnapshot(ctx, runID)` 查询；它们不启动任务，也不要求历史 Run 常驻。Agent 在终态记录提交后释放执行状态，完整历史仍在 canonical journal 中。`AttachRun` 对已完成任务返回调用方持有的只读终态句柄；挂起任务继续保留恢复事实。存储适配器可实现 [`RecoveryLog`](session_recovery_index.go)，用可重建的 `RecoveryIndex` 和按 revision 读取原记录加速冷恢复；输入、输出和工具正文不进入历史索引。普通 `session.Log` 仍可通过顺序回放恢复，内置文件存储在回放时建立临时位置索引，随后历史查询只读取目标事务。
+历史结果使用 `Session.CommandSnapshot(ctx, commandID)` 或 `RunSnapshot(ctx, runID)` 查询；它们不启动任务，也不要求历史 Run 常驻。Agent 在终态记录提交后释放执行状态，完整历史仍在 canonical journal 中。`AttachRun` 对已完成任务返回调用方持有的只读终态句柄；挂起任务继续保留恢复事实。存储适配器可实现 [`RecoveryLog`](lifecycle/session_recovery_index.go)，用可重建的 `RecoveryIndex` 和按 revision 读取原记录加速冷恢复；输入、输出和工具正文不进入历史索引。普通 `session.Log` 仍可通过顺序回放恢复，内置文件存储通过 `session.IndexedLog` 和独立 checkpoint reducer，从校验过的派生索引与提交尾部恢复；只读观察使用有界当前索引，执行保留完整历史回执，精确查询读取原始事务。索引丢失或不兼容时，从未改动的 canonical JSONL 重建。
 
 ### 压缩的三个接入级别
 
@@ -295,8 +297,8 @@ Compaction: compaction.Standard(compaction.StandardConfig{ContextWindowTokens: 1
 Compaction: compaction.Standard(compaction.StandardConfig{
     ContextWindowTokens: 128_000,
     Summarizer: compaction.SummarizerFunc{
-        Capability: agent.CapabilityIdentity{Kind: "app.summary", Version: 1},
-        Func: func(ctx context.Context, input compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+        Capability: schema.CapabilityIdentity{Kind: "app.summary", Version: 1},
+        Func: func(ctx context.Context, input compaction.SummaryRequest) (compaction.CompactionCheckpoint, error) {
             return summarizeSelectedSource(ctx, input.Messages, input.Current)
         },
     },
@@ -320,9 +322,49 @@ Agent 统一保护当前用户要求、最近完整工具组及未完成步骤�
 
 Denova 原生 Agent（包括写作、游戏及持久子 Agent）沿用现有的自动压缩开关；软阈值按摘要阈值同比缩放，默认先 60% 清理、再 85% 摘要。SDK 的 `Elision: nil` 不再创建新清理；已提交投影仍保留。最近 Release 的原始用户数据无需迁移，旧 Cleanup 记录仍仅作为历史诊断读取。
 
+### 原生图片输入
 
-原生图片通过 [`Attachment`](attachment.go) 进入用户消息或 `ToolResult.Attachments`。`InputSize.Tokens` 包含文本和视觉 token，`InputSize.Bytes` 只统计消息、工具 Schema 与附件描述的 JSON，不包含图片 Base64；这些上下文预算同时用于压缩与最终输入检查。自定义模型可实现 `ModelInputEstimator` 提供视觉计数规则，未知模型默认每张图片预留 32K token。
+原生图片通过 [`Attachment`](schema/attachment.go) 进入用户消息或 `ToolResult.Attachments`。`InputSize.Tokens` 包含文本和视觉 token，`InputSize.Bytes` 只统计消息、工具 Schema 与附件描述的 JSON，不包含图片 Base64；这些上下文预算同时用于压缩与最终输入检查。自定义模型可实现 [`model.ModelInputEstimator`](model/input_estimate.go) 提供视觉计数规则，未知模型默认按每张图片 1,844 token 估算。
 
 `tools.Workspace` 的 `read` 可读取 UTF-8 文本和 PNG、JPEG、GIF、WebP 图片（每图最多 20 MiB）。图片读取需要 `Definition.Artifacts` 提供本地路径解析，先将读取的字节保存为不可变产物，再返回原生图片；用户附件路径相对于 `AttachmentRoot`，工具图片路径相对于其产物存储边界。journal 只保留相对引用与 SHA256，运行时绝对路径不持久化。Responses 和 Anthropic 把图片放入工具结果，Chat Completions 在整批工具结果之后投影图片消息，保持调用配对。
 
 内置协议在发送前校验原图 SHA256，并按已知模型的尺寸规则生成内存副本；无需缩小时保留原始字节。JPEG 缩放保留显示方向，GIF 使用首帧，本地转换最多接收 64 百万像素的原图以约束解码内存。原始文件、附件路径和 journal 不变。官方端点的图片及实际 HTTP 请求限制在发送层检查，自定义网关以其返回的限制为准；图片不合要求和请求过大分别返回稳定错误码，产品负责本地化展示。
+
+## 4. 包职责与扩展入口
+
+顶层 [`agent.go`](agent.go) 提供 `New`、`Definition / Source`、`Agent / Session / Run` 和常用输入输出。它是便捷入口，使用类型别名保持句柄身份；实现和扩展能力归属下面的领域包。
+
+| 一级包 | 职责与子包 |
+| --- | --- |
+| `lifecycle` | Session / Run、准入、队列、任务树与 journal 提交；`event`、`interaction`、`trace` 承载事件、交互和诊断 |
+| `engine` | Definition 准备、模型/工具循环与 checkpoint；`middleware`、`execution`、`goal` 承载执行扩展、策略和目标 |
+| `model` | 模型契约与请求快照；`providers` 提供协议适配，`stream` 提供流 |
+| `tool` | 工具契约与注册；`builtin`、`permission`、`result`、`script`、`plugins` 提供工具及配套能力 |
+| `context` | 上下文来源；`history` 计算历史投影、坐标和 elision，`compaction` 提供压缩策略 |
+| `session` | Journal 存储契约；`file` 实现文件存储，`canonical` 连接产品原子提交 |
+| `schema` | 跨领域共享的消息、输入、附件和结果值 |
+| `state` | 基于文件的 Agent 配置、校验与原子管理写入 |
+
+核心依赖方向为 `agent → lifecycle → engine → context/history`。生命周期层拥有任务准入、并发与 journal 提交；引擎通过每次执行请求中的窄接口请求提交，生命周期层只提交完整 checkpoint，不修改其内部字段。历史层不持有 Session、锁或存储。`internal` 保留异步、重试、文件系统和协议等内部实现，以及集成测试。
+
+通常使用 `agent.New`；需要明确依赖生命周期层时可以直接调用 `lifecycle.New`。已经有会话调度和存储的宿主也可以使用公开的 [`engine.New(engine.Config{Source: definition, Session: key})`](engine/definition_engine.go)。直接使用 engine 时，宿主负责：
+
+- 串行执行同一会话的 cycle，并保持 command、operation、cycle 和恢复快照的身份一致。
+- 在执行前完成 canonical input materialization 和 admission；配置对应能力时，调用 `PlanInputMaterialization` / `MaterializeInput` 与 `PrepareAdmission`。
+- 在 `EventSink` 返回成功前完成要求持久化的状态提交；`TranscriptUpdated`、`AssistantFinal.State` 和 capability 更新构成恢复状态，不能只消费文本事件。
+- 通过 `CanonicalHost` 将产品变更和恢复 checkpoint 原子提交；只在不接入产品 canonical journal 时省略它。
+
+[公开 API 集成测试](internal/integration/engine_test.go) 展示了保存 opaque checkpoint、重新创建 engine 后继续会话，以及 journal 拒绝提交时阻止模型执行。`engine` 不负责宿主队列、任务树或外部 runtime 调度。
+
+包调整没有改变 journal 记录版本、JSON 字段、能力标识或数据路径，现有数据不需要迁移。SDK 调用方需更新到上表中的导入路径；模块不保留旧路径的兼容转发包。
+
+### 开发与测试
+
+单元测试与对应实现放在同一包；通过公开 API 验证压缩、续跑、图片和工具结果清理的集成测试集中在 [`internal/integration`](internal/integration)。在 `agent/` 目录运行：
+
+```sh
+go test ./...
+go vet ./...
+```
+
+只运行上述集成测试可用 `go test ./internal/integration`。它们也包含在 `go test ./...` 和现有 CI 中，无需额外标签。

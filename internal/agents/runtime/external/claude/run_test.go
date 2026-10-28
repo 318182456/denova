@@ -25,7 +25,9 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/hostruntime"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type testHost struct {
@@ -262,7 +264,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(picture.Bytes())
-	input.Attachments = []agent.Attachment{{ID: "image-1", Name: "fixture.png", MediaType: "image/png", Size: int64(picture.Len()), Path: "fixture.png", RuntimePath: imagePath, SHA256: hex.EncodeToString(digest[:])}}
+	input.Attachments = []agentschema.Attachment{{ID: "image-1", Name: "fixture.png", MediaType: "image/png", Size: int64(picture.Len()), Path: "fixture.png", RuntimePath: imagePath, SHA256: hex.EncodeToString(digest[:])}}
 	result, err := c.Run(ctx, input, host)
 	if err != nil {
 		t.Fatalf("run: %v; requests=%d; calls=%#v; result=%#v", err, requests, host.calls, result)
@@ -276,7 +278,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if !imageSeen {
 		t.Fatal("CLI model request lost image input")
 	}
-	var plan []agent.TodoItem
+	var plan []agentevent.TodoItem
 	for _, event := range host.events {
 		if event.Type == "todo_updated" {
 			plan, err = external.PlanItems(event)
@@ -285,7 +287,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 			}
 		}
 	}
-	if len(plan) != 1 || plan[0].Text != "Verify the draft" || plan[0].Status != agent.TodoCompleted {
+	if len(plan) != 1 || plan[0].Text != "Verify the draft" || plan[0].Status != agentevent.TodoCompleted {
 		t.Fatalf("native plan=%+v", plan)
 	}
 	for _, tool := range modelTools {

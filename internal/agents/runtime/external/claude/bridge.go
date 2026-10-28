@@ -13,7 +13,8 @@ import (
 	"sync"
 
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -77,7 +78,7 @@ func startBridge(ctx context.Context, tools []external.Tool, host external.Host,
 			}
 			result = &mcp.CallToolResult{IsError: !value.Success, Content: []mcp.Content{&mcp.TextContent{Text: value.Text}}}
 			for _, attachment := range value.Images {
-				data, err := agent.ReadAttachmentImage(attachment)
+				data, err := agentschema.ReadAttachmentImage(attachment)
 				if err != nil {
 					return nil, err
 				}

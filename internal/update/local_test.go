@@ -99,7 +99,10 @@ func TestInstallLocalRelease(t *testing.T) {
 	var relaunched string
 	if err := RunUpdater(context.Background(), manifestPath, UpdaterOptions{
 		ProcessAlive: func(int) bool { return false },
-		StartProcess: func(executable string, args, env []string) error { relaunched = executable; return nil },
+		StartProcess: func(executable string, args, env []string) error {
+			relaunched = executable
+			return acknowledgeTestLaunch(executable, args, env)
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +129,7 @@ func TestLocalUpdateRejectsConcurrentOperations(t *testing.T) {
 	if _, err := service.Install(context.Background()); !errors.Is(err, ErrUpdateBusy) {
 		t.Fatal(err)
 	}
-	if _, err := service.Apply(context.Background()); !errors.Is(err, ErrUpdateBusy) {
+	if _, err := service.Apply(context.Background(), nil, 0, ""); !errors.Is(err, ErrUpdateBusy) {
 		t.Fatal(err)
 	}
 }

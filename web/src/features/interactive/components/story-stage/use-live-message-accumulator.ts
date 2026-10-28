@@ -62,8 +62,12 @@ export function useLiveMessageAccumulator({ setMessages }: UseLiveMessageAccumul
 
   const appendAssistant = useCallback((content: string, navigationAnchorId: string, metadata: AgentMessageMetadata = {}) => {
     if (!content) return
+    if (!metadata.subagent) currentTurnRenderKeysRef.current ??= createLiveTurnRenderKeys()
     const renderKey = metadata.subagent ? undefined : currentTurnRenderKeysRef.current?.assistant
-    const navigationMetadata = metadata.subagent ? metadata : { ...metadata, navigation_turn_id: navigationAnchorId }
+    // The narrative filter has already separated prose from execution progress.
+    // It occupies the reply slot from its first token; "final" is presentation,
+    // not a persistence acknowledgement (the text part can still be streaming).
+    const navigationMetadata = metadata.subagent ? metadata : { ...metadata, navigation_turn_id: navigationAnchorId, display_phase: 'final' as const }
     queue({
       id: renderKey || metadata.display_segment_id,
       role: 'assistant',
@@ -198,6 +202,12 @@ export function useLiveMessageAccumulator({ setMessages }: UseLiveMessageAccumul
     return turnRenderKeysRef.current[turnId]?.[role]
   }, [])
 
+  // While a cycle is active, only its bound snapshot may reveal state. An older
+  // turn's snapshot must stay hidden during a new attempt or regeneration.
+  const isCurrentTurnPersisted = useCallback((turnId: string) => {
+    return Boolean(currentTurnRenderKeysRef.current && turnRenderKeysRef.current[turnId] === currentTurnRenderKeysRef.current)
+  }, [])
+
   const beginStage = useCallback((stageKey: string) => {
     stageKeyRef.current = stageKey
   }, [])
@@ -229,6 +239,7 @@ export function useLiveMessageAccumulator({ setMessages }: UseLiveMessageAccumul
     endRun,
     finishMessages,
     flush,
+    isCurrentTurnPersisted,
     prepareTurn,
     renderKeyFor,
     resetAssistant,

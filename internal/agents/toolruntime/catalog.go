@@ -2,17 +2,17 @@ package toolruntime
 
 import (
 	"context"
-	agentinteractive "denova/internal/agents/interactive"
-	agentrun "denova/internal/agents/run"
 	"os"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/config"
+	agentinteractive "denova/internal/agents/interactive"
+	agentrun "denova/internal/agents/run"
 	producttools "denova/internal/agents/tools"
 	"denova/internal/hostruntime"
 	workspacechange "denova/internal/workspace/change"
+
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
 )
 
 // NewCatalog is the only bridge from Agent orchestration into concrete
@@ -67,20 +67,21 @@ func ProjectInteractiveContext(contexts ...agentinteractive.InteractiveStoryTool
 	}
 	source := contexts[0]
 	return producttools.InteractiveContext{
-		Store:                  source.Store,
-		StoryID:                source.StoryID,
-		BranchID:               source.BranchID,
-		SubmitStateSchemaBatch: source.SubmitStateSchemaBatch,
-		RequestTurnCompletion:  agentinteractive.RequestTurnCompletion,
-		PrepareTurn:            source.PrepareTurn,
-		SelectStoryProtagonist: source.SelectProtagonist,
-		SubmitTurnResult:       source.SubmitTurnResult,
+		Store:                      source.Store,
+		PresentationSelectedByHost: source.PresentationSelectedByHost,
+		StoryID:                    source.StoryID,
+		BranchID:                   source.BranchID,
+		SubmitStateSchemaBatch:     source.SubmitStateSchemaBatch,
+		RequestTurnCompletion:      agentinteractive.RequestTurnCompletion,
+		PrepareTurn:                source.PrepareTurn,
+		SelectStoryProtagonist:     source.SelectProtagonist,
+		SubmitTurnResult:           source.SubmitTurnResult,
 	}
 }
 
 func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMetadata {
-	providerCallID := strings.TrimSpace(agent.ToolCallID(ctx))
-	executionID := agent.ToolExecutionID(ctx, providerCallID)
+	providerCallID := strings.TrimSpace(agentexecution.ToolCallID(ctx))
+	executionID := agentexecution.ToolExecutionID(ctx, providerCallID)
 	if identity, ok := ctx.Value(hostToolIdentityKey{}).(HostToolIdentity); ok {
 		executionID = identity.ExecutionID
 	}

@@ -5,19 +5,19 @@ package toolresult
 import (
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // RecoverableArtifactPurpose reports whether an artifact contains complete
 // output that can safely replace rich inline model context.
-func RecoverableArtifactPurpose(purpose agent.ToolArtifactPurpose) bool {
-	return purpose == agent.ToolArtifactPurposeCompleteModelOutput || purpose == agent.ToolArtifactPurposeCompleteToolOutput
+func RecoverableArtifactPurpose(purpose agentschema.ToolArtifactPurpose) bool {
+	return purpose == agentschema.ToolArtifactPurposeCompleteModelOutput || purpose == agentschema.ToolArtifactPurposeCompleteToolOutput
 }
 
 // CanonicalArtifact normalizes one recovery identity before verification,
 // persistence, or context cleanup.
-func CanonicalArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {
-	artifact.Purpose = agent.ToolArtifactPurpose(strings.TrimSpace(string(artifact.Purpose)))
+func CanonicalArtifact(artifact agentschema.ToolArtifactRef) agentschema.ToolArtifactRef {
+	artifact.Purpose = agentschema.ToolArtifactPurpose(strings.TrimSpace(string(artifact.Purpose)))
 	artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
 	artifact.ContentType = strings.TrimSpace(artifact.ContentType)
 	if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
@@ -29,7 +29,7 @@ func CanonicalArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {
 // recoverableToolResultArtifact selects a complete, addressable artifact for
 // Denova's read-only receipt projection. Artifact creation and verification are
 // owned by the public Agent ResultProcessor.
-func recoverableToolResultArtifact(artifacts []agent.ToolArtifactRef) *agent.ToolArtifactRef {
+func recoverableToolResultArtifact(artifacts []agentschema.ToolArtifactRef) *agentschema.ToolArtifactRef {
 	for index := range artifacts {
 		artifact := CanonicalArtifact(artifacts[index])
 		if artifact.Complete && artifact.ReadablePath != "" && artifact.ContentType != "" &&

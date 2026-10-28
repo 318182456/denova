@@ -40,6 +40,12 @@ export async function openAgentChatWorkbench(page: Page): Promise<void> {
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '工作台', exact: true }).click()
 }
 
+/** Large catalogs defer project controls until their named row enters view. */
+export async function revealAgentChatProject(page: Page, name: string): Promise<void> {
+  const sidebar = page.locator('[data-agent-chat-sidebar-header]').locator('..').filter({ visible: true })
+  await sidebar.getByText(name, { exact: true }).scrollIntoViewIfNeeded()
+}
+
 /** Opens the Writing Agent after route transitions and persisted panel visibility settle. */
 export async function openWritingAgent(page: Page): Promise<Locator> {
   const sidebar = page.getByLabel('工作台侧边栏')

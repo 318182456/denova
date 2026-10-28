@@ -10,7 +10,37 @@ export interface SpeechSettings {
   voice: string
 }
 
+export interface DecisionSettings {
+  enabled: boolean
+  endpoints: DecisionEndpointSettings[] | null
+  profiles: DecisionProfileSettings[] | null
+  default_profile_id: string
+  game_presentation: boolean
+  lore_classification: boolean
+  semantic_triggers: boolean
+}
+
+export interface DecisionEndpointSettings {
+  id: string
+  name: string
+  enabled?: boolean
+  endpoint: string
+  api_key: string
+}
+
+export interface DecisionProfileSettings {
+  id: string
+  name: string
+  enabled?: boolean
+  endpoint_id: string
+  model: string
+}
+
 export interface Settings {
+  decision?: DecisionSettings
+  market?: { registry_url?: string; github_token?: string }
+  game_creation_defaults?: import('@/features/interactive/game-creation-defaults').GameCreationDefaults
+  game_last_creation?: import('@/features/interactive/game-creation-defaults').GameCreationPreferences
   speech?: SpeechSettings
   agent_runtimes?: Partial<Record<'ide' | 'general' | 'interactive_story', import('@/features/agent-runtime/types').RuntimePreferences>>
   openai_api_key?: string
@@ -58,7 +88,9 @@ export interface Settings {
   language?: string
   theme?: string
   motion_intensity?: string
+  statistics_enabled?: boolean | null
   update_check_enabled?: boolean | null
+  update_download_enabled?: boolean | null
   max_iteration?: number | null
   model_max_retries?: number | null
   agent_idle_timeout_seconds?: number | null
@@ -82,13 +114,16 @@ export interface Settings {
   trace_retention_runs?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
-  interactive_story_teller_id?: string
   ide_image_preset_id?: string
   writing_skill_default?: string
   agent_quick_prompts?: AgentQuickPromptRegistry
   agent_quick_prompts_in_commands?: boolean | null
   interactive_stage_font_size?: number | null
+  interactive_stage_scrim_opacity?: number | null
   interactive_stage_line_height?: number | null
+  interactive_stage_text_max_width?: number | null
+  interactive_stage_character_layout?: StageCharacterLayout | null
+  interactive_stage_character_size?: number | null
 }
 
 export interface LabSettings {
@@ -122,7 +157,19 @@ export interface TerminalCommandSettings {
   enabled: boolean
 }
 
+export type WebSearchProvider = 'builtin' | 'searxng' | 'deepseek' | 'perplexity' | 'tavily'
+
+export interface SearchServiceSettings {
+  api_key?: string
+  mode?: 'web' | 'fast' | 'basic' | 'advanced'
+}
+
 export interface WebAccessSettings {
+  search_provider?: WebSearchProvider
+  search_fallback?: 'none' | 'builtin'
+  deepseek?: SearchServiceSettings
+  perplexity?: SearchServiceSettings
+  tavily?: SearchServiceSettings
   searxng_base_url?: string
   search_max_results?: number | null
   search_provider_timeout_seconds?: number | null
@@ -130,9 +177,17 @@ export interface WebAccessSettings {
   fetch_max_content_chars?: number | null
 }
 
+export interface WebSearchTestResult {
+  provider: string
+  status: 'success' | 'no_results'
+  elapsed_ms: number
+  results: { title: string; url: string; summary?: string; provider: string; published_at?: string }[] | null
+}
+
 export interface ModelProfileSettings {
   id?: string
   name?: string
+  enabled?: boolean
   endpoint_id?: string
   model?: string
   temperature?: number | null
@@ -155,6 +210,7 @@ export type AgentQuickPromptRegistry = Record<string, AgentQuickPromptSettings[]
 export interface ModelEndpointSettings {
   id?: string
   name?: string
+  enabled?: boolean
   provider?: string
   protocol?: string
   api_key?: string
@@ -650,6 +706,7 @@ export interface UpdateInstallResult {
 }
 
 export interface UpdateApplyResult {
+  id: string
   status: 'restarting' | string
   version: string
   log_path?: string
@@ -663,3 +720,42 @@ export interface UpdateInstallProgress {
   total_bytes?: number
   percent?: number
 }
+
+export interface UpdateStatus {
+  completed_update?: CompletedUpdate
+  check?: UpdateCheckResult
+  checked_at?: string
+  operation?: 'checking' | 'downloading' | 'uploading'
+  progress?: UpdateInstallProgress
+  operation_error?: string
+  restart_waiting?: boolean
+  busy?: boolean
+  current_version: string
+  id?: string
+  version?: string
+  phase: 'idle' | 'staged' | 'waiting' | 'backing_up' | 'applying' | 'starting' | 'rolling_back' | 'succeeded' | 'failed'
+  error?: string
+  log_path?: string
+}
+
+export interface CompletedUpdate {
+  id: string
+  previous_version: string
+  version: string
+  completed_at: string
+}
+
+export interface UpdateNotesRange {
+  fromVersion?: string
+  toVersion: string
+}
+
+export interface UpdateNotesResult {
+  from_version?: string
+  to_version: string
+  complete: boolean
+  releases: Array<{ version: string; published_at?: string; summary?: string; brief: string; body?: string }>
+}
+
+/** Display-only arrangement; does not change the saved scene or Agent choices. */
+export type StageCharacterLayout = 'center' | 'left' | 'right' | 'sides'

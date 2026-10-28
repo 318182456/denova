@@ -1,15 +1,15 @@
 package interactiveapp
 
 import (
-	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-
+	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
+
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
@@ -105,7 +105,7 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 	return err
 }
 
-func cloneDisplayToolPresentation(presentation *agent.ToolPresentation) *agent.ToolPresentation {
+func cloneDisplayToolPresentation(presentation *agenttool.ToolPresentation) *agenttool.ToolPresentation {
 	if presentation == nil {
 		return nil
 	}
@@ -264,7 +264,7 @@ func (c *Conversation) UpdateDisplayToolStatus(id, name, status string) error {
 	return nil
 }
 
-func (c *Conversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error {
+func (c *Conversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agenttool.ToolPresentation) error {
 	if c == nil {
 		return nil
 	}

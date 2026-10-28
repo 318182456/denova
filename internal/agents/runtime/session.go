@@ -12,7 +12,9 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentgoal "github.com/alfredxw/denova/agent/engine/goal"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // Session is the application control boundary for a bound product conversation.
@@ -96,9 +98,9 @@ func (bound *Session) Submit(ctx context.Context, command Command, emit func(age
 	return bound.native.SubmitCommand(ctx, request)
 }
 
-func (bound *Session) Goal(ctx context.Context) (agent.GoalState, bool, error) {
+func (bound *Session) Goal(ctx context.Context) (agentgoal.GoalState, bool, error) {
 	if !supportsGoal(bound.options.AgentKind) {
-		return agent.GoalState{}, false, conversationconfig.ErrRuntimeCapabilityUnsupported
+		return agentgoal.GoalState{}, false, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
 	if bound.control != nil {
 		return bound.control.store.Goal(ctx)
@@ -106,16 +108,16 @@ func (bound *Session) Goal(ctx context.Context) (agent.GoalState, bool, error) {
 	return bound.native.Goal(ctx, bound.options)
 }
 
-func (bound *Session) UpdateGoal(ctx context.Context, mutation agent.GoalMutation) (agent.GoalState, error) {
+func (bound *Session) UpdateGoal(ctx context.Context, mutation agentschema.GoalMutation) (agentgoal.GoalState, error) {
 	if !supportsGoal(bound.options.AgentKind) {
-		return agent.GoalState{}, conversationconfig.ErrRuntimeCapabilityUnsupported
+		return agentgoal.GoalState{}, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
 	// Goal mutations share the same configuration fence as turn admission.
 	// Holding an old Session handle must not mutate a newly selected runtime.
 	if bound.engines != nil && bound.journal != nil {
 		release, err := bound.engines.AdmitExecution(ctx, bound.journal, &bound.selection)
 		if err != nil {
-			return agent.GoalState{}, err
+			return agentgoal.GoalState{}, err
 		}
 		defer release()
 	}
@@ -127,19 +129,19 @@ func (bound *Session) UpdateGoal(ctx context.Context, mutation agent.GoalMutatio
 
 // GoalMutation is shared by every UI surface; revision checking is performed by
 // the selected state owner, never by a stale frontend projection.
-func GoalMutation(action, objective string, revision uint64) (agent.GoalMutation, error) {
-	mutation := agent.GoalMutation{ExpectedRevision: revision}
+func GoalMutation(action, objective string, revision uint64) (agentschema.GoalMutation, error) {
+	mutation := agentschema.GoalMutation{ExpectedRevision: revision}
 	switch action {
 	case "set":
-		mutation.Kind, mutation.Objective = agent.GoalSet, objective
+		mutation.Kind, mutation.Objective = agentschema.GoalSet, objective
 	case "pause":
-		mutation.Kind = agent.GoalPause
+		mutation.Kind = agentschema.GoalPause
 	case "resume":
-		mutation.Kind = agent.GoalResume
+		mutation.Kind = agentschema.GoalResume
 	case "clear":
-		mutation.Kind = agent.GoalClear
+		mutation.Kind = agentschema.GoalClear
 	default:
-		return agent.GoalMutation{}, fmt.Errorf("unsupported goal action %q", action)
+		return agentschema.GoalMutation{}, fmt.Errorf("unsupported goal action %q", action)
 	}
 	return mutation, nil
 }

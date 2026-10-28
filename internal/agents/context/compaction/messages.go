@@ -1,12 +1,13 @@
 package compaction
 
 import (
-	agent "github.com/alfredxw/denova/agent"
-	basecontext "github.com/alfredxw/denova/agent/context"
 	"strings"
+
+	basecontext "github.com/alfredxw/denova/agent/context"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
-func PreserveLeadingMessage(messages []*agent.Message, content string) []*agent.Message {
+func PreserveLeadingMessage(messages []*agentschema.Message, content string) []*agentschema.Message {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return messages
@@ -23,14 +24,14 @@ func PreserveLeadingMessage(messages []*agent.Message, content string) []*agent.
 			break
 		}
 		role := strings.TrimSpace(string(message.Role))
-		if role != string(agent.System) && role != "developer" {
+		if role != string(agentschema.System) && role != "developer" {
 			break
 		}
 		boundary++
 	}
-	leading := agent.UserMessage(content)
+	leading := agentschema.UserMessage(content)
 	leading.Extra = map[string]any{basecontext.MessageExtraPlacement: string(basecontext.PlacementLeadingMessage)}
-	result := make([]*agent.Message, 0, len(messages)+1)
+	result := make([]*agentschema.Message, 0, len(messages)+1)
 	result = append(result, messages[:boundary]...)
 	result = append(result, leading)
 	result = append(result, messages[boundary:]...)

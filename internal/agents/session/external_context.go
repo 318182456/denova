@@ -7,14 +7,15 @@ import (
 
 	"denova/internal/agents/conversationjournal"
 	externaljournal "denova/internal/agents/runtime/external/journal"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // ExternalContextRecord is a canonical content source, not a UI row. Native
 // continuation state and reasoning are deliberately excluded at this boundary.
 type ExternalContextRecord struct {
 	Cursor  conversationjournal.Cursor
-	Message *agent.Message
+	Message *agentschema.Message
 	Runtime *externaljournal.Record
 }
 
@@ -56,19 +57,19 @@ func (s *Session) scanExternalContextLocked(ctx context.Context, source External
 				return err
 			}
 			item := ExternalContextRecord{Cursor: source.Location.Cursor}
-			publicMessage := func(message agent.Message) error {
-				if message.Role != agent.User && message.Role != agent.Assistant && message.Role != agent.ToolRole {
+			publicMessage := func(message agentschema.Message) error {
+				if message.Role != agentschema.User && message.Role != agentschema.Assistant && message.Role != agentschema.ToolRole {
 					return nil
 				}
 				if message.Content == "" && len(message.Attachments) == 0 {
 					return nil
 				}
-				item.Message = &agent.Message{Role: message.Role, Content: message.Content, Attachments: message.Attachments, ToolName: message.ToolName}
+				item.Message = &agentschema.Message{Role: message.Role, Content: message.Content, Attachments: message.Attachments, ToolName: message.ToolName}
 				return visit(item)
 			}
 			switch typed.Type {
 			case "":
-				var message agent.Message
+				var message agentschema.Message
 				if err := json.Unmarshal(source.Payload, &message); err != nil {
 					return err
 				}
@@ -87,7 +88,7 @@ func (s *Session) scanExternalContextLocked(ctx context.Context, source External
 				message := record.Message
 				// Host-only lifecycle/control messages never migrate to a different
 				// engine. Canonical public prose, attachments and tool observations do.
-				if record.ContextOnly && message.Role != agent.ToolRole {
+				if record.ContextOnly && message.Role != agentschema.ToolRole {
 					continue
 				}
 				if err := publicMessage(message); err != nil {

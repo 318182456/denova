@@ -42,7 +42,7 @@ for (const product of ['writing', 'game'] as const) {
         await expect(page.getByText(/正在检查门后的脚印，接下来会继续核对/).last()).toBeVisible()
         await expect(page.getByRole('button', { name: '暂停任务', exact: true })).toHaveCount(0)
         await expect(page.getByRole('button', { name: '复制 Run ID', exact: true })).toHaveCount(previousRunActions)
-        const output = page.locator('[data-nova-chat-item="run"]').last()
+        const output = page.locator('[data-nova-chat-item="message"]').filter({ hasText: '正在检查门后的脚印，接下来会继续核对' }).last()
         await expect(output.getByRole('button', { name: '复制消息', exact: true })).toHaveCount(0)
         await page.screenshot({ path: test.info().outputPath('streaming.png') })
         const pauseRequest = page.waitForRequest(value => value.method() === 'POST' && value.postData()?.includes('"suspend"') === true)

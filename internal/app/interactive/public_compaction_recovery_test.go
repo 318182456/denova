@@ -17,8 +17,12 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/project"
 
-	agent "github.com/alfredxw/denova/agent"
-	agentpermission "github.com/alfredxw/denova/agent/permission"
+	"github.com/alfredxw/denova/agent"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	agentpermission "github.com/alfredxw/denova/agent/tool/permission"
 )
 
 func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
@@ -137,18 +141,18 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 				t.Fatalf("checkpoint was not restored from the Story journal: %+v, %v", status.Compaction, err)
 			}
 			compactedContinuation := newCycle("Continue with checkpoint")
-			tool, err := agent.InferTool("read_checkpoint_evidence", "Read historical evidence", func(context.Context, struct{}) (string, error) {
+			tool, err := agenttool.InferTool("read_checkpoint_evidence", "Read historical evidence", func(context.Context, struct{}) (string, error) {
 				return "The gate is open.", nil
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			toolset, err := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.test.checkpoint-evidence", Version: 1}, agent.ToolDefinition{
-				Tool: tool, Descriptor: agent.ToolDescriptor{
-					Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
-					MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
-					Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
-					ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 4 << 10,
+			toolset, err := agenttool.StaticToolsIdentified(agentschema.CapabilityIdentity{Kind: "tools.test.checkpoint-evidence", Version: 1}, agenttool.ToolDefinition{
+				Tool: tool, Descriptor: agenttool.ToolDescriptor{
+					Source: agenttool.ToolSourceRead, Execution: agenttool.ToolExecutionParallelRead,
+					MutationScope: agenttool.ToolMutationNone, PostCheck: agenttool.ToolPostCheckNone,
+					Recovery: agenttool.ToolRecoveryReadOnly, ResultProjection: agentschema.ToolResultBoundedModelContext,
+					ResultRetention: agentschema.ToolResultDeferred, Steering: agenttool.SteeringFinishCurrent, MaxResultBytes: 4 << 10,
 				},
 			})
 			if err != nil {
@@ -202,25 +206,25 @@ type checkpointToolModel struct {
 	called  bool
 }
 
-func (model *checkpointToolModel) Generate(_ context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (model *checkpointToolModel) Generate(_ context.Context, messages []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	response := model.history.response(messages)
-	response.ResponseMeta = &agent.ResponseMeta{FinishReason: "stop", Usage: &agent.TokenUsage{TotalTokens: 100}}
+	response.ResponseMeta = &agentschema.ResponseMeta{FinishReason: "stop", Usage: &agentschema.TokenUsage{TotalTokens: 100}}
 	response.ReasoningContent = "Inspect the gate before continuing."
 	if !model.called {
 		model.called = true
 		response.Content = "I will inspect the gate."
-		response.ToolCalls = []agent.ToolCall{{ID: "checkpoint-evidence", Type: "function", Function: agent.FunctionCall{Name: "read_checkpoint_evidence", Arguments: `{}`}}}
+		response.ToolCalls = []agentschema.ToolCall{{ID: "checkpoint-evidence", Type: "function", Function: agentschema.FunctionCall{Name: "read_checkpoint_evidence", Arguments: `{}`}}}
 		response.ResponseMeta.FinishReason = "tool_calls"
 	}
 	return response, nil
 }
 
-func (model *checkpointToolModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (model *checkpointToolModel) Stream(ctx context.Context, messages []*agentschema.Message, options ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	response, err := model.Generate(ctx, messages, options...)
 	if err != nil {
 		return nil, err
 	}
-	return agent.StreamReaderFromArray([]*agent.Message{response}), nil
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{response}), nil
 }
 
 func publicGameMaintenanceCycle(store *interactive.Store, workspace, storyID string, cfg *config.Config) agentexecution.Cycle {
@@ -229,7 +233,7 @@ func publicGameMaintenanceCycle(store *interactive.Store, workspace, storyID str
 	return agentexecution.Cycle{
 		Definition: agent.Definition{
 			Key: "denova.test.public-game-history", Name: "game", Model: &publicGameHistoryModel{narrative: "Unexpected model call."},
-			ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
 			Compaction:    publicGameCompactionManager{},
 		},
 		Conversation: NewConversation(store, "", workspace, storyID, "main", "", 800, cfg),

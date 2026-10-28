@@ -12,7 +12,8 @@ import (
 
 	"denova/internal/agents/attachment"
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
@@ -31,14 +32,14 @@ func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
 		if !strings.Contains(input.Text, "immutable input copies") || len(input.Attachments) != 1 || input.Attachments[0].RuntimePath != files[0].RuntimePath {
 			return Result{}, fmt.Errorf("attachment contract was not projected")
 		}
-		if got, err := agent.AttachmentDataURL(input.Attachments[0]); err != nil || got != dataURL {
+		if got, err := agentschema.AttachmentDataURL(input.Attachments[0]); err != nil || got != dataURL {
 			return Result{}, fmt.Errorf("user image bytes changed: %v", err)
 		}
 		result, err := host.CallTool(ctx, ToolCall{ID: "read-image", Name: "read", Arguments: json.RawMessage(`{"path":"result.png"}`)})
 		if err != nil || !result.Success || len(result.Images) != 1 {
 			return Result{}, fmt.Errorf("domain image read lost its image: %#v, %v", result, err)
 		}
-		if got, err := agent.AttachmentDataURL(result.Images[0]); err != nil || got != dataURL {
+		if got, err := agentschema.AttachmentDataURL(result.Images[0]); err != nil || got != dataURL {
 			return Result{}, fmt.Errorf("tool image bytes changed: %v", err)
 		}
 		return Result{Text: "I inspected both images."}, nil
@@ -62,7 +63,7 @@ func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
 	for _, message := range messages {
 		userImages += len(message.Attachments)
 		toolImages += len(message.ToolImages)
-		for _, file := range append(append([]agent.Attachment(nil), message.Attachments...), message.ToolImages...) {
+		for _, file := range append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...) {
 			if file.RuntimePath != "" || filepath.IsAbs(file.Path) {
 				t.Fatalf("durable attachment was not portable: %+v", file)
 			}
@@ -76,8 +77,8 @@ func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, message := range projected.History {
-		for _, file := range append(append([]agent.Attachment(nil), message.Attachments...), message.ToolImages...) {
-			if _, err := agent.AttachmentDataURL(file); err != nil {
+		for _, file := range append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...) {
+			if _, err := agentschema.AttachmentDataURL(file); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -88,7 +89,7 @@ func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
 	if err := os.WriteFile(files[0].RuntimePath, []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := agent.AttachmentDataURL(projected.History[0].Attachments[0]); err == nil {
+	if _, err := agentschema.AttachmentDataURL(projected.History[0].Attachments[0]); err == nil {
 		t.Fatal("changed immutable input was accepted")
 	}
 }

@@ -3,7 +3,7 @@ package agentrun
 import (
 	"encoding/json"
 
-	publictools "github.com/alfredxw/denova/agent/tools"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 // RunTraceReference is a diagnostic edge between independently owned Runs.

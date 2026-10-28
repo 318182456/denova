@@ -4,11 +4,14 @@ import { APIError } from '@/lib/api-client'
 import { useConversationConfig } from './use-conversation-config'
 import type { ConversationConfigSnapshot } from './types'
 
-const api = vi.hoisted(() => ({ fetchConversationConfig: vi.fn(), patchConversationConfig: vi.fn() }))
+const api = vi.hoisted(() => ({ fetchConversationConfig: vi.fn(), patchConversationConfig: vi.fn(), settingsListeners: new Set<() => void>() }))
 vi.mock('./api', () => api)
 vi.mock('@/features/settings/query', () => ({
   GLOBAL_SETTINGS_TARGET: 'global', settingsQueryKeys: { all: ['settings'] },
-  subscribeSettingsTarget: () => () => {},
+  subscribeSettingsTarget: (_target: unknown, listener: () => void) => {
+    api.settingsListeners.add(listener)
+    return () => { api.settingsListeners.delete(listener) }
+  },
 }))
 
 const native: ConversationConfigSnapshot = {
@@ -22,6 +25,22 @@ describe('conversation runtime application', () => {
   beforeEach(() => {
     api.fetchConversationConfig.mockReset().mockResolvedValue(native)
     api.patchConversationConfig.mockReset().mockResolvedValue(external)
+  })
+
+  it('recovers a failed configuration when settings are repaired without overwriting saved selections', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    api.fetchConversationConfig.mockRejectedValueOnce(new Error('Saved configuration is unavailable'))
+    try {
+      const view = renderHook(() => useConversationConfig({ mode: 'interactive', project_id: 'book', story_id: 'story' }))
+      await waitFor(() => expect(view.result.current.error).toContain('unavailable'))
+      await act(async () => { for (const listener of api.settingsListeners) listener() })
+      await waitFor(() => expect(view.result.current.snapshot).toEqual(native))
+      expect(view.result.current.error).toBeNull()
+      api.fetchConversationConfig.mockClear()
+      await act(async () => { for (const listener of api.settingsListeners) listener() })
+      expect(api.fetchConversationConfig).not.toHaveBeenCalled()
+      expect(api.patchConversationConfig).not.toHaveBeenCalled()
+    } finally { warning.mockRestore() }
   })
 
   it('refreshes the same Writing session when Agents applies its runtime through AgentChat', async () => {

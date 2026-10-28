@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"denova/config"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 const RecordType = "external_runtime"
@@ -90,18 +91,18 @@ type FinishedTool struct {
 // ToolReceipt preserves domain effects and portable artifacts independently
 // of model text. Execution, recovery and history share this journal contract.
 type ToolReceipt struct {
-	Details     json.RawMessage         `json:"details,omitempty"`
-	Effects     []agent.Effect          `json:"effects,omitempty"`
-	Artifacts   []agent.ToolArtifactRef `json:"artifacts,omitempty"`
-	Attachments []agent.Attachment      `json:"attachments,omitempty"`
+	Details     json.RawMessage               `json:"details,omitempty"`
+	Effects     []agentschema.Effect          `json:"effects,omitempty"`
+	Artifacts   []agentschema.ToolArtifactRef `json:"artifacts,omitempty"`
+	Attachments []agentschema.Attachment      `json:"attachments,omitempty"`
 }
 
 type Closed struct {
-	Status    Status            `json:"status"`
-	MessageID string            `json:"message_id,omitempty"`
-	ErrorCode string            `json:"error_code,omitempty"`
-	AgentKind string            `json:"agent_kind,omitempty"`
-	Usage     *agent.TokenUsage `json:"usage,omitempty"`
+	Status    Status                  `json:"status"`
+	MessageID string                  `json:"message_id,omitempty"`
+	ErrorCode string                  `json:"error_code,omitempty"`
+	AgentKind string                  `json:"agent_kind,omitempty"`
+	Usage     *agentschema.TokenUsage `json:"usage,omitempty"`
 }
 
 // Checkpoint summarizes an exact canonical source interval. The source hash

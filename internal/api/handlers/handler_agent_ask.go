@@ -6,12 +6,13 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
-
 	"denova/internal/agents/runtime/external"
 	appsvc "denova/internal/app"
-	agent "github.com/alfredxw/denova/agent"
+
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
 type askAnswerRequest struct {
@@ -96,11 +97,11 @@ func writeAskResolutionError(ctx context.Context, c *app.RequestContext, err err
 	slog.ErrorContext(ctx, "agent_interaction_resolution_failed", "interaction_id", c.Param("ask_id"), "error", err)
 	status, code, key := consts.StatusInternalServerError, "agent_runtime.ask_failed", "api.ask.failed"
 	switch {
-	case errors.Is(err, agent.ErrDefinitionMismatch):
+	case errors.Is(err, agentschema.ErrDefinitionMismatch):
 		status, code, key = consts.StatusConflict, "agent_runtime.definition_mismatch", "api.ask.definitionMismatch"
-	case errors.Is(err, agent.ErrInteractionStale):
+	case errors.Is(err, agentschema.ErrInteractionStale):
 		status, code, key = consts.StatusConflict, "agent_runtime.ask_stale", "api.ask.stale"
-	case errors.Is(err, agent.ErrInvalidInteractionResponse):
+	case errors.Is(err, agentschema.ErrInvalidInteractionResponse):
 		status, code, key = consts.StatusBadRequest, "agent_runtime.invalid_ask_answer", "api.ask.invalidAnswer"
 	case errors.Is(err, external.ErrAskConflict), errors.Is(err, agent.ErrIdempotencyConflict):
 		status, code, key = consts.StatusConflict, "agent_runtime.ask_conflict", "api.ask.conflict"

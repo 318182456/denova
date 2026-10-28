@@ -1,13 +1,14 @@
 package chat
 
 import (
-	"denova/internal/agents/run"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentrun "denova/internal/agents/run"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type runTokenUsage struct {
@@ -55,7 +56,7 @@ func newRunTokenUsageCollector(runID, agentKind string) *runTokenUsageCollector 
 	}
 }
 
-func (c *runTokenUsageCollector) AddMessage(msg *agent.Message) {
+func (c *runTokenUsageCollector) AddMessage(msg *agentschema.Message) {
 	if c == nil || msg == nil {
 		return
 	}
@@ -139,7 +140,7 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(agentrun.Event), generatedB
 	emit(agentrun.Event{Type: "token_usage", Data: data})
 }
 
-func toolNamesFromCalls(calls []agent.ToolCall) []string {
+func toolNamesFromCalls(calls []agentschema.ToolCall) []string {
 	if len(calls) == 0 {
 		return nil
 	}

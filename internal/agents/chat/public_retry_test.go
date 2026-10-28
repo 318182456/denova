@@ -7,7 +7,10 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestModelRetryRetractsOnlyUnacceptedResponse(t *testing.T) {
@@ -26,18 +29,20 @@ func TestModelRetryRetractsOnlyUnacceptedResponse(t *testing.T) {
 			retry = event
 		}
 	})
-	emit := func(payload agent.EventPayload) { projector.Project(agent.Event{RunID: "run", Payload: payload}) }
-	emit(agent.AssistantDelta{Delta: "Accepted progress. ", ResponseOrdinal: 1})
-	emit(agent.ModelCompleted{})
-	emit(agent.ToolStarted{CallID: "confirmed", Name: "read"})
-	emit(agent.ToolFinished{CallID: "confirmed", Name: "read", Result: "recorded"})
-	emit(agent.ThinkingDelta{Delta: "Broken reasoning", ResponseOrdinal: 2})
-	emit(agent.AssistantDelta{Delta: "Broken partial", ResponseOrdinal: 2})
-	emit(agent.ToolInputStarted{CallID: "unaccepted", Name: "write"})
-	emit(agent.ModelRetry{Attempt: 1, MaxAttempts: 3, Delay: time.Second, ResponseOrdinal: 2, OutputState: agent.ModelOutputPartial, Reason: "network"})
-	emit(agent.AssistantDelta{Delta: "Recovered.", ResponseOrdinal: 3})
-	emit(agent.ModelCompleted{})
-	projector.Finalize(agent.ResultCompleted, "")
+	emit := func(payload agentevent.EventPayload) {
+		projector.Project(agentevent.Event{RunID: "run", Payload: payload})
+	}
+	emit(agentevent.AssistantDelta{Delta: "Accepted progress. ", ResponseOrdinal: 1})
+	emit(agentevent.ModelCompleted{})
+	emit(agentevent.ToolStarted{CallID: "confirmed", Name: "read"})
+	emit(agentevent.ToolFinished{CallID: "confirmed", Name: "read", Result: "recorded"})
+	emit(agentevent.ThinkingDelta{Delta: "Broken reasoning", ResponseOrdinal: 2})
+	emit(agentevent.AssistantDelta{Delta: "Broken partial", ResponseOrdinal: 2})
+	emit(agentevent.ToolInputStarted{CallID: "unaccepted", Name: "write"})
+	emit(agentevent.ModelRetry{Attempt: 1, MaxAttempts: 3, Delay: time.Second, ResponseOrdinal: 2, OutputState: agentmodel.ModelOutputPartial, Reason: "network"})
+	emit(agentevent.AssistantDelta{Delta: "Recovered.", ResponseOrdinal: 3})
+	emit(agentevent.ModelCompleted{})
+	projector.Finalize(agentschema.ResultCompleted, "")
 	content, thinking := projector.Output()
 	if content != "Accepted progress. Recovered." || thinking != "" {
 		t.Fatalf("output = %q / %q", content, thinking)

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
@@ -42,7 +42,7 @@ func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
 }
 
 func TestDenovaSessionSelectorsMatchOnlyTheirOwnedLanes(t *testing.T) {
-	key := func(binding RuntimeBinding) agent.SessionKey {
+	key := func(binding RuntimeBinding) agentsession.Key {
 		t.Helper()
 		result, err := binding.AgentSessionKey()
 		if err != nil {
@@ -89,7 +89,7 @@ func TestSessionBindingSelectorRequiresProjectOwner(t *testing.T) {
 	}
 }
 
-func matchesAnySelector(selectors []agent.SessionSelector, key agent.SessionKey) bool {
+func matchesAnySelector(selectors []agentsession.Selector, key agentsession.Key) bool {
 	for _, selector := range selectors {
 		if selector.Matches(key) {
 			return true

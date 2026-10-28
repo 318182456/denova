@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // AppendDisplayEvent 追加仅用于前端展示的事件，不进入 Agent 有效上下文。
@@ -310,7 +310,7 @@ func truncateUTF8ByBytes(value string, maxBytes int) string {
 }
 
 // UpdateDisplayToolResult stores the result preview for a persisted tool card.
-func (s *Session) UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error {
+func (s *Session) UpdateDisplayToolResult(id, name, status, result string, presentation *agenttool.ToolPresentation) error {
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
 	return s.withCanonicalMutation(context.Background(), "update display tool result", func() error {

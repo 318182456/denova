@@ -7,13 +7,60 @@ import (
 	"testing"
 
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
+
+func TestHostPresentationSelectionReducesSubmissionSchema(t *testing.T) {
+	for _, hostSelected := range []bool{false, true} {
+		tool, err := newSubmitInteractiveTurnTool("test", func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
+			return interactive.TurnSubmissionReceipt{}, nil
+		}, nil, hostSelected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := tool.Info(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		schema, err := info.ParamsOneOf.ToJSONSchema()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, exists := schema.Properties.Get("presentation"); exists == hostSelected {
+			t.Fatalf("presentation schema does not match selection owner: host=%t", hostSelected)
+		}
+	}
+}
+
+func TestPresentationErrorsReachTheNonblockingProductReducer(t *testing.T) {
+	var received interactive.TurnSubmissionInput
+	tool, err := newSubmitInteractiveTurnTool("test", func(_ context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
+		received = input
+		return interactive.TurnSubmissionReceipt{Ready: true}, nil
+	}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _ := tool.Info(t.Context())
+	for _, presentation := range []string{`"invalid"`, `{"background":null,"characters":[{"item_id":"hero","asset_id":null}]}`, `{"background":42,"characters":[false,{"item_id":"hero"}]}`} {
+		normalized, err := agenttool.NormalizeToolArguments(info, `{"state_changes":[],"choices":["Continue"],"presentation":`+presentation+`}`)
+		if err != nil {
+			t.Fatalf("presentation must not fail runtime validation: %v", err)
+		}
+		if _, err := tool.Run(t.Context(), normalized); err != nil {
+			t.Fatal(err)
+		}
+		if len(received.Diagnostics) != 0 || len(received.Presentation) == 0 {
+			t.Fatalf("presentation blocked core modules: %#v", received)
+		}
+	}
+}
 
 func TestSubmitInteractiveTurnExposesStateAndPlanFieldsDirectly(t *testing.T) {
 	tool, err := newSubmitInteractiveTurnTool("test", func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 		return interactive.TurnSubmissionReceipt{}, nil
-	}, nil)
+	}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +121,7 @@ func TestSubmitInteractiveTurnKeepsConditionalValidationAndNativeValues(t *testi
 	tool, err := newSubmitInteractiveTurnTool("test", func(_ context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 		received = input
 		return interactive.TurnSubmissionReceipt{}, nil
-	}, nil)
+	}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +131,7 @@ func TestSubmitInteractiveTurnKeepsConditionalValidationAndNativeValues(t *testi
 	}
 	invoke := func(arguments string) {
 		t.Helper()
-		normalized, err := agent.NormalizeToolArguments(info, arguments)
+		normalized, err := agenttool.NormalizeToolArguments(info, arguments)
 		if err != nil {
 			t.Fatal(err)
 		}

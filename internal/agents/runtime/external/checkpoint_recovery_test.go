@@ -11,13 +11,14 @@ import (
 	"denova/internal/agents/attachment"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestWritingImageCheckpointSurvivesMovedStoreAndColdReopen(t *testing.T) {
 	service, request, _ := operationFixture(t)
 	file := checkpointImage(t, png.NoCompression)
-	url, err := agent.AttachmentDataURL(file)
+	url, err := agentschema.AttachmentDataURL(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,10 +27,10 @@ func TestWritingImageCheckpointSurvivesMovedStoreAndColdReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	large := strings.Repeat("Preserve the original layout. ", 5000)
-	if err := request.Session.Append(agent.UserMessageWithAttachments(large, files)); err != nil {
+	if err := request.Session.Append(agentschema.UserMessageWithAttachments(large, files)); err != nil {
 		t.Fatal(err)
 	}
-	if err := request.Session.Append(agent.UserMessageWithAttachments("Recent reference", files)); err != nil {
+	if err := request.Session.Append(agentschema.UserMessageWithAttachments("Recent reference", files)); err != nil {
 		t.Fatal(err)
 	}
 	maintenance, images, turns := 0, 0, 0
@@ -38,7 +39,7 @@ func TestWritingImageCheckpointSurvivesMovedStoreAndColdReopen(t *testing.T) {
 			maintenance++
 			for _, message := range input.History {
 				for _, file := range message.Attachments {
-					got, err := agent.AttachmentDataURL(file)
+					got, err := agentschema.AttachmentDataURL(file)
 					if err != nil || got != url {
 						t.Fatalf("summary lost original pixels: %v", err)
 					}
@@ -52,7 +53,7 @@ func TestWritingImageCheckpointSurvivesMovedStoreAndColdReopen(t *testing.T) {
 		for _, message := range input.History {
 			retained += len(message.Attachments)
 			for _, file := range message.Attachments {
-				if got, err := agent.AttachmentDataURL(file); err != nil || got != url {
+				if got, err := agentschema.AttachmentDataURL(file); err != nil || got != url {
 					t.Fatalf("recent image was not restored: %v", err)
 				}
 			}
@@ -133,7 +134,7 @@ func TestAlignedRuntimeResumeDoesNotReinspectHistoricalImages(t *testing.T) {
 		Prepare: func(ctx context.Context, input Input, adapter Adapter) (Input, error) {
 			return (HistoryPreparation{Input: input, Adapter: adapter, LoadHistory: func(context.Context) ([]Message, error) {
 				loads++
-				return []Message{{Role: "user", Attachments: []agent.Attachment{file}, Cursor: 1}}, nil
+				return []Message{{Role: "user", Attachments: []agentschema.Attachment{file}, Cursor: 1}}, nil
 			}}).Prepare(ctx)
 		}}
 	first, err := runtime.Run(t.Context(), request, maintenanceHost{})
@@ -160,7 +161,7 @@ func TestAlignedRuntimeResumeDoesNotReinspectHistoricalImages(t *testing.T) {
 func TestManualCompactionResolvesHistoryImagesBeforeSummary(t *testing.T) {
 	_, request, _ := operationFixture(t)
 	file := checkpointImage(t, png.NoCompression)
-	url, err := agent.AttachmentDataURL(file)
+	url, err := agentschema.AttachmentDataURL(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +180,7 @@ func TestManualCompactionResolvesHistoryImagesBeforeSummary(t *testing.T) {
 		if input.Mode == OperationSummarize {
 			for _, message := range input.History {
 				for _, file := range message.Attachments {
-					if got, err := agent.AttachmentDataURL(file); err != nil || got != url {
+					if got, err := agentschema.AttachmentDataURL(file); err != nil || got != url {
 						t.Fatalf("manual summary lost pixels: %v", err)
 					}
 					images++

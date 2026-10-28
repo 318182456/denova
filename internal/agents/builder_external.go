@@ -13,8 +13,10 @@ import (
 	"denova/internal/agents/toolruntime"
 	producttools "denova/internal/agents/tools"
 	"denova/internal/book"
-	agent "github.com/alfredxw/denova/agent"
-	publictools "github.com/alfredxw/denova/agent/tools"
+
+	agentcontext "github.com/alfredxw/denova/agent/context"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 // ExternalAssembly contains reusable product capabilities only. The caller
@@ -22,9 +24,24 @@ import (
 // and durable tool dispatch. No Native Definition or model is constructed.
 type ExternalAssembly struct {
 	Composition  prompts.SystemPromptComposition
-	Tools        []agent.ToolDefinition
-	Context      agent.ContextSource
+	Tools        []agenttool.ToolDefinition
+	Context      agentcontext.ContextSource
 	ToolSettings config.ResolvedAgentToolSettings
+	pluginTools  agenttool.Toolset
+}
+
+// PrepareTools binds plugin process lifetimes to the execution context, rather
+// than the short-lived HTTP context used to assemble admission capabilities.
+func (assembly ExternalAssembly) PrepareTools(ctx context.Context) ([]agenttool.ToolDefinition, error) {
+	definitions := append([]agenttool.ToolDefinition(nil), assembly.Tools...)
+	if assembly.pluginTools != nil {
+		plugins, err := assembly.pluginTools.PrepareTools(ctx, agenttool.ToolRequest{})
+		if err != nil {
+			return nil, fmt.Errorf("prepare external plugin tools: %w", err)
+		}
+		definitions = append(definitions, plugins...)
+	}
+	return definitions, producttools.Validate(ctx, definitions)
 }
 
 func BuildExternalConversationAssembly(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, kind string, host AgentHostCapabilities) (ExternalAssembly, error) {
@@ -78,9 +95,9 @@ func buildExternalAssembly(ctx context.Context, cfg *config.Config, state *book.
 	}
 	// Root tools are application-owned capabilities. Ask reuses its schema only;
 	// the external Host resolves it from the product journal instead of Run state.
-	var asks []agent.ToolDefinition
+	var asks []agenttool.ToolDefinition
 	if kind != config.AgentKindInteractiveStory {
-		asks, err = publictools.Ask().PrepareTools(ctx, agent.ToolRequest{})
+		asks, err = publictools.Ask().PrepareTools(ctx, agenttool.ToolRequest{})
 		if err != nil {
 			return ExternalAssembly{}, err
 		}
@@ -97,17 +114,19 @@ func buildExternalAssembly(ctx context.Context, cfg *config.Config, state *book.
 	if err != nil {
 		return ExternalAssembly{}, err
 	}
-	source, err := agent.CombineContextSources(project, agentprofile.ContextSource(cfg, kind))
+	source, err := agentcontext.CombineContextSources(project, agentprofile.ContextSource(cfg, kind))
 	if err != nil {
 		return ExternalAssembly{}, fmt.Errorf("compose external product context: %w", err)
 	}
-	return ExternalAssembly{Composition: assembly.SystemPrompt, Tools: definitions, Context: source, ToolSettings: settings}, nil
+	return ExternalAssembly{Composition: assembly.SystemPrompt, Tools: definitions, Context: source, ToolSettings: settings, pluginTools: host.PluginTools}, nil
 }
 
 // ExternalConversationToolSettings is shared by execution and the read-only
 // Agents manifest. Native permissions and session-dependent tools stay dormant.
 func ExternalConversationToolSettings(kind string) config.ResolvedAgentToolSettings {
 	settings := config.ResolveAgentTools(&config.Config{AgentTools: config.DefaultAgentToolSettings()}, kind)
+	// External engines own their plan tools independently of the Native Todo default.
+	settings[config.AgentToolTodo] = true
 	for _, capability := range []string{config.AgentToolDelegation, config.AgentToolScript} {
 		settings[capability] = false
 	}

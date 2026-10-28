@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/config"
 	agentdelegation "denova/internal/agents/delegation"
 	agentexecution "denova/internal/agents/execution"
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
+
+	"github.com/alfredxw/denova/agent"
 )
 
 func (a *App) prepareChildDefinition(

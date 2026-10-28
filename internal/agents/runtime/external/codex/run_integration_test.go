@@ -24,8 +24,10 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/pelletier/go-toml/v2"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // This opt-in fixture exercises the installed executable, without account
@@ -319,7 +321,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			} else if !strings.Contains(string(requests[len(requests)-1]), "Restrained") {
 				t.Fatal("saved host answer was not returned to the model")
 			}
-			if scenario == "plan" && (len(host.plan) != 1 || host.plan[0].Text != "Confirm tone" || host.plan[0].Status != agent.TodoInProgress) {
+			if scenario == "plan" && (len(host.plan) != 1 || host.plan[0].Text != "Confirm tone" || host.plan[0].Status != agentevent.TodoInProgress) {
 				t.Fatalf("native plan=%+v", host.plan)
 			}
 		})
@@ -330,8 +332,8 @@ type integrationHost struct {
 	started chan struct{}
 	answer  chan struct{}
 	text    strings.Builder
-	images  []agent.Attachment
-	plan    []agent.TodoItem
+	images  []agentschema.Attachment
+	plan    []agentevent.TodoItem
 }
 
 func (host *integrationHost) PrepareSteer(_ context.Context, guidance external.Guidance) (external.PreparedSteer, error) {

@@ -7,7 +7,8 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // MaintenanceObserver records only actual provider compaction observations.
@@ -54,7 +55,7 @@ func CompactionDisplay(event agentrun.Event) (session.DisplayEvent, bool) {
 }
 
 // UsageDisplay carries aggregate provider totals without inventing a call count.
-func UsageDisplay(usage *agent.TokenUsage) session.DisplayEvent {
+func UsageDisplay(usage *agentschema.TokenUsage) session.DisplayEvent {
 	return session.DisplayEvent{Role: "token_usage", PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens,
 		CachedPromptTokens: usage.PromptTokenDetails.CachedTokens, ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens, TotalTokens: usage.TotalTokens, CreatedAt: time.Now().UTC()}
 }

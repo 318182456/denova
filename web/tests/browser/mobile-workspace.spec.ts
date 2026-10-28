@@ -57,7 +57,7 @@ for (const width of [320, 1023]) {
     await expect(files.getByRole('button', { name: '关闭', exact: true })).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(files).toBeHidden()
-    for (const destination of ['资料库', '方案预设', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '设置']) {
+    for (const destination of ['资料库', '创作方案', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '设置']) {
       await page.getByRole('button', { name: '导航菜单', exact: true }).click()
       const navigation = page.getByRole('dialog', { name: '导航菜单', exact: true })
       await expect(navigation.getByRole('button', { name: destination, exact: true })).toBeVisible()
@@ -142,15 +142,26 @@ for (const theme of ['dark', 'light']) {
         const bounds = await page.locator(selector).boundingBox()
         expect(bounds!.height, `${selector} must leave room for the conversation`).toBeLessThanOrEqual(49)
       }
-      for (const label of ['导航菜单', '选择故事线', '显示游戏控制台']) {
+      for (const label of ['导航菜单', '选择故事线', '显示控制台']) {
         const bounds = await page.getByRole('button', { name: label, exact: true }).boundingBox()
         expect(bounds!.height).toBeGreaterThanOrEqual(44)
         expect(bounds!.width).toBeGreaterThanOrEqual(44)
       }
       await expectInsideViewport(page)
+      // Fill the available composer row at each viewport, including any space
+      // reserved for a classic scrollbar, while retaining the input's padding.
+      await expect.poll(() => composer.evaluate(element => {
+        const input = element.closest<HTMLElement>('.nova-agent-composer-textarea')!
+        const body = element.closest<HTMLElement>('[data-slot="agent-composer-input"]')!
+        const row = element.closest<HTMLElement>('[data-slot="agent-composer-layout"]')!
+        const padding = [input, body].reduce((total, container) => {
+          const style = getComputedStyle(container)
+          return total + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+        }, 0)
+        const availableWidth = row.clientWidth - padding
+        return Math.abs(element.getBoundingClientRect().width - availableWidth)
+      })).toBeLessThan(2)
     }
-    const inputBounds = await composer.boundingBox()
-    expect(inputBounds!.width).toBeGreaterThan(300)
     await composer.fill('推开石门')
     await composer.press('Enter')
     await composer.pressSequentially('观察灯光')
@@ -177,8 +188,8 @@ for (const theme of ['dark', 'light']) {
     await dialog.getByLabel('剧情线名称').fill('手机支线')
     await dialog.getByRole('button', { name: '创建并切换', exact: true }).click()
     await expect.poll(async () => getStoryBranches(request, story.id)).toContainEqual(expect.objectContaining({ title: '手机支线', current: true }))
-    await page.getByRole('button', { name: '显示游戏控制台', exact: true }).click()
-    const consoleSheet = page.getByRole('dialog', { name: '故事控制台', exact: true })
+    await page.getByRole('button', { name: '显示控制台', exact: true }).click()
+    const consoleSheet = page.getByRole('dialog', { name: '控制台', exact: true })
     await expect(consoleSheet).toBeVisible()
     await expect(consoleSheet).toHaveAttribute('data-side', 'right')
     await expect(consoleSheet.getByRole('button', { name: '关闭', exact: true })).toBeFocused()
@@ -191,7 +202,7 @@ for (const theme of ['dark', 'light']) {
     await expect(page.getByText('当前节点', { exact: true })).toHaveCount(1)
     await capture(page, `branches-${theme}-390`)
     await page.getByRole('button', { name: '返回剧情', exact: true }).click()
-    await page.getByRole('button', { name: '显示游戏控制台', exact: true }).click()
+    await page.getByRole('button', { name: '显示控制台', exact: true }).click()
     await page.keyboard.press('Escape')
     await expect(consoleSheet).toBeHidden()
     await page.setViewportSize({ width: 1440, height: 1000 })
@@ -246,7 +257,7 @@ test('mobile writing starts from an idea or opens a file directly', async ({ pag
   await page.setViewportSize({ width: 320, height: 568 })
   let releaseSessions!: () => void
   const sessionsReady = new Promise<void>((resolve) => { releaseSessions = resolve })
-  await page.route('**/api/agent-chat/projects', async (route) => { await sessionsReady; await route.continue() })
+  await page.route(/\/api\/agent-chat\/projects(?:\?|$)/, async (route) => { await sessionsReady; await route.continue() })
   await page.goto('/')
   const start = page.getByRole('button', { name: '一起构思', exact: true })
   await expect(start).toBeInViewport()
@@ -341,7 +352,7 @@ test('mobile edge gestures open the navigation and console without taking vertic
   await expect(navigation).toBeHidden()
   await page.getByPlaceholder(/你要做什么/).fill('剧情输入草稿')
   await swipe(page, [378, 220], [270, 225])
-  const consoleSheet = page.getByRole('dialog', { name: '故事控制台', exact: true })
+  const consoleSheet = page.getByRole('dialog', { name: '控制台', exact: true })
   await expect(consoleSheet).toBeVisible()
   await expect(consoleSheet).toHaveAttribute('data-side', 'right')
   await swipe(page, [170, 24], [290, 24])
@@ -385,13 +396,13 @@ test('cached destinations contribute only the active title bar and preserve the 
     await categories.press('Enter')
     const drawer = page.getByRole('dialog', { name: '设置分类', exact: true })
     await expect(drawer).toHaveAttribute('data-side', 'right')
-    await drawer.getByRole('button', { name: '路径', exact: true }).click()
+    await drawer.getByRole('button', { name: '数据目录', exact: true }).click()
     await expect(drawer).toBeHidden()
-    await expect(content.getByRole('button', { name: /公共配置\s*路径/ })).toBeInViewport()
+    await expect(content.getByRole('heading', { name: '数据目录', exact: true })).toBeInViewport()
     await expect(categories).toBeFocused()
     await expect(categories).toHaveAttribute('aria-expanded', 'false')
     await categories.click()
-    await expect(drawer.getByRole('button', { name: '路径', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(drawer.getByRole('button', { name: '数据目录', exact: true })).toHaveAttribute('aria-current', 'page')
     await drawer.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(drawer).toBeHidden()
   }
@@ -410,7 +421,7 @@ test('cached destinations contribute only the active title bar and preserve the 
   await expect(commands).toBeHidden()
 })
 
-for (const destination of ['Skills', 'Agents', '资料库', '方案预设', '自动化']) {
+for (const destination of ['Skills', 'Agents', '资料库', '创作方案', '自动化']) {
   test(`mobile ${destination} retains its Agent draft across full-page views and primary navigation`, async ({ page, request }) => {
     await createMobileBook(request, `Resource ${destination}`)
     await page.setViewportSize({ width: 390, height: 844 })
@@ -491,12 +502,12 @@ test('mobile workbench keeps primary and secondary conversations in retained ful
   await directory.locator('[data-slot="agent-chat-conversation-row"]').filter({ hasText: session.title }).click()
   await expect(directory).toBeHidden()
   const main = page.locator('[data-agent-chat-group="primary"]')
-  const mainInput = main.getByPlaceholder(/输入消息/)
+  const mainInput = main.getByPlaceholder(/输入消息/).filter({ visible: true })
   await mainInput.fill('主会话草稿')
   await page.getByRole('button', { name: '显示右侧工作区', exact: true }).click()
   await page.getByRole('menuitem', { name: '新建对话', exact: true }).click()
   const secondary = page.locator('[data-agent-chat-group="secondary"]')
-  const secondaryInput = secondary.getByPlaceholder(/输入消息/)
+  const secondaryInput = secondary.getByPlaceholder(/输入消息/).filter({ visible: true })
   await expect(secondaryInput).toBeVisible()
   await expect(mainInput).toBeHidden()
   await expect(page.getByRole('dialog')).toHaveCount(0)

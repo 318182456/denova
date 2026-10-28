@@ -6,7 +6,8 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func externalInputFingerprint(input ExternalCycleInput) string {
@@ -19,7 +20,7 @@ func externalInputFingerprint(input ExternalCycleInput) string {
 type durableExternalRequest struct {
 	Caller      agentchat.CallerInput    `json:"caller"`
 	Visibility  agentrun.InputVisibility `json:"visibility,omitempty"`
-	Attachments []agent.Attachment       `json:"attachments,omitempty"`
+	Attachments []agentschema.Attachment `json:"attachments,omitempty"`
 }
 type durableExternalInput struct {
 	Request              durableExternalRequest   `json:"request"`

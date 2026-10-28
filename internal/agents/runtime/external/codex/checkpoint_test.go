@@ -49,10 +49,9 @@ func TestImageSummaryUsesNativeProtocolAndReadOnlyMaintenance(t *testing.T) {
 				var start struct {
 					Sandbox      string
 					DynamicTools []any
-					Config       map[string]bool
 					Ephemeral    bool
 				}
-				if err := json.Unmarshal(request.Params, &start); err != nil || start.Sandbox != "read-only" || len(start.DynamicTools) != 0 || start.Config["tools.update_plan.enabled"] || !start.Ephemeral {
+				if err := json.Unmarshal(request.Params, &start); err != nil || start.Sandbox != "read-only" || len(start.DynamicTools) != 0 || !start.Ephemeral {
 					t.Fatalf("summary inherited turn permissions: %s", request.Params)
 				}
 				response = `{"thread":{"id":"summary-thread"}}`

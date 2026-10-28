@@ -128,19 +128,24 @@ test('Writing Goal continues via a read-only Codex fork; Game rejects Goal', asy
   const evaluations = calls.filter(call => JSON.stringify(call.input?.at(-1)).includes('[Goal evaluation request]'))
   expect(evaluations).toHaveLength(2)
   for (const call of evaluations) {
-    // Fork retains host schemas, but execution is denied by the adapter's
-    // empty allowlist. Built-in writes are separately tested under read-only sandbox.
-    expect(call.tools?.some(tool => tool.name === 'update_plan')).toBe(false)
     expect(call.prompt_cache_key).not.toBe(calls[0]?.prompt_cache_key)
   }
+  // Built-in plans can exist inside a fork; they must not reach the primary
+  // context, canonical messages, or restored UI. File writes are tested separately.
+  expect(calls.some(call => JSON.stringify(call.input).includes('E2E_EVALUATION_ONLY_PLAN'))).toBe(true)
   const continued = calls.find(call => !JSON.stringify(call.input?.at(-1)).includes('[Goal evaluation request]') && JSON.stringify(call.input?.at(-1)).includes('FINISH_GOAL'))
   expect(continued?.prompt_cache_key).toBe(calls[0]?.prompt_cache_key)
   expect(JSON.stringify(continued?.input)).not.toContain('[Goal evaluation request]')
+  expect(JSON.stringify(continued?.input)).not.toContain('E2E_EVALUATION_ONLY_PLAN')
   await page.reload()
   await openWritingAgent(page)
   await expect(page.getByText(`${marker} final proof.`, { exact: true })).toHaveCount(1)
+  await expect(page.getByText('E2E_EVALUATION_ONLY_PLAN', { exact: true })).toHaveCount(0)
+  const history = await request.get(`/api/projects/${book.projectId}/agent-chat/session/messages?session_id=default`)
+  expect(history.ok(), await history.text()).toBe(true)
+  expect(await history.text()).not.toContain('E2E_EVALUATION_ONLY_PLAN')
   const story = await createStartedStory(request, 'No game Goal')
   const unsupported = await request.post(goalURL, { data: { binding: { mode: 'interactive', story_id: story.id, branch_id: 'main' }, action: 'set', expected_revision: 0, objective: marker } })
   expect(unsupported.status()).toBe(400)
-  expect(await unsupported.json()).toEqual({ error: '当前引擎不支持此操作或参数。' })
+  expect(await unsupported.json()).toEqual({ code: 'agentRuntime.capabilityUnsupported', error: '当前引擎不支持此操作或参数。' })
 })

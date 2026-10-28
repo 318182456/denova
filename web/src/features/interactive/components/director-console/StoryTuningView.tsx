@@ -1,4 +1,6 @@
+import { SortableControlSections } from './SortableControlSections'
 import { errorMessage } from '@/lib/error-diagnostics'
+import { StoryPresentationControls } from './StoryPresentationControls'
 import { StorySpeechControls } from './StorySpeechControls'
 import { useImageModelConfigured } from '@/features/settings/use-image-model-configured'
 import { requestSettingsSection } from '@/features/onboarding/events'
@@ -23,6 +25,8 @@ import type {
   StoryCheckSettings,
   StoryDirectorModuleRefs,
   StorySummary,
+  TurnEvent,
+  TurnPresentationPatch,
   Teller,
 } from '../../types'
 import { StateDisplayPreferenceMenu } from '../story-state/StateDisplayPreferenceMenu'
@@ -35,6 +39,9 @@ type ModuleIDKey = 'narrative_style_id' | 'rule_system_id' | 'actor_state_id' | 
 type ModuleDisabledKey = 'narrative_style_disabled' | 'rule_system_disabled' | 'actor_state_disabled' | 'image_preset_disabled'
 
 export interface StoryTuningViewProps {
+  currentTurn?: TurnEvent
+  onPresentationChange?: (turnId: string, patch: TurnPresentationPatch) => Promise<void>
+  presentationDisabled?: boolean
   projectId?: string
   story?: StorySummary
   planningTemplates: GamePlanningTemplate[]
@@ -57,6 +64,9 @@ const DEFAULT_MODULE_REFS: StoryDirectorModuleRefs = {
 
 export function StoryTuningView({
   projectId,
+  currentTurn,
+  onPresentationChange,
+  presentationDisabled,
   story,
   planningTemplates,
   tellers,
@@ -159,8 +169,8 @@ export function StoryTuningView({
 
   return (
     <div className="director-console__scroll h-full min-h-0 overflow-y-auto px-2.5 py-2.5">
-      <div className="flex flex-col gap-2">
-        <ControlSection
+      <SortableControlSections>
+        <ControlSection key="agent"
           icon={<Bot className="size-4" />}
           title={t('directorPanel.tuning.agent.title')}
           action={
@@ -231,7 +241,7 @@ export function StoryTuningView({
           </TuningRow>
         </ControlSection>
 
-        <ControlSection icon={<Dices className="size-4" />} title={t('directorPanel.tuning.check.title')}>
+        <ControlSection key="checks" icon={<Dices className="size-4" />} title={t('directorPanel.tuning.check.title')}>
           <TuningRow title={t('directorPanel.tuning.check.enabled')} busy={savingKey === 'checks-enabled'}>
             <Switch
               checked={ruleEnabled}
@@ -303,7 +313,7 @@ export function StoryTuningView({
           </TuningRow>
         </ControlSection>
 
-        <ControlSection icon={<ImagePlus className="size-4" />} title={t('directorPanel.tuning.image.title')}
+        <ControlSection key="image" icon={<ImagePlus className="size-4" />} title={t('directorPanel.tuning.image.title')}
           action={<TuningLinkButton label={t('directorPanel.tuning.image.configure')} onClick={() => requestSettingsSection('image')} />}>
           {imageConfigured && <>
             <TuningRow title={t('directorPanel.tuning.image.automatic')} busy={savingKey === 'image-mode'}>
@@ -349,9 +359,11 @@ export function StoryTuningView({
           </>}
         </ControlSection>
 
-        <StorySpeechControls story={story} disabled={disabled} onChange={speech_settings => { void save('speech_settings', { speech_settings }) }} />
+        <StoryPresentationControls currentTurn={currentTurn} onPresentationChange={onPresentationChange} presentationDisabled={presentationDisabled} key="presentation" projectId={projectId} value={story?.presentation_settings} disabled={disabled} onChange={presentation_settings => { void save('presentation_settings', { presentation_settings }) }} />
 
-        <ControlSection icon={<UserRound className="size-4" />} title={t('directorPanel.tuning.state.title')}>
+        <StorySpeechControls key="speech" story={story} disabled={disabled} onChange={speech_settings => { void save('speech_settings', { speech_settings }) }} />
+
+        <ControlSection key="state" icon={<UserRound className="size-4" />} title={t('directorPanel.tuning.state.title')}>
           <ModuleSelectRow
             label={t('directorPanel.tuning.state.system')}
             value={String(refs.actor_state_id || '')}
@@ -376,7 +388,7 @@ export function StoryTuningView({
             />
           </TuningRow>
         </ControlSection>
-      </div>
+      </SortableControlSections>
     </div>
   )
 }

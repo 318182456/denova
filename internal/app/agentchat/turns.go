@@ -18,10 +18,12 @@ import (
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/analytics"
 	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // StartTask starts one project-scoped turn without switching the foreground
@@ -51,6 +53,8 @@ type AcceptedTurn struct {
 	conversation *agentconversation.SessionConversation
 	replayed     bool
 	receipt      agentrun.CommandReceipt
+	usageOnce    sync.Once
+	usageRun     analytics.Run
 
 	mutationMu        sync.Mutex
 	verifiedMutations []agenttool.Mutation
@@ -104,6 +108,11 @@ func (turn *AcceptedTurn) Wait(ctx context.Context) agentrun.Outcome {
 		return agentrun.NewOutcome(agentrun.OutcomeFailed, err, err.Error(), "", "")
 	}
 	defer turn.service.releaseActiveRun(turn.active)
+	turn.usageOnce.Do(func() {
+		if turn.service.host != nil {
+			turn.usageRun = turn.service.host.BeginUsageRun(turn.runtime.Config, turn.active.policy.Origin)
+		}
+	})
 	binding := turn.active.binding
 	slog.InfoContext(ctx, fmt.Sprintf(
 		"[app/agentchat] run begin task_id=%s project_id=%s workspace=%q session_id=%s message_len=%d origin=%s",
@@ -111,6 +120,20 @@ func (turn *AcceptedTurn) Wait(ctx context.Context) agentrun.Outcome {
 		len(turn.active.request.Message), turn.active.policy.Origin,
 	))
 	outcome := turn.accepted.Wait(ctx)
+	switch outcome.Status {
+	case agentrun.OutcomeCompleted:
+		turn.usageRun.Finish(analytics.Success)
+	case agentrun.OutcomeFailed:
+		turn.usageRun.Fail(outcome.Error)
+	case agentrun.OutcomeAborted:
+		turn.usageRun.Finish(analytics.Cancelled)
+	case agentrun.OutcomeSuspended:
+		turn.usageRun.Finish(analytics.Suspended)
+	case agentrun.OutcomePreempted:
+		turn.usageRun.Finish(analytics.Preempted)
+	default:
+		slog.ErrorContext(ctx, "analytics_outcome_unknown", "status", outcome.Status)
+	}
 	outputCommitted := turn.accepted.OutputCommitted()
 	postSettlementCtx := ctx
 	if outputCommitted {
@@ -288,7 +311,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
 		}
-		if errors.Is(err, agent.ErrSessionBusy) {
+		if errors.Is(err, agentschema.ErrSessionBusy) {
 			return nil, agentruntime.ErrOperationActive
 		}
 		return nil, err
@@ -361,6 +384,9 @@ func (service *Service) SubmitCommand(ctx context.Context, binding Binding, comm
 		return agentrun.CommandReceipt{}, err
 	}
 	active := service.activeRun(binding)
+	if active != nil && active.kind == compactionRun && !active.task.Finished() {
+		return agentrun.CommandReceipt{}, agentruntime.ErrOperationActive
+	}
 	taskID := ""
 	var emit func(agentrun.Event)
 	if active != nil && active.task != nil && !active.task.Finished() {
@@ -370,7 +396,7 @@ func (service *Service) SubmitCommand(ctx context.Context, binding Binding, comm
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
-	if active == nil || active.task == nil || active.task.Finished() {
+	if command.Kind != agentexecution.CommandCancelQueued && (active == nil || active.task == nil || active.task.Finished()) {
 		status, err := bound.Status(ctx)
 		if err != nil {
 			return agentrun.CommandReceipt{}, err

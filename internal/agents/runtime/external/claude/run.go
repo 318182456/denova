@@ -16,7 +16,9 @@ import (
 	"denova/config"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func (c *Client) Run(ctx context.Context, input external.Input, host external.Host) (result external.Result, runErr error) {
@@ -78,7 +80,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 				return
 			}
 			if result.Usage == nil {
-				result.Usage = &agent.TokenUsage{}
+				result.Usage = &agentschema.TokenUsage{}
 			}
 			result.Usage.PromptTokens += loaded.Usage.PromptTokens
 			result.Usage.PromptTokenDetails.CachedTokens += loaded.Usage.PromptTokenDetails.CachedTokens
@@ -206,7 +208,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	slog.InfoContext(ctx, "[external-runtime] Claude attempt started", "version", c.version, "model", model)
 	output := streamOutput{tools: map[string]bool{}, manualCompaction: input.Mode == external.OperationCompact}
 	if input.SessionID != "" {
-		output.plan = append([]agent.TodoItem(nil), input.Plan...)
+		output.plan = append([]agentevent.TodoItem(nil), input.Plan...)
 	}
 	if input.Mode == external.OperationTurn {
 		for _, name := range []string{"TaskCreate", "TaskGet", "TaskList", "TaskUpdate"} {
@@ -297,15 +299,15 @@ func runEnvironment(env []string) []string {
 // never submit historical user messages as new independently executing turns.
 func encodeInput(input external.Input) ([]byte, error) {
 	content := []map[string]any{}
-	add := func(text string, attachments []agent.Attachment) error {
+	add := func(text string, attachments []agentschema.Attachment) error {
 		if text != "" {
 			content = append(content, map[string]any{"type": "text", "text": text})
 		}
 		for _, attachment := range attachments {
-			if !agent.IsNativeImageMediaType(attachment.MediaType) {
+			if !agentschema.IsNativeImageMediaType(attachment.MediaType) {
 				continue
 			}
-			data, err := agent.AttachmentBase64(attachment)
+			data, err := agentschema.AttachmentBase64(attachment)
 			if err != nil {
 				return err
 			}
@@ -320,7 +322,7 @@ func encodeInput(input external.Input) ([]byte, error) {
 				return nil, errors.New("invalid external history role")
 			}
 			body, _ := json.Marshal(map[string]string{"role": message.Role, "content": message.Text})
-			if err := add(string(body), append(append([]agent.Attachment{}, message.Attachments...), message.ToolImages...)); err != nil {
+			if err := add(string(body), append(append([]agentschema.Attachment{}, message.Attachments...), message.ToolImages...)); err != nil {
 				return nil, err
 			}
 		}

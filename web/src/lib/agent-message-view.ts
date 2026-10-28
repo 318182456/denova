@@ -1,3 +1,4 @@
+import { replaceEqualDeep } from '@tanstack/react-query'
 import i18n from '@/i18n'
 import { localizeAgentRuntimeError } from './agent-runtime-error'
 import type { AgentAskInteraction, ChapterIllustration, ChatMessage, ChatPlanAction, InteractiveImage, InteractiveImageError, InteractiveImageStatus, PublicRuleRoll, TokenUsageCall } from './api-client/types'
@@ -38,7 +39,6 @@ export interface AgentMessageView {
   partId: string
   partIndex: number
   ref: AgentPartRef
-  message: AgentUIMessage
   part: AgentUIMessage['parts'][number]
   metadata: AgentMessageMetadata
   data: Record<string, unknown>
@@ -367,6 +367,12 @@ export function isAgentSubAgentTimelineBridgeView(candidate: AgentMessageView, g
   return groupedViews.some(view => isAgentSubAgentTimelineView(view) && view.kind === 'tool' && view.partId === toolCallID)
 }
 
+/** SDK snapshots clone completed parts too. Share each part without retaining its whole message. */
+export function shareAgentMessageViews(previous: AgentMessageView[], next: AgentMessageView[]) {
+  const byKey = new Map(previous.map(view => [agentViewStableKey(view), view]))
+  return next.map(view => replaceEqualDeep(byKey.get(agentViewStableKey(view)), view))
+}
+
 export function agentViewStableKey(view: AgentMessageView) {
   const runID = view.metadata.run_id?.trim()
   const segmentID = view.metadata.display_segment_id?.trim()
@@ -519,7 +525,6 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
     partId,
     partIndex,
     ref,
-    message,
     part,
     metadata,
     data: objectData(raw.data),
@@ -1014,10 +1019,13 @@ function readAskInteraction(data: Record<string, unknown>): AgentAskInteraction 
   const toolCallID = readString(data.tool_call_id)
   const agentKind = readString(data.agent_kind)
   const status = readString(data.status)
-  if (!id || !toolCallID || !agentKind || !['pending', 'answered', 'cancelled'].includes(status) || !Array.isArray(data.questions)) {
+  // Approval records use approval metadata instead of questions; the journal
+  // omits the empty questions array when projecting persisted history.
+  const questions = data.questions ?? (data.kind === 'tool_approval' ? [] : undefined)
+  if (!id || !toolCallID || !agentKind || !['pending', 'answered', 'cancelled'].includes(status) || !Array.isArray(questions)) {
     return undefined
   }
-  return data as unknown as AgentAskInteraction
+  return { ...data, questions } as unknown as AgentAskInteraction
 }
 
 function toolStatus(state: string | undefined): AgentMessageView['status'] {

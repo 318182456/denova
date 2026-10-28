@@ -8,10 +8,12 @@ import (
 	"sync"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-
 	"denova/config"
+	"denova/internal/statistics"
+
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 const (
@@ -124,10 +126,13 @@ type TraceContentRecord struct {
 }
 
 type Span struct {
-	sink     TraceSink
-	span     TraceSpanRecord
-	observer *Observer
-	once     sync.Once
+	sink           TraceSink
+	span           TraceSpanRecord
+	observer       *Observer
+	once           sync.Once
+	statisticsRoot string
+	statisticsCall *statistics.Call
+	statisticsOnce sync.Once
 }
 
 func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, parentSpanID string) context.Context {
@@ -142,8 +147,11 @@ func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, pa
 }
 
 func WithStandaloneTrace(ctx context.Context, cfg *config.Config, agentKind, source, mode string, attrs map[string]any) (context.Context, func(error)) {
-	if _, ok := agent.SessionKeyFromContext(ctx); !ok {
-		ctx = agent.ContextWithSessionKey(ctx, StandaloneSessionKey(cfg, agentKind, source))
+	if cfg != nil {
+		ctx = statistics.WithProject(ctx, cfg.ProjectStoreDir)
+	}
+	if _, ok := agentmodel.SessionKeyFromContext(ctx); !ok {
+		ctx = agentmodel.ContextWithSessionKey(ctx, StandaloneSessionKey(cfg, agentKind, source))
 	}
 	if traceContextFromContext(ctx).sink != nil {
 		return ctx, func(error) {}
@@ -322,7 +330,7 @@ func cloneTraceAttrs(attrs map[string]any) map[string]any {
 	return out
 }
 
-func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg providers.ModelConfig, messages []*agent.Message, tools []*agent.ToolInfo, stream bool) (*Span, string, context.Context) {
+func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg providers.ModelConfig, messages []*agentschema.Message, tools []*agentschema.ToolInfo, stream bool) (*Span, string, context.Context) {
 	callID := newModelInputCallID()
 	attrs := map[string]any{
 		"call_id":       callID,
@@ -344,6 +352,14 @@ func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 	span, spanCtx := StartTraceSpan(ctx, "llm_call", attrs)
 	if span == nil && observer != nil {
 		span = &Span{observer: observer}
+	}
+	// Usage collection is independent of optional diagnostic trace capture.
+	if root := statistics.ProjectRoot(ctx); root != "" {
+		if span == nil {
+			span = &Span{}
+		}
+		span.statisticsRoot = root
+		span.statisticsCall = &statistics.Call{ID: callID, At: time.Now().UTC(), Kind: statistics.ModelCall, Model: cfg.Model, Runtime: "native"}
 	}
 	spanID := ""
 	traceID := ""
@@ -369,7 +385,22 @@ func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 	return span, callID, spanCtx
 }
 
-func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName string, callIndex int, msg *agent.Message, err error, extra map[string]any) {
+func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName string, callIndex int, msg *agentschema.Message, err error, extra map[string]any) {
+	if span != nil && span.statisticsCall != nil {
+		span.statisticsOnce.Do(func() {
+			call := *span.statisticsCall
+			call.DurationMS = time.Since(call.At).Milliseconds()
+			call.Failed = err != nil
+			if value, ok := extra["ttft_ms"].(int64); ok && value > 0 {
+				call.TTFTMS = &value
+			}
+			if msg != nil && msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
+				u := msg.ResponseMeta.Usage
+				call.Usage = &statistics.Usage{Prompt: int64(u.PromptTokens), Cached: int64(u.PromptTokenDetails.CachedTokens), Output: int64(u.CompletionTokens), Total: int64(u.TotalTokens)}
+			}
+			statistics.RecordCall(span.statisticsRoot, call)
+		})
+	}
 	attrs := cloneTraceAttrs(extra)
 	runID := ""
 	if span != nil {
@@ -409,7 +440,7 @@ func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName s
 }
 
 func modelInputCacheScope(ctx context.Context, agentKind string) string {
-	sessionKey, ok := agent.SessionKeyFromContext(ctx)
+	sessionKey, ok := agentmodel.SessionKeyFromContext(ctx)
 	if !ok {
 		return ""
 	}
@@ -418,7 +449,7 @@ func modelInputCacheScope(ctx context.Context, agentKind string) string {
 	}, "\x00")
 }
 
-func addTokenUsageAttrs(attrs map[string]any, usage *agent.TokenUsage) {
+func addTokenUsageAttrs(attrs map[string]any, usage *agentschema.TokenUsage) {
 	if attrs == nil || usage == nil {
 		return
 	}

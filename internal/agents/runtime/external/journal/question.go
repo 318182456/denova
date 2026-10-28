@@ -5,27 +5,27 @@ import (
 	"encoding/json"
 	"errors"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 )
 
 // QuestionRequest interprets the persisted host Ask arguments with the public
 // validator. Both execution and history derive the same request without a live
 // engine or a second durable interaction record.
-func QuestionRequest(executionID string, arguments json.RawMessage) (agent.InteractionRequest, error) {
+func QuestionRequest(executionID string, arguments json.RawMessage) (agentinteraction.InteractionRequest, error) {
 	if len(arguments) > 128<<10 {
-		return agent.InteractionRequest{}, errors.New("question input exceeds 128 KiB")
+		return agentinteraction.InteractionRequest{}, errors.New("question input exceeds 128 KiB")
 	}
 	var input struct {
-		Questions []agent.InteractionQuestion `json:"questions"`
+		Questions []agentinteraction.InteractionQuestion `json:"questions"`
 	}
 	if err := json.Unmarshal(arguments, &input); err != nil {
-		return agent.InteractionRequest{}, err
+		return agentinteraction.InteractionRequest{}, err
 	}
 	for index := range input.Questions {
 		input.Questions[index].AllowFreeText = len(input.Questions[index].Options) == 0
 	}
-	request := agent.InteractionRequest{ID: "ask-" + executionID, Kind: agent.InteractionAsk, Questions: input.Questions, AllowOther: true}
-	return request, agent.StandardInteraction().ValidateRequest(context.Background(), request)
+	request := agentinteraction.InteractionRequest{ID: "ask-" + executionID, Kind: agentinteraction.InteractionAsk, Questions: input.Questions, AllowOther: true}
+	return request, agentinteraction.StandardInteraction().ValidateRequest(context.Background(), request)
 }
 
 func validateQuestionResult(finished FinishedTool) error {

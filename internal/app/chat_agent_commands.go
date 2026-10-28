@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -40,7 +41,7 @@ func (s *ChatAppService) SubmitAgentCommandForSession(ctx context.Context, sessi
 }
 
 func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
-	runtime, task, err := s.commandRuntime(ctx)
+	runtime, task, err := s.commandRuntime(ctx, command.Kind)
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
@@ -56,8 +57,8 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 	return bound.Submit(ctx, command, emit)
 }
 
-// A paused logical Run remains addressable after its display task closes.
-func (s *ChatAppService) commandRuntime(ctx context.Context) (ideChatRuntime, *apptask.Task, error) {
+// Paused Runs and queued inputs remain addressable after their display task closes.
+func (s *ChatAppService) commandRuntime(ctx context.Context, kind agentexecution.CommandKind) (ideChatRuntime, *apptask.Task, error) {
 	runtime, task, err := s.activeCommandRuntime()
 	if !errors.Is(err, ErrNoActiveAgentOperation) {
 		return runtime, task, err
@@ -71,6 +72,9 @@ func (s *ChatAppService) commandRuntime(ctx context.Context) (ideChatRuntime, *a
 	runtime = ideChatRuntime{app: a, projectID: a.cfg.ProjectID, projectStore: a.cfg.ProjectStoreDir,
 		workspace: a.workspace, sess: a.session, state: a.bookState, executionRuntime: a.executionRuntime}
 	a.mu.RUnlock()
+	if kind == agentexecution.CommandCancelQueued {
+		return runtime, nil, nil
+	}
 	bound, err := a.agentSession(runtime.agentOptions(""), runtime.executionRuntime)
 	if err != nil {
 		return ideChatRuntime{}, nil, err

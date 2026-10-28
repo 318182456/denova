@@ -42,10 +42,13 @@ func (s *Store) boundedStorySnapshotLocked(storyID, branchID string) (StoryMeta,
 	return s.boundedStorySnapshotWithLimitLocked(storyID, branchID, defaultStoryHistoryPageTurns)
 }
 
-// boundedStorySnapshotWithLimitLocked is the shared hot-path projection. UI
-// snapshots use the default page, while Director reconciliation may retain its
-// full bounded decision horizon without scanning the canonical prefix.
+// boundedStorySnapshotWithLimitLocked retains the model/Director decision
+// horizon independently of the smaller, reduced presentation window.
 func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, limit int) (StoryMeta, Snapshot, error) {
+	return s.storySnapshotForViewLocked(storyID, branchID, limit, storyHistoryModel)
+}
+
+func (s *Store) storySnapshotForViewLocked(storyID, branchID string, limit int, view storyHistoryView) (StoryMeta, Snapshot, error) {
 	release, err := s.acquireStoryReadLeaseLocked(storyID)
 	if err != nil {
 		return StoryMeta{}, Snapshot{}, err
@@ -60,7 +63,7 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 		branchID = handle.projection.Meta.CurrentBranch
 	}
 	limit = normalizeStoryHistoryPageLimit(limit)
-	cacheKey := storySnapshotCacheKey{branchID: branchID, limit: limit}
+	cacheKey := storySnapshotCacheKey{branchID: branchID, limit: limit, view: view}
 	head := handle.journal.Head().Cursor
 	if cached, ok := handle.snapshots[cacheKey]; ok && cached.cursor == head {
 		meta, snapshot, cloneErr := cloneStorySnapshotCache(cached.meta, cached.snapshot)
@@ -71,7 +74,7 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 		return meta, snapshot, nil
 	}
 
-	loaded, err := s.readStoryHistoryPageLocked(storyID, branchID, "", limit, true)
+	loaded, err := s.readStoryHistoryForViewLocked(storyID, branchID, "", limit, true, view)
 	if err != nil {
 		return StoryMeta{}, Snapshot{}, err
 	}
@@ -82,8 +85,10 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 	if handle := s.storyJournals[strings.TrimSpace(storyID)]; handle != nil {
 		handle.projection.Meta.ActorStateSchema = loaded.meta.ActorStateSchema
 		handle.projection.Meta.StateSchemaInitialization = loaded.meta.StateSchemaInitialization
-		if err := cacheStoryRecentLoaded(handle, snapshot.BranchID, loaded.meta, loaded.records); err != nil {
-			return StoryMeta{}, Snapshot{}, err
+		if view == storyHistoryModel {
+			if err := cacheStoryRecentLoaded(handle, snapshot.BranchID, loaded.meta, loaded.records); err != nil {
+				return StoryMeta{}, Snapshot{}, err
+			}
 		}
 	}
 	snapshot.ActorStateSchema = loaded.meta.ActorStateSchema

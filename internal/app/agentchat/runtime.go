@@ -22,15 +22,20 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	}
 	var runtime agentrun.RuntimeStatus
 	projected := false
-	if bound, err := service.agentSession(ctx, binding, ""); err == nil {
-		runtime, err = bound.Status(ctx)
-		projected = err == nil
-	}
 	active := service.activeRun(binding)
+	// Maintenance uses an internal Task for occupancy/shutdown, not a user
+	// operation or reconnectable chat stream. Its controller may hold a model
+	// lock, so leave that projection unavailable until maintenance settles.
+	if active == nil || active.kind != compactionRun || active.task.Finished() {
+		if bound, err := service.agentSession(ctx, binding, ""); err == nil {
+			runtime, err = bound.Status(ctx)
+			projected = err == nil
+		}
+	}
 	var taskSnapshot *apptask.Snapshot
 	var pendingAsks []*session.AskInteraction
 	streamAttached := false
-	if active != nil && active.task != nil {
+	if active != nil && active.kind == turnRun && active.task != nil {
 		snapshot := active.task.Snapshot()
 		taskSnapshot = &snapshot
 		streamAttached = !snapshot.Finished
@@ -60,7 +65,7 @@ func (service *Service) DisplayTask(binding Binding, taskID string) *apptask.Tas
 	if err != nil || strings.TrimSpace(taskID) == "" {
 		return nil
 	}
-	if active := service.activeRun(binding); active != nil && active.task != nil && active.task.ID() == taskID {
+	if active := service.activeRun(binding); active != nil && active.kind == turnRun && active.task != nil && active.task.ID() == taskID {
 		return active.task
 	}
 	record := service.starts.Latest(binding.ProjectID, binding.SessionID)
@@ -149,35 +154,6 @@ func (service *Service) resolveAsk(
 		}
 	}
 	return project.executionRuntime.ResolveAsk(ctx, runtimeOptions(binding, ""), askID, status, answers, cancelReason)
-}
-
-// ClearSession drains exactly one binding and appends the durable clear marker.
-func (service *Service) ClearSession(ctx context.Context, binding Binding) error {
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	binding, err := service.ResolveBinding(binding)
-	if err != nil {
-		return err
-	}
-	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
-		return agentruntime.ErrOperationActive
-	}
-	project, err := service.projectRuntime(ctx, binding.ProjectID)
-	if err != nil {
-		return err
-	}
-	if err := project.executionRuntime.ClearSession(ctx, runtimeOptions(binding, "")); err != nil {
-		return err
-	}
-	sess, err := project.store.Get(binding.SessionID)
-	if err != nil {
-		return err
-	}
-	if err := sess.Clear(); err != nil {
-		return err
-	}
-	service.starts.ReleaseScope(binding.ProjectID, binding.SessionID)
-	return nil
 }
 
 func (service *Service) SessionBusy(binding Binding) bool {

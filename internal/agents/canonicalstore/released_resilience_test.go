@@ -13,7 +13,10 @@ import (
 	productsession "denova/internal/agents/session"
 	"denova/internal/interactive"
 	"denova/internal/project"
-	agent "github.com/alfredxw/denova/agent"
+
+	"github.com/alfredxw/denova/agent"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -94,7 +97,7 @@ func TestReleasedLifecycleReadOnlyOpenAndBackedUpUpgrade(t *testing.T) {
 				state.ContextData = &agent.HostData{Type: "denova.interactive.compaction", Version: 1, Data: json.RawMessage(`{"source_turn_count":7}`)}
 			}
 			stateBytes, _ := json.Marshal(state)
-			capabilityBytes, _ := json.Marshal(map[string]any{"capability": agent.CompactionCapability, "state": json.RawMessage(stateBytes)})
+			capabilityBytes, _ := json.Marshal(map[string]any{"capability": agentcompaction.CompactionCapability, "state": json.RawMessage(stateBytes)})
 			fixtureRecords = append(fixtureRecords, agentsession.Record{Kind: "session.capability_set", Version: 1, Data: capabilityBytes})
 			if _, err := log.Append(ctx, 0, fixtureRecords...); err != nil {
 				t.Fatal(err)
@@ -130,7 +133,7 @@ func TestReleasedLifecycleReadOnlyOpenAndBackedUpUpgrade(t *testing.T) {
 			for _, run := range snapshot.RecentRuns {
 				statuses[run.ID] = run.Status
 			}
-			if snapshot.ActiveRunID != "" || statuses["released-completed"] != agent.ResultCompleted || statuses["released-incomplete"] != agent.ResultIncomplete {
+			if snapshot.ActiveRunID != "" || statuses["released-completed"] != agentschema.ResultCompleted || statuses["released-incomplete"] != agentschema.ResultIncomplete {
 				t.Fatalf("released state=%+v", snapshot)
 			}
 			if current, err := os.ReadFile(journalPath); err != nil || !bytes.Equal(current, original) {
@@ -166,7 +169,7 @@ func TestReleasedLifecycleReadOnlyOpenAndBackedUpUpgrade(t *testing.T) {
 			state.ContextData = nil
 			state.Revision++
 			stateBytes, _ = json.Marshal(state)
-			capabilityBytes, _ = json.Marshal(map[string]any{"capability": agent.CompactionCapability, "state": json.RawMessage(stateBytes)})
+			capabilityBytes, _ = json.Marshal(map[string]any{"capability": agentcompaction.CompactionCapability, "state": json.RawMessage(stateBytes)})
 			for range 2 {
 				revision, err = upgradedLog.Append(ctx, revision, agentsession.Record{Kind: "session.capability_set", Version: 1, Data: capabilityBytes})
 				if err != nil {

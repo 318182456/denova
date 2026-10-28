@@ -16,28 +16,31 @@ import (
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"denova/internal/project"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 type structuralTestCompaction struct{ t *testing.T }
 
-func (structuralTestCompaction) Identity() agent.CapabilityIdentity {
-	return agent.CapabilityIdentity{Kind: "test.structural-compaction", Version: 1}
+func (structuralTestCompaction) Identity() agentschema.CapabilityIdentity {
+	return agentschema.CapabilityIdentity{Kind: "test.structural-compaction", Version: 1}
 }
 
 func (structuralTestCompaction) SummaryLimitBytes() int { return 64 << 10 }
 
-func (structuralTestCompaction) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
+func (structuralTestCompaction) Plan(_ context.Context, request agentcompaction.CompactionPlanRequest) (agentcompaction.CompactionPlan, error) {
 	if !request.Force || len(request.Groups) == 0 {
-		return agent.CompactionPlan{Action: agent.CompactionNone}, nil
+		return agentcompaction.CompactionPlan{Action: agentcompaction.CompactionNone}, nil
 	}
-	return agent.CompactionPlan{
-		Action: agent.CompactionCreate, GroupCount: len(request.Groups),
-		Validation: agent.CompactionValidationPolicy{HardLimitBytes: 4 << 20},
+	return agentcompaction.CompactionPlan{
+		Action: agentcompaction.CompactionCreate, GroupCount: len(request.Groups),
+		Validation: agentcompaction.CompactionValidationPolicy{HardLimitBytes: 4 << 20},
 	}, nil
 }
 
-func (manager structuralTestCompaction) Compact(_ context.Context, request agent.CompactionCompactRequest) (agent.CompactionCheckpoint, error) {
+func (manager structuralTestCompaction) Compact(_ context.Context, request agentcompaction.CompactionCompactRequest) (agentcompaction.CompactionCheckpoint, error) {
 	manager.t.Helper()
 	found := false
 	for _, tool := range request.ModelSnapshot.ResolvedOptions().Tools {
@@ -46,7 +49,7 @@ func (manager structuralTestCompaction) Compact(_ context.Context, request agent
 	if !found {
 		manager.t.Fatal("structural preparation omitted delegated tool schemas")
 	}
-	return agent.CompactionCheckpoint{Summary: "Preserved writing history."}, nil
+	return agentcompaction.CompactionCheckpoint{Summary: "Preserved writing history."}, nil
 }
 
 func TestWritingStructuralOperationsRebuildCanonicalSession(t *testing.T) {
@@ -73,9 +76,9 @@ func TestWritingStructuralOperationsRebuildCanonicalSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			rich := strings.Repeat("Earlier chapter details. ", 200)
-			for _, message := range []*agent.Message{
-				agent.UserMessage(rich), agent.AssistantMessage("Earlier chapter.", nil),
-				agent.UserMessage("Recent request."), agent.AssistantMessage("Recent chapter.", nil),
+			for _, message := range []*agentschema.Message{
+				agentschema.UserMessage(rich), agentschema.AssistantMessage("Earlier chapter.", nil),
+				agentschema.UserMessage("Recent request."), agentschema.AssistantMessage("Recent chapter.", nil),
 			} {
 				if err := sess.Append(message); err != nil {
 					t.Fatal(err)
@@ -96,11 +99,11 @@ func TestWritingStructuralOperationsRebuildCanonicalSession(t *testing.T) {
 			model := &publicBackendTestModel{}
 			catalog, err := agentdelegation.NewCatalog(nil, agentdelegation.Config{
 				Capability: "test.maintenance-delegation", MaxResultBytes: 64 << 10, Parallelism: 1,
-				ValidationIdentity: agent.CapabilityIdentity{Kind: "test.maintenance-tools", Version: 1},
-				Validate:           func(context.Context, []agent.ToolDefinition) error { return nil },
+				ValidationIdentity: agentschema.CapabilityIdentity{Kind: "test.maintenance-tools", Version: 1},
+				Validate:           func(context.Context, []agenttool.ToolDefinition) error { return nil },
 			}, agentdelegation.Child{
 				Name: "writer", Definition: agent.Definition{Model: model},
-				Identity: agent.CapabilityIdentity{Kind: "test.maintenance-writer", Version: 1},
+				Identity: agentschema.CapabilityIdentity{Kind: "test.maintenance-writer", Version: 1},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -108,7 +111,7 @@ func TestWritingStructuralOperationsRebuildCanonicalSession(t *testing.T) {
 			newCycle := func() Cycle {
 				return Cycle{
 					Definition: agent.Definition{Key: "writing-maintenance", Name: "writer", Model: model,
-						ModelIdentity: agent.CapabilityIdentity{Kind: "test.writing-maintenance-model", Version: 1},
+						ModelIdentity: agentschema.CapabilityIdentity{Kind: "test.writing-maintenance-model", Version: 1},
 						Compaction:    structuralTestCompaction{t: t}, Tools: catalog},
 					Conversation: agentconversation.NewSessionConversationForAgent(sess, &config.Config{Workspace: workspace}, agentrun.AgentKindIDE),
 					Options: agentrun.Options{ProjectID: record.ID, AgentKind: agentrun.AgentKindIDE, Workspace: workspace,

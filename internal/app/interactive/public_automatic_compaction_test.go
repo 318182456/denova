@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alfredxw/denova/agent/providers"
-
 	"denova/config"
 	"denova/internal/agents/canonicalstore"
 	agentchat "denova/internal/agents/chat"
@@ -20,11 +18,17 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/project"
 
-	agent "github.com/alfredxw/denova/agent"
-	agentpermission "github.com/alfredxw/denova/agent/permission"
+	"github.com/alfredxw/denova/agent"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	agentpermission "github.com/alfredxw/denova/agent/tool/permission"
 )
 
-const automaticGameCheckpoint = "The traveler followed the river through ninety rainy nights and promised to return to the village."
+const automaticGameCheckpoint = "The traveler followed the river through twenty-four rainy nights and promised to return to the village."
 
 // Only model output is simulated: admission, automatic pressure planning,
 // checkpoint generation/validation, tool commits, and journal recovery are real.
@@ -34,24 +38,24 @@ type automaticGameCheckpointModel struct {
 	toolPending  bool
 }
 
-func (model *automaticGameCheckpointModel) Generate(_ context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
-	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, providers.ModelConfig{}, messages, nil, 4<<20, 128_000); err != nil {
+func (model *automaticGameCheckpointModel) Generate(_ context.Context, messages []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
+	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, providers.ModelConfig{}, messages, nil, 4<<20, 32_000); err != nil {
 		return nil, err
 	}
 	if len(messages) > 0 && strings.HasPrefix(messages[len(messages)-1].Content, "[Runtime context compaction request]") {
 		model.summaryCalls++
-		return agent.AssistantMessage(automaticGameCheckpoint, nil), nil
+		return agentschema.AssistantMessage(automaticGameCheckpoint, nil), nil
 	}
 	response := model.history.response(messages)
-	promptTokens := agent.EstimateMessagesTextTokens(messages)
-	response.ResponseMeta = &agent.ResponseMeta{
-		FinishReason: "stop", Usage: &agent.TokenUsage{PromptTokens: promptTokens, CompletionTokens: 100, TotalTokens: promptTokens + 100},
+	promptTokens := agentmodel.EstimateMessagesTextTokens(messages)
+	response.ResponseMeta = &agentschema.ResponseMeta{
+		FinishReason: "stop", Usage: &agentschema.TokenUsage{PromptTokens: promptTokens, CompletionTokens: 100, TotalTokens: promptTokens + 100},
 	}
 	response.ReasoningContent = "Check the river before advancing the story."
 	if !model.toolPending {
 		model.toolPending = true
 		response.Content = "I will inspect the river."
-		response.ToolCalls = []agent.ToolCall{{ID: "river-evidence", Type: "function", Function: agent.FunctionCall{Name: "read_river", Arguments: `{}`}}}
+		response.ToolCalls = []agentschema.ToolCall{{ID: "river-evidence", Type: "function", Function: agentschema.FunctionCall{Name: "read_river", Arguments: `{}`}}}
 		response.ResponseMeta.FinishReason = "tool_calls"
 	} else {
 		model.toolPending = false
@@ -59,12 +63,12 @@ func (model *automaticGameCheckpointModel) Generate(_ context.Context, messages 
 	return response, nil
 }
 
-func (model *automaticGameCheckpointModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (model *automaticGameCheckpointModel) Stream(ctx context.Context, messages []*agentschema.Message, options ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	response, err := model.Generate(ctx, messages, options...)
 	if err != nil {
 		return nil, err
 	}
-	return agent.StreamReaderFromArray([]*agent.Message{response}), nil
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{response}), nil
 }
 
 func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T) {
@@ -84,7 +88,7 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for turn := range 90 {
+	for turn := range 24 {
 		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
 			BranchID: "main", User: fmt.Sprintf("Follow the river on night %d", turn+1),
 			Narrative: fmt.Sprintf("Historical night %d: %s", turn+1, strings.Repeat("雨", 1024)),
@@ -109,25 +113,25 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 	}
 	runtime := newRuntime()
 	t.Cleanup(func() { _ = runtime.Close(ctx) })
-	cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 128_000}
+	cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 32_000}
 	model := &automaticGameCheckpointModel{history: publicGameHistoryModel{narrative: "The traveler reached the next bridge."}}
-	identity := agent.CapabilityIdentity{Kind: "test.automatic-game-checkpoint", Version: 1}
-	manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 128_000)
+	identity := agentschema.CapabilityIdentity{Kind: "test.automatic-game-checkpoint", Version: 1}
+	manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 32_000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tool, err := agent.InferTool("read_river", "Read current river conditions", func(context.Context, struct{}) (string, error) {
+	tool, err := agenttool.InferTool("read_river", "Read current river conditions", func(context.Context, struct{}) (string, error) {
 		return "The river is calm and the bridge is open.", nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolset, err := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.test.river-evidence", Version: 1}, agent.ToolDefinition{
-		Tool: tool, Descriptor: agent.ToolDescriptor{
-			Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
-			MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
-			Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
-			ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 4 << 10,
+	toolset, err := agenttool.StaticToolsIdentified(agentschema.CapabilityIdentity{Kind: "tools.test.river-evidence", Version: 1}, agenttool.ToolDefinition{
+		Tool: tool, Descriptor: agenttool.ToolDescriptor{
+			Source: agenttool.ToolSourceRead, Execution: agenttool.ToolExecutionParallelRead,
+			MutationScope: agenttool.ToolMutationNone, PostCheck: agenttool.ToolPostCheckNone,
+			Recovery: agenttool.ToolRecoveryReadOnly, ResultProjection: agentschema.ToolResultBoundedModelContext,
+			ResultRetention: agentschema.ToolResultDeferred, Steering: agenttool.SteeringFinishCurrent, MaxResultBytes: 4 << 10,
 		},
 	})
 	if err != nil {
@@ -136,8 +140,8 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 	options := publicGameOptions(workspace, story.ID, "main")
 	options.ProjectID = record.ID
 	var checkpointID string
-	for turn := 91; turn <= 95; turn++ {
-		if turn == 93 {
+	for turn := 25; turn <= 29; turn++ {
+		if turn == 27 {
 			if err := runtime.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -149,7 +153,7 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 		operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "automatic-game-checkpoint", Name: "game", Model: model, ModelIdentity: identity,
-				Middlewares: []agent.Middleware{submission},
+				Middlewares: []agentmiddleware.Middleware{submission},
 				Compaction:  manager, Tools: toolset, Permission: agentpermission.FullAccess(),
 			},
 			Conversation: conversation, Options: options,
@@ -178,16 +182,16 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 			if status.Compaction.TokensAfter <= 0 || status.Compaction.TokensAfter > recoveryTarget {
 				t.Fatalf("automatic compaction did not restore context headroom: projected=%d target=%d", status.Compaction.TokensAfter, recoveryTarget)
 			}
-			t.Logf("Compacted 90-turn history: projected_tokens_after=%d recovery_target=%d", status.Compaction.TokensAfter, recoveryTarget)
+			t.Logf("Compacted 24-turn history: projected_tokens_after=%d recovery_target=%d", status.Compaction.TokensAfter, recoveryTarget)
 		} else if status.Compaction.ID != checkpointID {
 			t.Fatalf("turn %d replaced checkpoint %s with %s", turn, checkpointID, status.Compaction.ID)
 		}
 	}
 	after, err := store.Snapshot(story.ID, "main")
-	if err != nil || len(after.Turns) != 95 {
+	if err != nil || len(after.Turns) != 29 {
 		t.Fatalf("game continuation lost turns: count=%d error=%v", len(after.Turns), err)
 	}
-	if !reflect.DeepEqual(before.Turns, after.Turns[:90]) {
+	if !reflect.DeepEqual(before.Turns, after.Turns[:24]) {
 		t.Fatal("automatic compaction changed canonical story history")
 	}
 }

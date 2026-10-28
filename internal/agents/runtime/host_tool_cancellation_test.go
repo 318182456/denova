@@ -20,8 +20,11 @@ import (
 	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
-	agent "github.com/alfredxw/denova/agent"
-	publictools "github.com/alfredxw/denova/agent/tools"
+
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 type cancellationAdapter func(context.Context, external.Input, external.Host) (external.Result, error)
@@ -32,11 +35,11 @@ func (adapter cancellationAdapter) Run(ctx context.Context, input external.Input
 }
 
 type countedHostTool struct {
-	agent.Tool
+	agenttool.Tool
 	calls *atomic.Int32
 }
 
-func (tool countedHostTool) Run(ctx context.Context, args string, opts ...agent.ToolOption) (agent.ToolResult, error) {
+func (tool countedHostTool) Run(ctx context.Context, args string, opts ...agenttool.ToolOption) (agentschema.ToolResult, error) {
 	tool.calls.Add(1)
 	return tool.Tool.Run(ctx, args, opts...)
 }
@@ -67,7 +70,7 @@ func TestQueuedHostWriteCancellationSurvivesReopenAndEngineSwitch(t *testing.T) 
 					if err != nil {
 						t.Fatal(err)
 					}
-					var write agent.ToolDefinition
+					var write agenttool.ToolDefinition
 					var calls atomic.Int32
 					for i, definition := range definitions {
 						info, err := definition.Tool.Info(t.Context())
@@ -82,7 +85,7 @@ func TestQueuedHostWriteCancellationSurvivesReopenAndEngineSwitch(t *testing.T) 
 					if write.Tool == nil {
 						t.Fatal("fixture has no write tool")
 					}
-					asks, err := publictools.Ask().PrepareTools(t.Context(), agent.ToolRequest{})
+					asks, err := publictools.Ask().PrepareTools(t.Context(), agenttool.ToolRequest{})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -93,11 +96,11 @@ func TestQueuedHostWriteCancellationSurvivesReopenAndEngineSwitch(t *testing.T) 
 					}
 					// Hold the real shared workspace gate until cancellation has settled.
 					entered, release := make(chan struct{}), make(chan struct{})
-					blocker, err := toolruntime.NewOrchestratorMiddleware(policy).WrapToolCall(t.Context(), func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+					blocker, err := toolruntime.NewOrchestratorMiddleware(policy).WrapToolCall(t.Context(), func(context.Context, string, ...agenttool.ToolOption) (agentschema.ToolResult, error) {
 						close(entered)
 						<-release
-						return agent.TextToolResult("released"), nil
-					}, &agent.ToolContext{Name: "write", Definition: agent.ToolDefinitionSnapshot{Info: info, Descriptor: write.Descriptor}})
+						return agentschema.TextToolResult("released"), nil
+					}, &agentmiddleware.ToolContext{Name: "write", Definition: agenttool.ToolDefinitionSnapshot{Info: info, Descriptor: write.Descriptor}})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -121,7 +124,7 @@ func TestQueuedHostWriteCancellationSurvivesReopenAndEngineSwitch(t *testing.T) 
 					attempts := 0
 					request := external.StartRequest{
 						ProjectID: "project", AttachmentRoot: directory, Session: sess, CommandID: "cancel-write", Fingerprint: "cancel-write", Revision: 1,
-						Input: external.Input{Selection: selection.Engine(), Text: "Write a chapter."}, Message: *agent.UserMessage("Write a chapter."),
+						Input: external.Input{Selection: selection.Engine(), Text: "Write a chapter."}, Message: *agentschema.UserMessage("Write a chapter."),
 						Metadata: session.MessageMetadata{MessageID: "cancel-input"}, Definitions: append(definitions, asks...), ToolPolicy: policy,
 						Adapter: cancellationAdapter(func(ctx context.Context, _ external.Input, host external.Host) (external.Result, error) {
 							attempts++

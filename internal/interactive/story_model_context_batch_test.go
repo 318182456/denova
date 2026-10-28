@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
@@ -425,7 +426,7 @@ func TestTurnAbsorbsMixedAgentContextKindsFromCanonicalBatches(t *testing.T) {
 	if _, err := store.CommitPlayerInput(story.ID, input); err != nil {
 		t.Fatal(err)
 	}
-	state := agent.UserMessage("current state")
+	state := agentschema.UserMessage("current state")
 	state.Extra = map[string]any{
 		"agent.context_state":             "v1",
 		"agent.context_state.operation":   "upsert",
@@ -436,14 +437,18 @@ func TestTurnAbsorbsMixedAgentContextKindsFromCanonicalBatches(t *testing.T) {
 		"agent.context_state.revision":    "revision-1",
 		"agent.context_state.fingerprint": strings.Repeat("a", 64),
 	}
-	completion := agent.UserMessage("child result")
-	completion.TaskCompletion = &agent.TaskCompletionMessageMeta{
+	completion := agentschema.UserMessage("child result")
+	completion.TaskCompletion = &agentschema.TaskCompletionMessageMeta{
 		CompletionID: "completion-mixed", Author: "researcher", Recipient: "parent",
 	}
+	prose := agentschema.AssistantMessage("Accepted narrative before the turn is complete.", nil)
+	feedback := agentschema.UserMessage("Submit the remaining modules")
+	feedback.Extra = map[string]any{agentschema.ExtraKeyAgentContinuation: true}
 	batches := []struct {
 		messages []ModelContextMessage
 	}{
 		{messages: []ModelContextMessage{ModelContextMessageFromAgent(state, nil)}},
+		{messages: []ModelContextMessage{ModelContextMessageFromAgent(prose, nil), ModelContextMessageFromAgent(feedback, nil)}},
 		{messages: durableModelContextBatchFixture()},
 		{messages: []ModelContextMessage{ModelContextMessageFromAgent(completion, nil)}},
 	}
@@ -453,11 +458,27 @@ func TestTurnAbsorbsMixedAgentContextKindsFromCanonicalBatches(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if sequence == 1 {
+			intent.Draft = &TurnDraft{Identity: identity, Narrative: prose.Content, NarrativeSource: "complete_model_response"}
+			failed := intent
+			failed.Checkpoint = func(agentcanonical.CommitReceipt) (agentcanonical.JournalCheckpoint, error) {
+				return agentcanonical.JournalCheckpoint{}, errors.New("checkpoint rejected")
+			}
+			if _, err := store.AppendModelContextBatch(story.ID, failed); err == nil {
+				t.Fatal("failed checkpoint accepted the context batch")
+			}
+			if _, found, err := store.LoadTurnDraft(story.ID, "main", identity); err != nil || found {
+				t.Fatalf("failed context batch saved a partial narrative: found=%t error=%v", found, err)
+			}
+		}
 		receipt, err := store.AppendModelContextBatch(story.ID, intent)
 		if err != nil {
 			t.Fatal(err)
 		}
 		expected = append(expected, receipt.Event.Messages...)
+	}
+	if draft, found, err := store.LoadTurnDraft(story.ID, "main", identity); err != nil || !found || draft.Narrative != prose.Content {
+		t.Fatalf("accepted context batch lost its narrative: found=%t error=%v", found, err)
 	}
 	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		BranchID: "main", User: "继续", Narrative: "继续前进。",
@@ -492,9 +513,9 @@ func durableModelContextBatchFixtureForCall(callID, evidence string) []ModelCont
 		},
 		{
 			Role: "tool", ToolCallID: callID, ToolName: "web_fetch", Content: evidence,
-			ToolResult: &agent.ToolResultSummary{
-				Status: agent.ToolResultSuccess, ResultRetention: agent.ToolResultEagerCandidate,
-				Artifacts: []agent.ToolArtifactRef{{ReadablePath: ".denova/artifacts/game/fetch.txt", EstimatedBytes: 4096, Complete: true}},
+			ToolResult: &agentschema.ToolResultSummary{
+				Status: agentschema.ToolResultSuccess, ResultRetention: agentschema.ToolResultEagerCandidate,
+				Artifacts: []agentschema.ToolArtifactRef{{ReadablePath: ".denova/artifacts/game/fetch.txt", EstimatedBytes: 4096, Complete: true}},
 			},
 		},
 	}

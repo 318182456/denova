@@ -2,13 +2,14 @@ package codex
 
 import (
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
+
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
 )
 
 // InputEstimator uses the same resolved model identity as Run. Unrecognized CLI
-// aliases use the conservative shared policy rather than compressed file size.
-func (c *Client) InputEstimator(input external.Input) agent.InputEstimator {
+// aliases use the shared image fallback rather than compressed file size.
+func (c *Client) InputEstimator(input external.Input) agentmodel.InputEstimator {
 	model := ""
 	if input.Selection.Codex != nil {
 		model = input.Selection.Codex.Model

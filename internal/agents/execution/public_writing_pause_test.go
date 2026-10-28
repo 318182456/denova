@@ -18,8 +18,9 @@ import (
 	"denova/internal/book"
 	"denova/internal/project"
 
-	agent "github.com/alfredxw/denova/agent"
-	publictools "github.com/alfredxw/denova/agent/tools"
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 func TestWritingCanonicalPauseAnswerAndColdResume(t *testing.T) {
@@ -66,8 +67,8 @@ func testWritingCanonicalPauseAnswerAndColdResume(t *testing.T, kind, file strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := &publicBackendTestModel{responses: []*agent.Message{
-		agent.AssistantMessage("", []agent.ToolCall{{ID: "ask-original", Type: "function", Function: agent.FunctionCall{
+	model := &publicBackendTestModel{responses: []*agentschema.Message{
+		agentschema.AssistantMessage("", []agentschema.ToolCall{{ID: "ask-original", Type: "function", Function: agentschema.FunctionCall{
 			Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":"Choose scope","options":[{"value":"minimal","label":"Minimal","recommended":true},{"value":"full","label":"Full"}]}]}`,
 		}}}),
 	}}
@@ -77,7 +78,7 @@ func testWritingCanonicalPauseAnswerAndColdResume(t *testing.T, kind, file strin
 	}
 	newCycle := func(request agentchat.ChatRequest) Cycle {
 		return Cycle{Definition: agent.Definition{Key: "writing-pause", Name: "writer", Model: model, Tools: publictools.Ask(), Context: contextSource,
-			ModelIdentity: agent.CapabilityIdentity{Kind: "test.writing-pause", Version: 1}},
+			ModelIdentity: agentschema.CapabilityIdentity{Kind: "test.writing-pause", Version: 1}},
 			Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, kind), BookService: book.NewService(workspace), Request: request, Options: options}
 	}
 	newRuntime := func() *Runtime {
@@ -129,7 +130,7 @@ func testWritingCanonicalPauseAnswerAndColdResume(t *testing.T, kind, file strin
 	case outcome := <-outcomes:
 		for _, input := range model.inputs {
 			for _, message := range input {
-				if message.Role == agent.ToolRole {
+				if message.Role == agentschema.ToolRole {
 					t.Logf("tool feedback: %s", message.Content)
 				}
 			}
@@ -175,7 +176,7 @@ func testWritingCanonicalPauseAnswerAndColdResume(t *testing.T, kind, file strin
 			t.Fatal(err)
 		}
 	}
-	model = &publicBackendTestModel{responses: []*agent.Message{agent.AssistantMessage("Finished once", nil), agent.AssistantMessage("Next cycle finished", nil)}}
+	model = &publicBackendTestModel{responses: []*agentschema.Message{agentschema.AssistantMessage("Finished once", nil), agentschema.AssistantMessage("Next cycle finished", nil)}}
 	runtime = newRuntime()
 	answers := []agentconversation.HostAskAnswer{{QuestionID: "scope", SelectedOptionIDs: []string{"minimal"}}}
 	for attempt := 0; attempt < 2; attempt++ {
@@ -218,10 +219,10 @@ func testWritingCanonicalPauseAnswerAndColdResume(t *testing.T, kind, file strin
 	}
 	inputs, outputs := 0, 0
 	for _, message := range messages {
-		if message.Role == agent.User && message.Content == "Keep this original input" {
+		if message.Role == agentschema.User && message.Content == "Keep this original input" {
 			inputs++
 		}
-		if message.Role == agent.Assistant && message.Content == "Finished once" {
+		if message.Role == agentschema.Assistant && message.Content == "Finished once" {
 			outputs++
 		}
 	}

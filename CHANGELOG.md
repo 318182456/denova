@@ -1,33 +1,199 @@
 # Changelog
 
-Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据变更、安全更新，以及影响核心流程的关键修复。内部重构、测试调整、文案修改和细节级 UI 优化不再逐项列出，完整记录可查看 [Git history](https://github.com/alfredxw/denova/commits/master)。
+Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据变更、安全更新，以及影响核心流程的关键修复。完整记录可查看 [Git history](https://github.com/alfredxw/denova/commits/master)。
 
-Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
+Denova records major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. See [Git history](https://github.com/alfredxw/denova/commits/master) for the full history.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.5.1）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.5.1 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本为基线，只描述升级用户最终可感知的净变化，不记录内部重构或未发布中间格式。
 
-`Unreleased` compares against the latest release (currently v0.5.1) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.5.1 are excluded.
+`Unreleased` describes the final user-visible changes since the latest release, excluding internal refactors and unpublished intermediate formats.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
 
+### Brief / 简要说明
+
+#### 中文
+
+- 新增图表统计，可按项目和日期查看稿量变化、章节进度、游戏活动与模型用量。
+- 新增内置互动游戏创作 Skill，并支持按「游戏」分类管理 Skills。
+- 更新前后可查看本次升级跨越的全部版本变化。
+
+#### English
+
+- Adds chart-based statistics for manuscript changes, chapter progress, Game activity, and model usage by project and date.
+- Adds a built-in interactive-game design Skill and a Game category for Skills.
+- Shows changes across every version included in an upgrade, before and after installation.
+
+### Added / 新增
+
+- 共通一级菜单新增「统计」，提供写作趋势、稿量分布、章节进度、游戏每日回合与故事线活动、模型调用与 Token 图表；稿量变化和模型用量从升级后开始记录，游戏活动从现存故事日志读取。可在常规设置中关闭本地统计，保留已有记录与创作内容。
+- A shared Statistics destination adds writing trends, manuscript and chapter charts, daily Game turns and story activity, model calls, and token breakdowns. Manuscript changes and model usage are recorded after upgrading; Game activity comes from retained story journals. Local statistics can be disabled in General settings while keeping existing records and creative content.
+- 内置互动游戏创作 Skill，支持游戏构思与核心循环、世界与角色资料库、状态系统、规则判定、游戏规划、开局回合和跑团诊断。
+- A built-in interactive-game design Skill covers game premises and loops, world and character Lore, state systems, rules and checks, planning, openings and turns, and play diagnostics.
+- 互动游戏创作 Skill 补充经典网文向的成长体系、爽点结构、资源与社会资本、世界阶梯、副本/规则恐怖/都市隐杀和外观沉浸感设计。
+- The interactive-game design Skill now covers classic web-novel progression, payoff structure, resources and social capital, world tiers, instance/rule-horror/urban-undercover patterns, and sensory immersion.
+- Skills 库新增「游戏」分类，可在创建、配置和筛选中使用。
+- The Skills library adds a Game category for creation, configuration, and filtering.
+
+### Changed / 变更
+
+- 软件更新展示当前版本到目标版本的变化，按版本阅读简要说明和详情；更新完成后保留本次升级范围，并提供完整历史入口。
+- Software updates show changes from the current version to the target, with per-version summaries and details. Completed upgrades retain their comparison range and link to the full history.
+
 ### Fixed / 修复
 
-- 修复子 Agent 刚启动时，相同命令重试可能被误判为输入冲突的问题。
-- Fix identical command retries being rejected as input conflicts while a child Agent is starting.
-- 修复外部运行时压缩上下文期间，状态查询可能连带阻塞其他会话控制操作的问题。
-- Fix status queries during external runtime context compaction blocking controls in other conversations.
-- 外部运行时逐条保存控制回执，避免长会话在追加指令、暂停和结束任务时反复保存全部历史回执；升级时备份并转换已有记录，保留未完成任务和命令重试结果。
-- External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
-- 修复打开或切换到包含大量整章写入的长会话时，页面长时间占满 CPU、无法操作的问题。
-- Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
-- 修复 Claude Code 2.1.286 及以上版本输出界面刷新事件时，Claude 运行时任务以 `decode Claude stream` 错误中断的问题。
-- Fix Claude runtime tasks failing with `decode Claude stream` when Claude Code 2.1.286 or later reports UI refresh events.
-- 修复打开包含大量整章写入的长会话时，后端长时间占满 CPU、页面无法打开的问题。
-- Fix the backend pinning the CPU for minutes, leaving the page unable to load, when opening a long session with many whole-chapter writes.
-- 修复单次提问中 Agent 连续编辑过多时，会话历史一次返回整个回合（可达数十 MB）、导致页面长时间加载不出来的问题。超长回合现在按页加载，单页传输量有上限，可通过“加载更早消息”继续查看；首次打开已有会话时会自动重建一次历史索引。
-- Fix conversations becoming unable to load when one Agent turn made many edits, because history returned the entire turn (up to tens of megabytes) at once. Very long turns now load page by page with a bounded response size and remain reachable through “Load earlier messages”; existing sessions rebuild their history index once on first open.
+- 修复单个 Agent 回合包含大量整章编辑时，历史页面响应过大导致加载缓慢的问题；历史响应按传输量分页，可继续加载更早消息。
+- Fix slow history loading when one Agent turn contains many whole-chapter edits by bounding history response size while keeping earlier messages pageable.
+
+## [v0.6.3] - 2026-10-20
+
+### Brief / 简要说明
+
+#### 中文
+
+- 新增可选决策模型、资料正文提及检索与内置网文创作 Skill。
+- 修复原文修改后批注阻断发送，以及 Windows 文件定位误报失败的问题。
+
+#### English
+
+- Adds optional decision models, Lore text-mention search, and a built-in novel-writing Skill.
+- Fixes comments blocking messages after source edits and false failures when revealing files on Windows.
+
+### Added / 新增
+
+- 可选决策模型支持游戏舞台素材选择、资料库语义分类和自动化语义触发，不确定或服务不可用时由语言模型兜底。
+- Optional decision models handle Game stage media, Lore semantic classification, and automation semantic triggers, with language-model fallback for uncertain results or service failures.
+- 资料详情新增「作品提及」：查找作品文件与指定故事分支的正文提及，定位文件或只读查看历史回合。
+- Lore details now find text mentions in project files and a selected story branch, with file navigation and read-only historical narrative.
+- 内置网文创作 Skill，支持构思、大纲、人物与规则设计、章节场景、长篇续航和改稿诊断。
+- A built-in novel-writing Skill supports premises, outlines, characters and rules, scenes, long-form continuity, and revision.
+
+### Fixed / 修复
+
+- 修复编辑原文后批注阻断消息发送的问题；保留原文引用，并让 Agent 结合当前内容处理。
+- Fixed document comments blocking messages after source edits; original quotes remain available for the Agent to reconcile with current content.
+- 修复 Windows 文件定位已成功打开资源管理器却误报失败的问题。
+- Fixed false failure reports after successfully revealing files in Windows Explorer.
+
+## [v0.6.2] - 2026-10-19
+
+### Brief / 简要说明
+
+#### 中文
+
+- 新增 DeepSeek、Perplexity 和 Tavily 搜索服务配置与测试，以及随回合、分支保存的游戏场景环境音。
+- 修复游戏回合续写与恢复时的正文上下文丢失，以及局域网 HTTP 访问时的页面崩溃。
+
+#### English
+
+- Adds configurable DeepSeek, Perplexity, and Tavily search with connection testing, plus Game scene ambience saved with turns and branches.
+- Fixes lost narrative context during Game turn continuation and recovery, and page crashes over LAN HTTP.
+
+### Added / 新增
+
+- 搜索支持 DeepSeek、Perplexity 和 Tavily，可在服务列表中管理密钥、选择默认服务并测试搜索；网页读取保持原有流程。
+- Search supports DeepSeek, Perplexity, and Tavily with saved service credentials, a selectable default, and search testing; page reading keeps its existing flow.
+- 游戏舞台支持选择资料库音频作为循环环境音，随回合与分支保存；可手动控制播放或允许 Agent 随场景切换。
+- Game stages can loop Lore audio as scene ambience saved with turns and branches, with manual playback and optional Agent selection.
+
+### Fixed / 修复
+
+- 修复游戏回合补齐状态与选项时丢失已接受正文上下文的问题，并保持正常续轮与冷恢复的消息顺序。
+- Fixed lost accepted narrative context while completing Game turn state and choices, preserving message order during continuation and cold recovery.
+- 修复通过局域网 HTTP 地址访问时，浏览器缺少 `crypto.randomUUID` 导致页面崩溃及部分功能不可用的问题。
+- Fixed page crashes and affected features when accessing Denova over LAN HTTP in browsers without `crypto.randomUUID`.
+
+## [v0.6.1] - 2026-10-19
+
+### Brief / 简要说明
+
+#### 中文
+
+- 修复从 v0.5.1 自动更新后页面无法重连，以及部分 Windows 环境无法自动打开浏览器的问题。
+- 已遇到连接失败的用户，可保持 Denova 运行，按终端显示的地址重新打开页面后再更新。
+
+#### English
+
+- Fixes page reconnection after automatic updates from v0.5.1 and browser opening in affected Windows environments.
+- If an old page is already disconnected, keep Denova running and reopen the address printed in its terminal before updating.
+
+### Fixed / 修复
+
+- 修复从 v0.5.1 自动更新时默认端口变化导致旧页面无法重连，以及 Windows 环境无法找到 `cmd` 时不能自动打开浏览器的问题。
+- Fixed reconnection after automatic updates from v0.5.1 when the default port changes, and browser opening on Windows when `cmd` is unavailable through the environment.
+
+## [v0.6.0] - 2026-10-18
+
+### Brief / 简要说明
+
+#### 中文
+
+- 资料库支持自定义分类、文档式索引、关联引用与多媒体；游戏可用资料库背景和角色差分演出。
+- 新增资源市场、统一导入导出，以及可扩展创作页面、工具和游戏的插件平台。
+- 新增 Gemini 原生协议、会话正文搜索与导出、工作区快照，并改善长会话和大型项目性能。
+- 自动更新支持后台检查、断点续传与安装恢复；升级会备份并迁移受影响的旧数据，不支持程序降级。
+
+#### English
+
+- Lore gains custom categories, document-style indexes, linked references and multimedia, with backgrounds and character sprites for Game stages.
+- A resource marketplace and shared import/export support a plugin platform for creation pages, tools and custom games.
+- Adds native Gemini support, conversation search and export, and workspace snapshots, with better performance for long sessions and large projects.
+- Updates gain background checks, resumable downloads and installation recovery. Upgrades back up and migrate affected data; application downgrades are unsupported.
+
+### Added / 新增
+
+- 资料库支持分类卡片、自定义分类、文档式分组索引、@ 引用与反向引用；可向写作和游戏按组提供上下文，管理多图、音频与网络图片，并批量生成封面或带恢复点删除资料。
+- Lore supports category cards, custom categories, grouped document indexes, @ references and backlinks, grouped context for Writing and Game, multiple images, audio and web images, and batch cover generation or deletion with recovery versions.
+
+- 游戏舞台支持资料库背景、多角色差分和独立演出控制，演出随分支保存；新故事可选择已安装游戏，保留独立进度，并记住用户的开局偏好。
+- Game stages support Lore backgrounds, multiple character sprites and presentation controls saved with each branch. New stories can use installed games, retain separate progress and remember opening preferences.
+
+- 新增资源市场与统一导入导出，支持发现、预览和组合创作方案、Skills、资料、插件与游戏，管理来源、更新和备份，并逐项采纳资源包推荐的开局配置。
+- Adds a resource marketplace and shared import/export for discovering, previewing and combining Creative Setups, Skills, Lore, plugins and games, with source tracking, updates, backups and optional package-recommended opening settings.
+
+- 插件与游戏支持安装、配置、启停、开发、构建、独立预览和导出；插件可提供 Agent 工具、用户命令、独立面板和绑定 Project 的创作页面，支持图像编辑与多图参考等工作流。
+- Plugins and games support installation, configuration, enablement, development, builds, isolated previews and export. Plugins can provide Agent tools, user commands, panels and Project-bound creation pages for workflows such as image editing and multiple image references.
+
+- 新增 Gemini 原生协议，支持工具调用、图片输入和会话恢复；写作与通用对话支持正文搜索、Markdown 导出和 `/snapshot` 工作区版本命令。
+- Adds native Gemini support with tool calls, image inputs and session recovery, plus conversation body search, Markdown export and the `/snapshot` workspace version command in Writing and General conversations.
+
+- 更新支持后台检查、可选自动下载、活动任务结束后重启、断点续传和安装中断恢复；校验发布包并确认启动，失败保留诊断与程序备份。
+- Updates support background checks, optional automatic downloads, restart after active tasks, resumable downloads and interrupted-installation recovery, with package verification, startup confirmation, diagnostics and program backups.
+
+- 新增不包含创作内容的使用统计，首次告知确认后开始采集，默认开启，可在设置中随时关闭。
+- Adds usage statistics without creative content, enabled by default after the first-use notice is acknowledged and configurable in Settings.
+
+### Changed / 变更
+
+- 改善启动、页面切换、编辑器恢复、大资料库、版本比较、自动化目录和长会话历史的加载性能，降低流式输出与大量工具结果的 CPU、内存和日志开销。
+- Improves startup, navigation, editor restoration, large Lore libraries, version comparisons, Automation catalogs and long-session history, reducing CPU, memory and journal overhead for streaming and large tool results.
+
+- 写作和通用对话使用 `/new` 新建独立会话，替代 `/clear`，保留原会话历史、目标与待办。
+- Writing and General conversations use `/new` instead of `/clear` to start an independent session while preserving the original history, Goal and Todo.
+
+- 升级会先备份再迁移受影响的旧资料分类、素材路径、Skill 安装来源与外部运行时控制记录。素材按场景归属保存，版本恢复保留历史可能引用的媒体；备份用于迁移失败恢复，不支持程序降级。
+- Upgrades back up and migrate affected Lore categories, asset paths, Skill installation sources and external runtime control records. Assets are organized by use and ownership, and version restores retain media that history may reference. Backups support migration recovery; application downgrades are unsupported.
+
+### Fixed / 修复
+
+- 修复已发送图片预览消失、流式正文截断或回退、思考重复，以及 Safari 输入框删除失效的问题。
+- Fixes disappearing sent-image previews, truncated or regressing streamed text, duplicated reasoning and broken deletion in the Safari composer.
+
+- 修复 Agent 中断恢复后持续重连、压缩阻塞其他会话、误删恢复状态与旧排队指令无法管理的问题，保留已接受任务及命令重试结果。
+- Fixes persistent reconnection after interrupted runs, compaction blocking other conversations, incorrectly cleared recovery state and stale queued controls, preserving accepted tasks and command retry results.
+
+- 修复 Gemini 连续工具调用与恢复时签名丢失、Native 历史压缩后被严格聊天模板拒绝，以及新版 Claude 流式事件导致任务中断的问题。
+- Fixes lost Gemini signatures across tool calls and recovery, strict chat templates rejecting compacted Native history, and newer Claude stream events interrupting tasks.
+
+- 修复包含用户数据目录的代码项目添加失败、大型项目移除卡顿，以及远程 ZIP 和 Skill 下载未遵循代理设置的问题。
+- Fixes failed registration of code projects containing a user data directory, stalls when removing large projects, and remote ZIP or Skill downloads bypassing proxy settings.
+
+### Security / 安全
+
+- 更新构建工具链与运行依赖，修复网络请求、文件访问和内容渲染相关的已知安全问题。
+- Updates the build toolchain and runtime dependencies to fix known security issues in network requests, file access and content rendering.
 
 ## [v0.5.1] - 2026-09-28
 

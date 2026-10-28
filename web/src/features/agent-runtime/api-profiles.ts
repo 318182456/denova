@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchModelCatalog, fetchSettings } from '@/features/settings/api'
 import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
-import { modelEndpointsWithDefault, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { modelEndpointsWithDefault, modelProfileLabel, selectableModelProfiles } from '@/features/settings/model-profiles'
 import type { LayeredSettings, ModelCatalog } from '@/features/settings/types'
 import type { AgentEngineID } from './types'
 
@@ -9,7 +9,7 @@ import type { AgentEngineID } from './types'
 export function runtimeProfileOptions(engine: AgentEngineID, settings: Pick<LayeredSettings, 'effective'>, catalog: ModelCatalog) {
   const protocol = engine === 'codex' ? 'openai-responses' : 'anthropic-messages'
   const endpoints = modelEndpointsWithDefault(settings.effective)
-  return modelProfilesWithDefault(settings.effective).flatMap(profile => {
+  return selectableModelProfiles(settings.effective).flatMap(profile => {
     const endpoint = endpoints.find(item => item.id === profile.endpoint_id)
     if (!endpoint || !profile.model || engine === 'native') return []
     const actual = endpoint.protocol || catalog.providers.find(item => item.id === endpoint.provider)?.default_protocol

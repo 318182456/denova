@@ -7,12 +7,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // summarize preserves ordered source parts, including native user/tool images.
 // Each image and its source label is indivisible; text may span UTF-8-safe batches.
-func (request HistoryPreparation) summarize(ctx context.Context, input Input, source []Message, summary string, estimator agent.InputEstimator) (string, error) {
+func (request HistoryPreparation) summarize(ctx context.Context, input Input, source []Message, summary string, estimator agentmodel.InputEstimator) (string, error) {
 	var batch []Message
 	textBytes := 0
 	maintenance := func(history []Message) Input {
@@ -46,12 +47,12 @@ func (request HistoryPreparation) summarize(ctx context.Context, input Input, so
 	}
 	for index, message := range source {
 		// Summary references stay portable even though image bytes resolve on this host.
-		files := append(append([]agent.Attachment(nil), message.Attachments...), message.ToolImages...)
+		files := append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...)
 		for i := range files {
 			files[i].RuntimePath = ""
 		}
 		label := fmt.Sprintf("Source record %d (cursor %d, %s)", index+1, message.Cursor, message.Role)
-		text := label + "\n" + agent.ModelUserContent(&agent.Message{Content: message.Text, Attachments: files})
+		text := label + "\n" + agentschema.ModelUserContent(&agentschema.Message{Content: message.Text, Attachments: files})
 		for len(text) > 0 {
 			if err := ctx.Err(); err != nil {
 				return "", err
@@ -90,15 +91,15 @@ func (request HistoryPreparation) summarize(ctx context.Context, input Input, so
 			textBytes += best
 			text = text[best:]
 		}
-		for _, images := range [][]agent.Attachment{message.Attachments, message.ToolImages} {
+		for _, images := range [][]agentschema.Attachment{message.Attachments, message.ToolImages} {
 			for _, file := range images {
-				if !agent.IsNativeImageMediaType(file.MediaType) {
+				if !agentschema.IsNativeImageMediaType(file.MediaType) {
 					continue
 				}
-				if _, err := agent.ReadAttachmentImage(file); err != nil {
+				if _, err := agentschema.ReadAttachmentImage(file); err != nil {
 					return "", err
 				}
-				part := Message{Role: "user", Text: label + " image: " + file.Name + " (" + file.Path + ")", Attachments: []agent.Attachment{file}}
+				part := Message{Role: "user", Text: label + " image: " + file.Name + " (" + file.Path + ")", Attachments: []agentschema.Attachment{file}}
 				candidate := append(append([]Message(nil), batch...), part)
 				ok, err := fits(candidate)
 				if err != nil {

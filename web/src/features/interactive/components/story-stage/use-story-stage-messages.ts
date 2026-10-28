@@ -153,7 +153,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
     messages.push(createAgentReasoningMessage({
       id: `${turn.id}-thinking`,
       text: turn.thinking,
-      metadata: { display_role: 'thinking' },
+      metadata: { display_role: 'thinking', navigation_turn_id: turn.id, execution_details_deferred: Boolean(turn.execution_cursor) },
     }))
   }
   const deferredImageEvents: TurnDisplayEvent[] = []
@@ -166,7 +166,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
       continue
     }
     const timeline = narrativeAnchored ? afterNarrative : beforeNarrative
-    const metadata = displayEventMetadata(event)
+    const metadata = { ...displayEventMetadata(event), navigation_turn_id: turn.id, execution_details_deferred: Boolean(turn.execution_cursor) }
     switch (event.role) {
       case 'todo_updated':
         timeline.push(createAgentDataMessage({

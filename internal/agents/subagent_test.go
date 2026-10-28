@@ -10,9 +10,14 @@ import (
 	agentdelegation "denova/internal/agents/delegation"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-	publictools "github.com/alfredxw/denova/agent/tools"
+	"github.com/alfredxw/denova/agent"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -86,7 +91,7 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	definitions, err := bound.PrepareTools(context.Background(), agent.ToolRequest{})
+	definitions, err := bound.PrepareTools(context.Background(), agenttool.ToolRequest{})
 	if err != nil {
 		t.Fatalf("delegation manifest did not match executable tools: %v", err)
 	}
@@ -107,12 +112,12 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	}
 	var generalOrchestrator, rootOrchestrator *agenttoolruntime.OrchestratorMiddleware
 	for _, middleware := range children[0].Definition.Middlewares {
-		if current, ok := agent.MiddlewareImplementation(middleware).(*agenttoolruntime.OrchestratorMiddleware); ok {
+		if current, ok := agentmiddleware.MiddlewareImplementation(middleware).(*agenttoolruntime.OrchestratorMiddleware); ok {
 			generalOrchestrator = current
 		}
 	}
 	for _, middleware := range definition.Middlewares {
-		if current, ok := agent.MiddlewareImplementation(middleware).(*agenttoolruntime.OrchestratorMiddleware); ok {
+		if current, ok := agentmiddleware.MiddlewareImplementation(middleware).(*agenttoolruntime.OrchestratorMiddleware); ok {
 			rootOrchestrator = current
 		}
 	}
@@ -127,8 +132,8 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 			t.Fatalf("delegated child %q lost public lifecycle capabilities: %#v", child.Name, child.Definition)
 		}
 		if child.Name == "researcher" {
-			messages := []*agent.Message{agent.UserMessage("inspect the child checkpoint budget")}
-			plan, planErr := child.Definition.Compaction.Plan(context.Background(), agent.CompactionPlanRequest{ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot()})
+			messages := []*agentschema.Message{agentschema.UserMessage("inspect the child checkpoint budget")}
+			plan, planErr := child.Definition.Compaction.Plan(context.Background(), agentcompaction.CompactionPlanRequest{ModelSnapshot: (&agentmodel.ModelCall{Messages: messages}).Snapshot()})
 			if planErr != nil {
 				t.Fatal(planErr)
 			}
@@ -229,7 +234,7 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 	if _, ok := agentdelegation.AsCatalog(definition.Tools); ok {
 		t.Fatal("delegation catalog should be absent when no child Agent is enabled")
 	}
-	tools, err := definition.Tools.PrepareTools(context.Background(), agent.ToolRequest{})
+	tools, err := definition.Tools.PrepareTools(context.Background(), agenttool.ToolRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,8 +300,8 @@ func TestBuildChatModelAgentAssemblyProjectsProfileMaxTokensIntoFinalCall(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := &agent.ModelCall{Messages: []*agent.Message{agent.UserMessage("inspect")}}
-	modelContext := &agent.ModelContext{}
+	call := &agentmodel.ModelCall{Messages: []*agentschema.Message{agentschema.UserMessage("inspect")}}
+	modelContext := &agentmiddleware.ModelContext{}
 	ctx := context.Background()
 	for _, middleware := range assembly.Middlewares {
 		ctx, call, err = middleware.BeforeModelCall(ctx, call, modelContext)
@@ -304,13 +309,13 @@ func TestBuildChatModelAgentAssemblyProjectsProfileMaxTokensIntoFinalCall(t *tes
 			t.Fatal(err)
 		}
 	}
-	options := agent.GetCommonOptions(&agent.Options{}, call.Options...)
+	options := agentmodel.GetCommonOptions(&agentmodel.Options{}, call.Options...)
 	if options.MaxTokens == nil || *options.MaxTokens != profileMax {
 		t.Fatalf("final model-call max tokens = %#v, want %d", options.MaxTokens, profileMax)
 	}
 }
 
-func toolNamesForTest(t *testing.T, tools []agent.ToolDefinition) map[string]bool {
+func toolNamesForTest(t *testing.T, tools []agenttool.ToolDefinition) map[string]bool {
 	t.Helper()
 	names := make(map[string]bool, len(tools))
 	for _, current := range tools {

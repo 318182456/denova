@@ -8,7 +8,8 @@ import (
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // resume prepares the accepted product cycle and imports its canonical lane
@@ -19,7 +20,7 @@ func (backend *publicBackend) resume(ctx context.Context, session *agent.Session
 		return nil, err
 	}
 	if !found {
-		return nil, agent.ErrNoActiveRun
+		return nil, agentschema.ErrNoActiveRun
 	}
 	data, err := agentlifecycle.DecodeTurnHostData(input)
 	if err != nil {
@@ -37,7 +38,7 @@ func (backend *publicBackend) resume(ctx context.Context, session *agent.Session
 	}
 	if cycle.Conversation == nil {
 		cycle, err = backend.restoreCycle(ctx, binding, agent.PrepareRequest{
-			Run: agent.RunView{ID: string(action.OperationID)}, Reason: agent.TurnReasonFollowUp,
+			Run: agentschema.RunView{ID: string(action.OperationID)}, Reason: agent.TurnReasonFollowUp,
 		}, data, commandID, options, emit)
 		if err != nil {
 			return nil, err

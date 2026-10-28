@@ -103,8 +103,8 @@ resolve_port() {
     echo "${port}"
 }
 
-BACKEND_PORT="$(resolve_port "${DENOVA_BACKEND_PORT:-}" "${NOVA_BACKEND_PORT:-}" "backend_port" "8080")"
-FRONTEND_PORT="$(resolve_port "${DENOVA_FRONTEND_PORT:-}" "${NOVA_FRONTEND_PORT:-}" "frontend_port" "5173")"
+BACKEND_PORT="$(resolve_port "${DENOVA_BACKEND_PORT:-}" "${NOVA_BACKEND_PORT:-}" "backend_port" "7789")"
+FRONTEND_PORT="$(resolve_port "${DENOVA_FRONTEND_PORT:-}" "${NOVA_FRONTEND_PORT:-}" "frontend_port" "7788")"
 FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
 BACKEND_URL="http://localhost:${BACKEND_PORT}"
 

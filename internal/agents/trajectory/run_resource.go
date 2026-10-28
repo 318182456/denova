@@ -12,7 +12,7 @@ import (
 
 	agentrun "denova/internal/agents/run"
 
-	agenttools "github.com/alfredxw/denova/agent/tools"
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 const runResourceSchema = "denova.trajectory.run.v2"

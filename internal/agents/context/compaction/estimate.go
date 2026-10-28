@@ -1,10 +1,10 @@
 package compaction
 
 import (
-	agenttoolresult "github.com/alfredxw/denova/agent/toolresult"
-
 	"denova/config"
 	"denova/internal/agents/toolresult"
+
+	agenttoolresult "github.com/alfredxw/denova/agent/tool/result"
 )
 
 // EstimateProjectionReserves returns bounded reserves for completion and

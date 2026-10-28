@@ -30,7 +30,9 @@ const {
 } = testMocks
 
 vi.mock('@/features/settings/api', () => ({
+  fetchProjectSettings: vi.fn().mockResolvedValue({ effective: {} }),
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
+  refreshProjectSettings: vi.fn().mockResolvedValue({ effective: {} }),
 }))
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
@@ -97,7 +99,7 @@ describe('StoryStage runtime recovery', () => {
     testMocks.resolveInteractiveAskMock.mockResolvedValue({ schema: 'ask.result.v1', id: 'verify-1', status: 'pending' })
     render(<StoryStageHarness />)
     await screen.findByText('这项操作是否已经生效？')
-    await userEvent.click(screen.getByRole('radio', { name: '暂时无法确定' }))
+    await userEvent.click(await screen.findByRole('radio', { name: '暂时无法确定' }))
     await userEvent.click(screen.getByRole('button', { name: '提交' }))
     await waitFor(() => expect(testMocks.resolveInteractiveAskMock).toHaveBeenCalledExactlyOnceWith('story-1', 'main', 'verify-1', {
       status: 'answered', answers: [{ question_id: 'effect', selected_option_ids: ['unknown'] }],
@@ -176,7 +178,7 @@ describe('StoryStage runtime recovery', () => {
         await Promise.resolve()
       })
 
-      expect(screen.getByText('这一轮已经落盘。')).toBeInTheDocument()
+      expect(await screen.findByText('这一轮已经落盘。')).toBeInTheDocument()
       expect(streamActiveInteractiveChatMock).not.toHaveBeenCalled()
       expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.streaming ?? false).toBe(false)
     } finally {

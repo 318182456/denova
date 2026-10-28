@@ -12,7 +12,8 @@ import (
 	"sync"
 
 	"denova/config"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // ErrSessionUnavailable is valid only before a provider admits new work.
@@ -47,11 +48,11 @@ type SessionRequest struct {
 }
 
 type runtimeCache struct {
-	Version         uint16            `json:"version"`
-	SessionID       string            `json:"session_id"`
-	Boundary        string            `json:"boundary"`
-	PrefixKey       string            `json:"prefix_key"`
-	CumulativeUsage *agent.TokenUsage `json:"cumulative_usage,omitempty"`
+	Version         uint16                  `json:"version"`
+	SessionID       string                  `json:"session_id"`
+	Boundary        string                  `json:"boundary"`
+	PrefixKey       string                  `json:"prefix_key"`
+	CumulativeUsage *agentschema.TokenUsage `json:"cumulative_usage,omitempty"`
 }
 
 type SessionResult struct {
@@ -63,7 +64,7 @@ type SessionResult struct {
 // read-only Goal evaluation. Accept is called only after the product commits;
 // every other exit leaves the cache invalid for safe reconstruction.
 type RuntimeSession struct {
-	EvaluationUsage func(context.Context, *agent.TokenUsage) error
+	EvaluationUsage func(context.Context, *agentschema.TokenUsage) error
 	adapter         Adapter
 	release         func()
 	once            sync.Once

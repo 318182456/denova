@@ -12,7 +12,8 @@ import (
 	"denova/internal/agents/conversation"
 	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 )
 
 var (
@@ -31,7 +32,7 @@ type Interactions struct {
 // QuestionRequest reuses the public Ask validator without invoking the Native
 // tool's Run-dependent waiting implementation. Free text and Other follow the
 // existing Ask schema even if the model supplies extra repairable fields.
-func QuestionRequest(executionID string, arguments json.RawMessage) (agent.InteractionRequest, error) {
+func QuestionRequest(executionID string, arguments json.RawMessage) (agentinteraction.InteractionRequest, error) {
 	return externaljournal.QuestionRequest(executionID, arguments)
 }
 
@@ -197,9 +198,9 @@ func readAskResult(state session.ExternalState, locator externaljournal.Locator)
 	return result, nil
 }
 
-func resolveQuestion(ctx context.Context, request agent.InteractionRequest, answers []conversation.HostAskAnswer, cancelReason *string) (conversation.HostAskResolution, error) {
-	response := agent.InteractionResponse{Cancelled: cancelReason != nil, Answers: conversation.InteractionAnswers(answers)}
-	resolution, err := agent.StandardInteraction().Resolve(ctx, request, response)
+func resolveQuestion(ctx context.Context, request agentinteraction.InteractionRequest, answers []conversation.HostAskAnswer, cancelReason *string) (conversation.HostAskResolution, error) {
+	response := agentinteraction.InteractionResponse{Cancelled: cancelReason != nil, Answers: conversation.InteractionAnswers(answers)}
+	resolution, err := agentinteraction.StandardInteraction().Resolve(ctx, request, response)
 	if err != nil {
 		return conversation.HostAskResolution{}, err
 	}

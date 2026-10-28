@@ -12,9 +12,11 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 
-	agent "github.com/alfredxw/denova/agent"
-	agentpermission "github.com/alfredxw/denova/agent/permission"
+	"github.com/alfredxw/denova/agent"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	agentpermission "github.com/alfredxw/denova/agent/tool/permission"
 )
 
 type unconfirmedEffectStore struct{ agentsession.Store }
@@ -31,7 +33,7 @@ func (log unconfirmedEffectLog) Append(ctx context.Context, revision agentsessio
 			continue
 		}
 		var fact struct {
-			Result *agent.ToolResult `json:"result"`
+			Result *agentschema.ToolResult `json:"result"`
 		}
 		if err := json.Unmarshal(record.Data, &fact); err != nil {
 			return revision, err
@@ -51,25 +53,25 @@ func TestChildEffectVerificationRoutesAfterRootCompletionWithoutExecution(t *tes
 				defer cancel()
 				store := agentsession.Memory()
 				var effects atomic.Int32
-				tool, err := agent.InferTool("external_write", "Apply an external operation", func(context.Context, struct{}) (agent.ToolResult, error) {
+				tool, err := agenttool.InferTool("external_write", "Apply an external operation", func(context.Context, struct{}) (agentschema.ToolResult, error) {
 					effects.Add(1)
-					return agent.ToolResult{Status: agent.ToolResultSuccess, ModelContent: "applied"}, nil
+					return agentschema.ToolResult{Status: agentschema.ToolResultSuccess, ModelContent: "applied"}, nil
 				})
 				if err != nil {
 					t.Fatal(err)
 				}
-				tools, err := agent.StaticTools(agent.ToolDefinition{Tool: tool, Descriptor: agent.ToolDescriptor{
-					Source: agent.ToolSourceWrite, Execution: agent.ToolExecutionSessionExclusive,
-					MutationScope: agent.ToolMutationExternal, PostCheck: agent.ToolPostCheckExternalReceipt,
-					Recovery: agent.ToolRecoveryNonIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
-					ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 1 << 20,
+				tools, err := agenttool.StaticTools(agenttool.ToolDefinition{Tool: tool, Descriptor: agenttool.ToolDescriptor{
+					Source: agenttool.ToolSourceWrite, Execution: agenttool.ToolExecutionSessionExclusive,
+					MutationScope: agenttool.ToolMutationExternal, PostCheck: agenttool.ToolPostCheckExternalReceipt,
+					Recovery: agenttool.ToolRecoveryNonIdempotent, ResultProjection: agentschema.ToolResultBoundedModelContext,
+					ResultRetention: agentschema.ToolResultDeferred, Steering: agenttool.SteeringFinishCurrent, MaxResultBytes: 1 << 20,
 				}})
 				if err != nil {
 					t.Fatal(err)
 				}
-				model := &publicBackendTestModel{responses: []*agent.Message{
-					agent.AssistantMessage("root finished", nil),
-					agent.AssistantMessage("", []agent.ToolCall{{ID: "original-call", Type: "function", Function: agent.FunctionCall{Name: "external_write", Arguments: `{}`}}}),
+				model := &publicBackendTestModel{responses: []*agentschema.Message{
+					agentschema.AssistantMessage("root finished", nil),
+					agentschema.AssistantMessage("", []agentschema.ToolCall{{ID: "original-call", Type: "function", Function: agentschema.FunctionCall{Name: "external_write", Arguments: `{}`}}}),
 				}}
 				definition := agent.Definition{Name: "test", Model: model, Tools: tools, Permission: agentpermission.FullAccess()}
 				owner, err := agent.New(ctx, definition, agent.WithSessionStore(unconfirmedEffectStore{store}))
@@ -86,10 +88,10 @@ func TestChildEffectVerificationRoutesAfterRootCompletionWithoutExecution(t *tes
 				if err != nil {
 					t.Fatal(err)
 				}
-				if result, err := rootRun.Wait(ctx); err != nil || result.Status != agent.ResultCompleted {
+				if result, err := rootRun.Wait(ctx); err != nil || result.Status != agentschema.ResultCompleted {
 					t.Fatalf("root=%#v error=%v", result, err)
 				}
-				childKey := agent.NamedSession("child")
+				childKey := agentsession.Named("child")
 				childKey.Attributes, err = agent.ChildSessionAttributes(root.Key())
 				if err != nil {
 					t.Fatal(err)
@@ -102,11 +104,11 @@ func TestChildEffectVerificationRoutesAfterRootCompletionWithoutExecution(t *tes
 				if err != nil {
 					t.Fatal(err)
 				}
-				if result, err := childRun.Wait(ctx); !errors.Is(err, agentsession.ErrCommitUnknown) || result.Status != agent.ResultSuspended {
+				if result, err := childRun.Wait(ctx); !errors.Is(err, agentsession.ErrCommitUnknown) || result.Status != agentschema.ResultSuspended {
 					t.Fatalf("child=%#v error=%v", result, err)
 				}
 				_ = owner.Close(ctx)
-				coldModel := &publicBackendTestModel{responses: []*agent.Message{agent.AssistantMessage("continued", nil)}}
+				coldModel := &publicBackendTestModel{responses: []*agentschema.Message{agentschema.AssistantMessage("continued", nil)}}
 				definition.Model = coldModel
 				owner, err = agent.New(ctx, definition, agent.WithSessionStore(store))
 				if err != nil {
@@ -115,7 +117,7 @@ func TestChildEffectVerificationRoutesAfterRootCompletionWithoutExecution(t *tes
 				t.Cleanup(func() { _ = owner.Close(context.Background()) })
 				backend = &publicBackend{agent: owner}
 				runtime := &Runtime{public: backend}
-				if err := runtime.ReleaseIdleForEngineSwitch(ctx, options); !errors.Is(err, agent.ErrSessionBusy) {
+				if err := runtime.ReleaseIdleForEngineSwitch(ctx, options); !errors.Is(err, agentschema.ErrSessionBusy) {
 					t.Fatalf("engine switch ignored the detached child's unknown effect: %v", err)
 				}
 				status, err := backend.status(ctx, options)

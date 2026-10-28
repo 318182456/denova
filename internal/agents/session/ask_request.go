@@ -4,12 +4,12 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 )
 
 // ProjectInteractionRequest is a display-only projection shared by live Native
 // interactions and external journal replay. Ownership is filled by the caller.
-func ProjectInteractionRequest(request agent.InteractionRequest, createdAt time.Time) *AskInteraction {
+func ProjectInteractionRequest(request agentinteraction.InteractionRequest, createdAt time.Time) *AskInteraction {
 	if strings.TrimSpace(request.ID) == "" {
 		return nil
 	}
@@ -17,7 +17,7 @@ func ProjectInteractionRequest(request agent.InteractionRequest, createdAt time.
 		Schema: "ask.pending.v1", ID: request.ID, Kind: AskKindQuestion, ToolCallID: request.ID,
 		Status: AskPending, AllowOther: request.AllowOther, CreatedAt: createdAt, Verification: request.Verification,
 	}
-	if request.Kind == agent.InteractionPermission && request.Permission != nil {
+	if request.Kind == agentinteraction.InteractionPermission && request.Permission != nil {
 		permission := request.Permission
 		projected.Kind = AskKindToolApproval
 		projected.ToolCallID = permission.CallID

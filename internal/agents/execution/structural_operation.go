@@ -10,7 +10,10 @@ import (
 	agentstructural "denova/internal/agents/context/structural"
 	productsession "denova/internal/agents/session"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	sdkcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -49,13 +52,13 @@ func resolveStructuralDefinition(ctx context.Context, request agent.PrepareReque
 }
 
 func (backend *publicBackend) executeStructural(ctx context.Context, cycle Cycle, spec agentstructural.Spec) (agentstructural.Result, error) {
-	if err := agent.ValidateIdempotencyKey(spec.CommandID); err != nil {
+	if err := agentexecution.ValidateIdempotencyKey(spec.CommandID); err != nil {
 		return agentstructural.Result{}, fmt.Errorf("structural command_id is invalid: %w", err)
 	}
 	switch spec.Action {
 	case agentstructural.Compact, agentstructural.Remove:
 	default:
-		return agentstructural.Result{}, fmt.Errorf("%w: unsupported structural action %q", agent.ErrInvalidInput, spec.Action)
+		return agentstructural.Result{}, fmt.Errorf("%w: unsupported structural action %q", agentschema.ErrInvalidInput, spec.Action)
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -76,8 +79,8 @@ func (backend *publicBackend) executeStructural(ctx context.Context, cycle Cycle
 		return agentstructural.Result{}, err
 	}
 	definition, err := backend.bindDefinition(ctx, agent.PrepareRequest{
-		Session: agent.SessionView{Key: session.Key()}, Reason: agent.TurnReasonStructural,
-		Run: agent.RunView{ID: spec.CommandID, CommandID: spec.CommandID, Cycle: 1},
+		Session: agentschema.SessionView{Key: session.Key()}, Reason: agent.TurnReasonStructural,
+		Run: agentschema.RunView{ID: spec.CommandID, CommandID: spec.CommandID, Cycle: 1},
 	}, cycle, &publicCycleRegistration{cycle: &cycle, request: cycle.Request, options: cycle.Options})
 	if err != nil {
 		return agentstructural.Result{}, err
@@ -90,7 +93,7 @@ func (backend *publicBackend) executeStructural(ctx context.Context, cycle Cycle
 		"command_id", spec.CommandID, "action", spec.Action)
 	switch spec.Action {
 	case agentstructural.Compact:
-		result, err := session.Compact(ctx, agent.CompactionRequest{
+		result, err := session.Compact(ctx, sdkcompaction.CompactionRequest{
 			Force: spec.Ref.Force, IdempotencyKey: spec.CommandID,
 			ExpectedID: spec.Ref.CompactionID,
 		})
@@ -105,16 +108,16 @@ func (backend *publicBackend) executeStructural(ctx context.Context, cycle Cycle
 		}
 		return agentstructural.Result{Compaction: projectPublicCompaction(result)}, err
 	case agentstructural.Remove:
-		removed, err := session.RemoveCompaction(ctx, agent.CompactionRemoveRequest{
+		removed, err := session.RemoveCompaction(ctx, sdkcompaction.CompactionRemoveRequest{
 			ID: spec.Ref.CompactionID, IdempotencyKey: spec.CommandID,
 		})
 		return agentstructural.Result{Removed: removed}, err
 	default:
-		return agentstructural.Result{}, fmt.Errorf("%w: structural action changed after validation", agent.ErrInvalidInput)
+		return agentstructural.Result{}, fmt.Errorf("%w: structural action changed after validation", agentschema.ErrInvalidInput)
 	}
 }
 
-func projectPublicCompaction(result agent.CompactionResult) agentcompaction.Result {
+func projectPublicCompaction(result sdkcompaction.CompactionResult) agentcompaction.Result {
 	projected := agentcompaction.Result{
 		Triggered: result.Changed, Summary: result.State.Summary,
 		Revision: result.State.Revision, TokensBefore: result.State.TokensBefore, TokensAfter: result.State.TokensAfter,

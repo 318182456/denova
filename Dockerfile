@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1-labs
 # Toolchain versions default to the current sources; the publish workflow reads
 # them from go.mod and web/package.json so upstream upgrades need no edit here.
-ARG GO_VERSION=1.26.6
+ARG GO_VERSION=1.26.9
 ARG NODE_VERSION=22
 FROM node:${NODE_VERSION}-bookworm AS node
 FROM golang:${GO_VERSION}-bookworm AS build

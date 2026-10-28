@@ -4,7 +4,10 @@ import (
 	"context"
 
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentgoal "github.com/alfredxw/denova/agent/engine/goal"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 // ReleaseIdleForEngineSwitch checks detached children and unfinished Goals,
@@ -28,16 +31,16 @@ func (runtime *Runtime) ReleaseIdleForEngineSwitch(ctx context.Context, options 
 			return err
 		}
 		if snapshot.ActiveRunID != "" || len(snapshot.QueuedRuns) > 0 || len(snapshot.OpenTools) > 0 || len(snapshot.PendingInteractions) > 0 {
-			return agent.ErrSessionBusy
+			return agentschema.ErrSessionBusy
 		}
 		goal, found, err := current.Goal(ctx)
 		if err != nil {
 			return err
 		}
-		if found && goal.Status != agent.GoalCompleted && goal.Status != agent.GoalCleared {
-			return agent.ErrSessionBusy
+		if found && goal.Status != agentgoal.GoalCompleted && goal.Status != agentgoal.GoalCleared {
+			return agentschema.ErrSessionBusy
 		}
 	}
 	key := root.Key()
-	return runtime.public.closeSessions(ctx, agent.SessionSelector{Namespace: key.Namespace, ID: key.ID})
+	return runtime.public.closeSessions(ctx, agentsession.Selector{Namespace: key.Namespace, ID: key.ID})
 }

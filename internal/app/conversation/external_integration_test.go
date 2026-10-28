@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents"
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
@@ -27,7 +27,10 @@ import (
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // Exercise the same preparation/acceptance/settlement used by Writing and
@@ -352,15 +355,15 @@ context_window_tokens = 100000
 	}
 }
 
-type continuationFixtureModel struct{ input []*agent.Message }
+type continuationFixtureModel struct{ input []*agentschema.Message }
 
-func (m *continuationFixtureModel) Generate(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (m *continuationFixtureModel) Generate(_ context.Context, input []*agentschema.Message, _ ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	m.input = input
-	return &agent.Message{Role: agent.Assistant, Content: "Native continuation preserved the draft.", ResponseMeta: &agent.ResponseMeta{FinishReason: "stop"}}, nil
+	return &agentschema.Message{Role: agentschema.Assistant, Content: "Native continuation preserved the draft.", ResponseMeta: &agentschema.ResponseMeta{FinishReason: "stop"}}, nil
 }
-func (m *continuationFixtureModel) Stream(ctx context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (m *continuationFixtureModel) Stream(ctx context.Context, input []*agentschema.Message, options ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	message, err := m.Generate(ctx, input, options...)
-	return agent.StreamReaderFromArray([]*agent.Message{message}), err
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{message}), err
 }
 
 // Emit the actual Anthropic streaming protocol consumed by the CLI, including

@@ -3,7 +3,6 @@ package agentruntime
 import (
 	"context"
 	"crypto/rand"
-	"denova/internal/observability"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,7 +11,9 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+	"denova/internal/observability"
+
+	agentgoal "github.com/alfredxw/denova/agent/engine/goal"
 )
 
 // ExternalRun drains journaled inputs on the product task goroutine. Pausing
@@ -25,7 +26,7 @@ type ExternalRun struct {
 	cancel        context.CancelCauseFunc // protected by control.mu
 	once          sync.Once
 	outcome       agentrun.Outcome
-	goal          agent.GoalState
+	goal          agentgoal.GoalState
 	goalEvaluated bool          // false when committed work still needs evaluation after recovery
 	guidance      int           // number of instructions supplied to the current provider attempt
 	steering      chan struct{} // wakeups only; accepted inputs live in the journal
@@ -138,7 +139,7 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 		run.goalEvaluated = false
 		run.guidance = len(input.Guidance)
 		input.OperationID = state.OperationID
-		run.goal = agent.GoalState{}
+		run.goal = agentgoal.GoalState{}
 		if supportsGoal(control.binding.AgentKind) {
 			run.goal, _, err = control.store.Goal(ctx)
 		}
@@ -190,7 +191,7 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 		cancel(context.Canceled)
 		run.cancel = nil
 		run.steering = nil
-		var pendingGoal agent.GoalState
+		var pendingGoal agentgoal.GoalState
 		if outcome.Status == agentrun.OutcomeCompleted && run.goal.Active() && !run.goalEvaluated {
 			goal, present, goalErr := control.store.Goal(context.WithoutCancel(ctx))
 			if goalErr != nil {

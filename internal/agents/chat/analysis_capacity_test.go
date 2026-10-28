@@ -3,10 +3,12 @@ package chat
 import (
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/config"
 	"denova/internal/agents/prompts"
+
+	"github.com/alfredxw/denova/agent"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestInspectedContextAnalysisUsesCapacityAwareProfileOutputReserve(t *testing.T) {
@@ -19,11 +21,11 @@ func TestInspectedContextAnalysisUsesCapacityAwareProfileOutputReserve(t *testin
 			ToolResultContextEnabled: &disableToolContext,
 		}},
 	}
-	messages := []*agent.Message{agent.UserMessage("short request")}
+	messages := []*agentschema.Message{agentschema.UserMessage("short request")}
 	analysis, err := BuildInspectedContextAnalysis(cfg, config.AgentKindIDE, "ide", prompts.SystemPromptComposition{}, agent.Inspection{
-		ModelRequest: agent.ModelRequestInspection{
+		ModelRequest: agentmodel.ModelRequestInspection{
 			Messages: messages,
-			Options:  agent.Options{MaxTokens: &maxOutput},
+			Options:  agentmodel.Options{MaxTokens: &maxOutput},
 		},
 	})
 	if err != nil {
@@ -50,7 +52,7 @@ func TestLegacyContextAnalysisUsesCapacityAwareProfileOutputReserve(t *testing.T
 			ToolResultContextEnabled: &disableToolContext,
 		}},
 	}
-	usage, err := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, "", []*agent.Message{agent.UserMessage("short request")}, 0)
+	usage, err := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, "", []*agentschema.Message{agentschema.UserMessage("short request")}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,6 +24,9 @@ func (journal *Journal) AppendWithBackup(ctx context.Context, guard Guard, upgra
 }
 
 func (journal *Journal) append(ctx context.Context, guard Guard, upgrade string, payloads ...json.RawMessage) (Commit, error) {
+	if journal != nil && journal.currentOnly {
+		return Commit{}, fmt.Errorf("current-state observation journal is read-only")
+	}
 	if journal == nil {
 		return Commit{}, fmt.Errorf("conversation journal is nil")
 	}
@@ -77,7 +80,6 @@ func (journal *Journal) append(ctx context.Context, guard Guard, upgrade string,
 		return Commit{}, errors.Join(ErrCommitUnknown, fmt.Errorf("append conversation journal: %w", appendErr))
 	}
 	location.Cursor = nextCursor
-	location.PreviousRecordSHA256 = journal.head.RecordSHA256
 	if err := journal.applyLineLocked(line, location.Offset, location.Length, nextOffset, true); err != nil {
 		journal.projectionInvalid = true
 		return Commit{}, errors.Join(ErrCommitUnknown, fmt.Errorf("conversation transaction committed but projection failed: %w", err))
@@ -141,6 +143,9 @@ func (journal *Journal) refreshLocked(ctx context.Context, repair bool) error {
 // RepairTail preserves and removes only a syntactically incomplete final
 // record. Complete JSON or checksum corruption remains a hard error.
 func (journal *Journal) RepairTail(ctx context.Context) error {
+	if journal != nil && journal.currentOnly {
+		return fmt.Errorf("current-state observation journal is read-only")
+	}
 	if journal == nil {
 		return fmt.Errorf("conversation journal is nil")
 	}

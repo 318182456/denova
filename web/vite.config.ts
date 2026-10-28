@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { Agent } from 'node:http'
 import path from 'path'
 
-const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '8080'
+const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '7789'
 
 // Only suites that exercise browser APIs need a fresh DOM and React setup.
 // Keep file isolation in both projects so mocks and module state cannot leak.
@@ -36,12 +36,13 @@ export default defineConfig({
       'react', 'react-dom', 'react-dom/client',
       'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-i18next',
       'monaco-editor',
+      'recharts',
       '@pierre/diffs', '@pierre/diffs/react', '@pierre/trees', '@pierre/trees/react',
     ],
   },
   test: {
     globals: true,
-    exclude: [...configDefaults.exclude, 'tests/**'],
+    exclude: [...configDefaults.exclude, 'tests/**', 'test-results/**'],
     // Only the review workspace relies on computed CSS visibility in jsdom.
     // Other styles are presentation-only and do not need Vitest processing.
     css: { include: [/review-diff\.css$/] },
@@ -49,7 +50,7 @@ export default defineConfig({
     projects: [
       { extends: true, test: {
         name: 'node', environment: 'node', include: ['**/*.test.ts'],
-        exclude: [...configDefaults.exclude, 'tests/**', ...domTests],
+        exclude: [...configDefaults.exclude, 'tests/**', 'test-results/**', ...domTests],
       } },
       { extends: true, test: {
         name: 'dom', environment: 'jsdom', include: domTests,
@@ -65,16 +66,31 @@ export default defineConfig({
   },
   build: {
     rolldownOptions: {
+      preserveEntrySignatures: 'allow-extension',
       output: {
+        strictExecutionOrder: true,
         codeSplitting: {
+          includeDependenciesRecursively: false,
           // Keep size caps on individual groups: a global cap can split tightly coupled SDKs into cyclic chunks.
           minSize: 20 * 1024,
           groups: [
+            // React is shared by the shell and optional SDKs. Give it explicit
+            // ownership so an SDK's atomic group cannot capture the UI runtime.
+            { name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/, priority: 100 },
             // @pierre/diffs has top-level initializers across its internal modules.
             // Keep the package atomic so the vendor size cap cannot create cyclic chunks.
+            // Shared dependencies (especially React) must not be absorbed into
+            // optional SDK chunks, or every page has to load those SDKs too.
             { name: 'pierre-diffs', test: /node_modules[\\/]@pierre[\\/]diffs[\\/]/, priority: 50 },
-            { name: 'shiki', test: /node_modules[\\/](?:shiki|@shikijs)[\\/]/, priority: 40 },
+            // Keep asynchronously loaded grammars and themes behind their own entries.
+            { name: 'shiki', test: /node_modules[\\/](?:shiki|@shikijs)[\\/]/, priority: 40, entriesAware: true },
             { name: 'monaco', test: /node_modules[\\/](?:monaco-editor|@monaco-editor)[\\/]/, priority: 30 },
+            // Chart/scale factories share module-level initialization; splitting
+            // this cluster can instantiate an uninitialized InternMap in production.
+            { name: 'charts', test: /node_modules[\\/](?:recharts|recharts-scale|@reduxjs[\\/]toolkit|redux|redux-thunk|react-redux|reselect|immer|victory-vendor|d3-[^\\/]+|internmap|decimal\.js-light|tiny-invariant|eventemitter3)[\\/]/, priority: 30 },
+            // Radix primitives initialize shared contexts at module scope. Splitting
+            // them by size can call those factories before their chunk initializes.
+            { name: 'radix', test: /node_modules[\\/](?:radix-ui|@radix-ui)[\\/]/, priority: 25 },
             { name: 'ai-sdk', test: /node_modules[\\/](?:ai|@ai-sdk)[\\/]/, priority: 20 },
             { name: 'markdown', test: /node_modules[\\/](?:react-markdown|remark-|rehype-|micromark|mdast|hast|unified)[^\\/]*[\\/]/, priority: 10 },
             { name: 'vendor', test: /node_modules[\\/]/, maxSize: 450 * 1024, priority: 1, entriesAware: true },
@@ -84,6 +100,10 @@ export default defineConfig({
     },
   },
   server: {
+    port: 7788,
+    // Test workspaces contain their own HTML/JS packages. Their writes must not
+    // reload the host application in the middle of a browser interaction.
+    watch: { ignored: ['**/test-results/**', '**/playwright-report/**'] },
     proxy: {
       '/api': {
         target: `http://127.0.0.1:${backendPort}`,
@@ -95,6 +115,13 @@ export default defineConfig({
         // AgentChat terminals attach over /api/terminal/sessions/:id/attach, so the dev proxy
         // has to forward WebSocket upgrade requests as well.
         ws: true,
+        configure(proxy) {
+          // The proxy's WebSocket xfwd path omits Host. Preserve the actual
+          // browser endpoint so the backend can enforce the same origin rule.
+          proxy.on('proxyReqWs', (outgoing, incoming) => {
+            outgoing.setHeader('X-Forwarded-Host', incoming.headers.host ?? '')
+          })
+        },
       },
     },
   },

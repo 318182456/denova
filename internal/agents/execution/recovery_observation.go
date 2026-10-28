@@ -8,7 +8,9 @@ import (
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // RecoveryObservation observes accepted work without executing it. Resume
@@ -16,8 +18,8 @@ import (
 type RecoveryObservation struct {
 	publicBackend     *publicBackend
 	publicSession     *agent.Session
-	publicObservation agent.Observation
-	publicInitial     agent.SessionSnapshot
+	publicObservation agentevent.Observation
+	publicInitial     agentevent.SessionSnapshot
 	publicBinding     agentrun.RuntimeBinding
 	publicOptions     agentrun.Options
 	publicHandle      *publicRunHandle
@@ -103,8 +105,8 @@ func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action Runtim
 	}, nil
 }
 
-func publicAttachmentDescriptors(values []agent.Attachment) []agent.Attachment {
-	result := append([]agent.Attachment(nil), values...)
+func publicAttachmentDescriptors(values []agentschema.Attachment) []agentschema.Attachment {
+	result := append([]agentschema.Attachment(nil), values...)
 	for index := range result {
 		result[index].Path = ""
 		result[index].SHA256 = ""

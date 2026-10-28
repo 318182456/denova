@@ -154,7 +154,7 @@ interface ContextAnalysisMessageGroup {
   parts: ContextAnalysisPart[]
   messages: ContextAnalysisPart[]
   bytes: number
-  chars: number
+  tokens: number
 }
 
 function buildFinalMessageGroups(messages: ContextAnalysisPart[], t: ReturnType<typeof useTranslation>['t']): ContextAnalysisMessageGroup[] {
@@ -181,7 +181,7 @@ function buildFinalMessageGroups(messages: ContextAnalysisPart[], t: ReturnType<
         parts: [],
         messages: [],
         bytes: 0,
-        chars: 0,
+        tokens: 0,
       }
       groups.push(current)
     } else if (!current || standalone) {
@@ -193,14 +193,14 @@ function buildFinalMessageGroups(messages: ContextAnalysisPart[], t: ReturnType<
         parts: [],
         messages: [],
         bytes: 0,
-        chars: 0,
+        tokens: 0,
       }
       groups.push(current)
     }
     current.parts.push(...displayParts)
     current.messages.push(normalized)
     current.bytes += normalized.bytes || 0
-    current.chars += normalized.chars || 0
+    current.tokens += normalized.token_estimate
     if (standalone) current = null
   })
   return groups
@@ -328,7 +328,7 @@ function ContextAnalysisMessageGroupBlock({ group, compaction }: {
     <ContextAnalysisDisclosure
       title={group.title}
       meta={<>{group.source} · {t('chat.contextAnalysis.groupPartCount', { count: group.parts.length })}{compactionMeta ? ` · ${compactionMeta}` : ''}</>}
-      size={<span className="shrink-0 text-[10px] text-muted-foreground">{t('chat.contextAnalysis.partSize', { chars: group.chars, bytes: group.bytes })}</span>}
+      size={<span className="shrink-0 text-[10px] text-muted-foreground">{t('chat.contextAnalysis.partSize', { tokens: formatNumber(group.tokens), bytes: formatNumber(group.bytes) })}</span>}
       action={(
         <div className="flex shrink-0 items-center gap-1">
           <ContextCopyButton
@@ -359,7 +359,7 @@ function ContextAnalysisInlinePart({ part }: { part: ContextAnalysisPart }) {
       defaultOpen
       title={part.title || part.source}
       meta={<>{part.source ? `${part.source} · ` : ''}{kind}{part.tool_name ? ` · ${part.tool_name}` : ''}{part.role ? ` · ${part.role}` : ''}{part.note ? ` · ${part.note}` : ''}</>}
-      size={<span className="shrink-0 text-[10px] text-muted-foreground">{t('chat.contextAnalysis.partSize', { chars: part.chars, bytes: part.bytes })}</span>}
+      size={<span className="shrink-0 text-[10px] text-muted-foreground">{t('chat.contextAnalysis.partSize', { tokens: formatNumber(part.token_estimate), bytes: formatNumber(part.bytes) })}</span>}
       action={(
         <ContextCopyButton
           content={part.content}
@@ -420,7 +420,7 @@ function ContextAnalysisPartBlock({ part, showRole, showKind = false, copyConten
     <ContextAnalysisDisclosure
       title={part.title || part.source}
       meta={<>{part.source}{kind ? ` · ${kind}` : ''}{part.tool_name ? ` · ${part.tool_name}` : ''}{showRole && part.role ? ` · ${part.role}` : ''}{part.note ? ` · ${part.note}` : ''}{compactionMeta ? ` · ${compactionMeta}` : ''}</>}
-      size={<span className="shrink-0 text-[10px] text-muted-foreground">{t('chat.contextAnalysis.partSize', { chars: part.chars, bytes: part.bytes })}</span>}
+      size={<span className="shrink-0 text-[10px] text-muted-foreground">{t('chat.contextAnalysis.partSize', { tokens: formatNumber(part.token_estimate), bytes: formatNumber(part.bytes) })}</span>}
       action={(
         <div className="flex shrink-0 items-center gap-1">
           <ContextCopyButton

@@ -1,41 +1,16 @@
-import {
-  DiffEditor as MonacoDiffEditor,
-  Editor as MonacoEditor,
-  loader,
-  type DiffEditorProps,
-  type EditorProps,
-  type Monaco,
-} from '@monaco-editor/react'
+import type { DiffEditorProps, EditorProps, Monaco } from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import loadable from '@loadable/component'
+import { useTranslation } from 'react-i18next'
+import { LoadingState } from '@/components/common/LoadingState'
 import type { editor } from 'monaco-editor'
-import * as monaco from 'monaco-editor'
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import TypeScriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import { getSourceEditorFontFamily, subscribeSourceEditorFont } from '@/features/settings/source-editor-font'
 import { getContentFontScale, subscribeContentFontScale } from '@/features/settings/content-font-scale'
 
-// Ship the editor and its workers together so editing never depends on a CDN.
-self.MonacoEnvironment = {
-  getWorker(_moduleId, label) {
-    switch (label) {
-      case 'json': return new JsonWorker()
-      case 'css':
-      case 'scss':
-      case 'less': return new CssWorker()
-      case 'html':
-      case 'handlebars':
-      case 'razor': return new HtmlWorker()
-      case 'typescript':
-      case 'javascript': return new TypeScriptWorker()
-      default: return new EditorWorker()
-    }
-  },
-}
-loader.config({ monaco })
+// Every source surface shares one runtime, fetched only when an editor mounts.
+const MonacoEditor = loadable(() => import('./monaco-runtime').then(module => ({ default: module.MonacoEditor })))
+const MonacoDiffEditor = loadable(() => import('./monaco-runtime').then(module => ({ default: module.MonacoDiffEditor })))
 
 export const DENOVA_MONACO_THEME_DARK = 'denova-dark'
 export const DENOVA_MONACO_THEME_LIGHT = 'denova-light'
@@ -66,6 +41,7 @@ type DenovaMonacoDiffEditorProps = Omit<DiffEditorProps, 'theme'>
 
 /** Monaco editor with Denova's shared visual language and Unicode policy. */
 export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMonacoEditorProps) {
+  const { t } = useTranslation()
   const theme = useDenovaMonacoTheme()
   const sourceEditorFontFamily = useSourceEditorFontFamily()
   const contentFontScale = useContentFontScale()
@@ -79,6 +55,7 @@ export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMon
 
   return (
     <MonacoEditor
+      fallback={<LoadingState label={t('common.loading')} className="h-full" />}
       {...props}
       theme={theme}
       beforeMount={handleBeforeMount}
@@ -89,6 +66,7 @@ export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMon
 
 /** Monaco diff editor sharing the exact theme and safeguards of regular editors. */
 export function DenovaMonacoDiffEditor({ beforeMount, options, ...props }: DenovaMonacoDiffEditorProps) {
+  const { t } = useTranslation()
   const theme = useDenovaMonacoTheme()
   const sourceEditorFontFamily = useSourceEditorFontFamily()
   const contentFontScale = useContentFontScale()
@@ -102,6 +80,7 @@ export function DenovaMonacoDiffEditor({ beforeMount, options, ...props }: Denov
 
   return (
     <MonacoDiffEditor
+      fallback={<LoadingState label={t('common.loading')} className="h-full" />}
       {...props}
       theme={theme}
       beforeMount={handleBeforeMount}

@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentmodel "github.com/alfredxw/denova/agent/model"
 )
 
 // A preview belongs to one source's current model response. Confirmed tool
@@ -35,18 +37,18 @@ func (projector *PublicEventProjector) beginPreview(meta agentEventMetadata) {
 	}
 }
 
-func (projector *PublicEventProjector) projectRetry(meta agentEventMetadata, retry agent.ModelRetry) {
+func (projector *PublicEventProjector) projectRetry(meta agentEventMetadata, retry agentevent.ModelRetry) {
 	preview := projector.previews[meta.SubAgentSessionID]
 	discard := []string{}
 	if preview != nil {
 		for id, tool := range preview.segments {
-			if tool || retry.OutputState != agent.ModelOutputComplete {
+			if tool || retry.OutputState != agentmodel.ModelOutputComplete {
 				discard = append(discard, id)
 				delete(projector.toolInputs, id)
 				delete(projector.recorder.pendingToolIDs, id)
 			}
 		}
-		if retry.OutputState != agent.ModelOutputComplete {
+		if retry.OutputState != agentmodel.ModelOutputComplete {
 			content, thinking := &projector.content, &projector.thinking
 			if meta.SubAgent {
 				content, thinking = projector.nestedOutput(projector.nestedContent, meta), projector.nestedOutput(projector.nestedThinking, meta)

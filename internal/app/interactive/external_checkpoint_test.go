@@ -15,7 +15,9 @@ import (
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/toolresult"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 func TestGameImageCheckpointUsesCanonicalMediaAndSurvivesColdReopen(t *testing.T) {
@@ -39,7 +41,7 @@ func TestGameImageCheckpointUsesCanonicalMediaAndSurvivesColdReopen(t *testing.T
 		t.Fatal(err)
 	}
 	conversation := NewConversation(store, t.TempDir(), cfg.Workspace, story, "main", "Continue", 800, &cfg)
-	writer, err := conversation.ToolArtifactStore().BeginToolArtifact(t.Context(), agent.ToolArtifactRequest{ToolName: "read", ToolCallID: "map-read", MIMEType: "image/png", Extension: ".png"})
+	writer, err := conversation.ToolArtifactStore().BeginToolArtifact(t.Context(), agenttool.ToolArtifactRequest{ToolName: "read", ToolCallID: "map-read", MIMEType: "image/png", Extension: ".png"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +53,10 @@ func TestGameImageCheckpointUsesCanonicalMediaAndSurvivesColdReopen(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolImage := agent.Attachment{ID: artifact.ID, Name: "tool-map.png", Path: artifact.ReadablePath, MediaType: "image/png", Size: artifact.EstimatedBytes, SHA256: artifact.SHA256}
+	toolImage := agentschema.Attachment{ID: artifact.ID, Name: "tool-map.png", Path: artifact.ReadablePath, MediaType: "image/png", Size: artifact.EstimatedBytes, SHA256: artifact.SHA256}
 	messages := []interactive.ModelContextMessage{
 		{Role: "assistant", ToolCalls: []interactive.ModelContextToolCall{{ID: "map-read", Type: "function", Function: interactive.ModelContextFunctionCall{Name: "read", Arguments: `{}`}}}},
-		{Role: "tool", ToolCallID: "map-read", ToolName: "read", Content: large, Attachments: []agent.Attachment{toolImage}},
+		{Role: "tool", ToolCallID: "map-read", ToolName: "read", Content: large, Attachments: []agentschema.Attachment{toolImage}},
 	}
 	batches, err := interactive.NewModelContextBatchIntents(identity, "main", 0, messages)
 	if err != nil {
@@ -71,7 +73,7 @@ func TestGameImageCheckpointUsesCanonicalMediaAndSurvivesColdReopen(t *testing.T
 		}
 		for _, message := range input.History {
 			for _, file := range message.Attachments {
-				got, err := agent.AttachmentDataURL(file)
+				got, err := agentschema.AttachmentDataURL(file)
 				if err != nil || got != url {
 					t.Fatalf("Game summary lost original pixels: %v", err)
 				}

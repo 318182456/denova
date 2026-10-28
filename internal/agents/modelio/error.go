@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/model/providers"
 )
 
 type ModelErrorClass string

@@ -1,17 +1,30 @@
 import { memo, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
 import { MobileWorkspaceHeaderScope } from '@/components/layout/mobile-workspace-header'
-import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
+import { isPluginPageRoute, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { WorkbenchPresentedLayout } from './WorkbenchShell'
 
+// Loadable boundaries reveal a downloaded route immediately. The fallback
+// remains a live component so a language change updates its localized label.
+export const workbenchLoadingOptions = { fallback: <WorkbenchLoadingState /> }
+
+function WorkbenchLoadingState() {
+  const { t } = useTranslation()
+  return <LoadingState label={t('router.loading')} className="h-full min-h-0" />
+}
+
 export type WorkbenchRouteId =
+  | 'plugin'
+  | 'market'
   | 'settings'
   | 'skills'
   | 'agents'
   | 'automations'
   | 'agentchat'
   | 'trajectory'
+  | 'statistics'
   | 'books'
   | 'interactive'
   | 'versions'
@@ -20,12 +33,15 @@ export type WorkbenchRouteId =
   | 'ide-writing'
 
 const PRESENTED_LAYOUT_BY_ROUTE = {
+  plugin: 'full',
+  market: 'full',
   settings: 'full',
   skills: 'full',
   agents: 'full',
   automations: 'full',
   agentchat: 'full',
   trajectory: 'full',
+  statistics: 'full',
   books: 'full',
   interactive: 'interactive',
   versions: 'full',
@@ -76,12 +92,12 @@ export function useWorkbenchRouteHost({
 
   useEffect(() => {
     setMountedRoutes((current) => {
-      if (current.has(selectedRoute)) return current
+      if (current.has(presentedRoute)) return current
       const next = new Set(current)
-      next.add(selectedRoute)
+      next.add(presentedRoute)
       return next
     })
-  }, [selectedRoute])
+  }, [presentedRoute])
 
   return useMemo(() => ({
     route: presentedRoute,
@@ -96,12 +112,15 @@ export function selectWorkbenchRoute({
   settingsOpen,
 }: WorkbenchRouteSelection): WorkbenchRouteId {
   if (settingsOpen) return 'settings'
+  if (isPluginPageRoute(mode)) return 'plugin'
   switch (mode) {
+    case 'market':
     case 'skills':
     case 'agents':
     case 'automations':
     case 'agentchat':
     case 'trajectory':
+    case 'statistics':
     case 'books':
     case 'interactive':
     case 'lore':

@@ -16,6 +16,7 @@ import (
 
 // Config 保存 Denova 的全局配置。
 type Config struct {
+	Decision                  *DecisionSettings       `toml:"decision,omitempty"`
 	OpenAIAPIKey              string                  `toml:"openai_api_key"`
 	OpenAIBaseURL             string                  `toml:"openai_base_url"`
 	OpenAIModel               string                  `toml:"openai_model"`
@@ -41,6 +42,7 @@ type Config struct {
 	CustomAgents             []CustomAgentConfig          `toml:"custom_agents"`
 	DefaultImageAgentID      string                       `toml:"default_image_agent_id"`
 	WebAccess                WebAccessConfig              `toml:"web_access"`
+	Market                   MarketSettings               `toml:"market"`
 	Labs                     ResolvedLabs                 `toml:"labs"`
 	SkillsDir                string                       `toml:"skills_dir"`
 	BackendPort              int                          `toml:"backend_port"`
@@ -57,6 +59,8 @@ type Config struct {
 	ProjectID           string `toml:"-"`
 	ProjectStoreDir     string `toml:"-"`
 	ActiveCustomAgentID string `toml:"-"`
+	// Plugin calls are scoped to the current conversation at runtime.
+	AgentPluginScope AgentPluginScope `toml:"-" json:"-"`
 	// ActiveAgentRuntime is request-local and is resolved from the conversation
 	// snapshot. Agent defaults must never override it during execution.
 	ActiveAgentRuntime          *RuntimeSelection         `toml:"-" json:"-"`
@@ -69,7 +73,6 @@ type Config struct {
 	TraceExporter               string                    `toml:"trace_exporter"`
 	TraceRetentionRuns          int                       `toml:"trace_retention_runs"`
 	IDEStoryTellerID            string                    `toml:"-"`
-	InteractiveStoryTellerID    string                    `toml:"-"`
 	IDEImagePresetID            string                    `toml:"-"`
 	ImagePresetToolPrompt       string                    `toml:"-"`
 	WritingSkillDefault         string                    `toml:"writing_skill_default"`
@@ -100,6 +103,7 @@ type Config struct {
 	InteractiveReplyTargetChars int                       `toml:"-"`
 	ResumeLastWorkspace         bool                      `toml:"-"`
 	UpdateCheckEnabled          bool                      `toml:"-"`
+	StatisticsEnabled           bool                      `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
@@ -129,6 +133,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		OpenAIContextWindowTokens:   settingsInt(s.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 		ModelEndpoints:              s.ModelEndpoints,
 		ModelProfiles:               s.ModelProfiles,
+		Decision:                    s.Decision,
 		DefaultImageAPIProfileID:    s.DefaultImageAPIProfileID,
 		ImageAPIEndpoints:           s.ImageAPIEndpoints,
 		ImageAPIProfiles:            s.ImageAPIProfiles,
@@ -143,10 +148,11 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		CustomAgents:                s.CustomAgents,
 		DefaultImageAgentID:         settingsOptionalString(s.DefaultImageAgentID),
 		WebAccess:                   ResolveWebAccessSettings(s.WebAccess),
+		Market:                      s.Market,
 		Labs:                        ResolveLabs(s.Labs),
 		SkillsDir:                   s.SkillsDir,
-		BackendPort:                 settingsInt(s.BackendPort, 8080),
-		FrontendPort:                settingsInt(s.FrontendPort, 5173),
+		BackendPort:                 settingsInt(s.BackendPort, 7789),
+		FrontendPort:                settingsInt(s.FrontendPort, 7788),
 		AllowLANAccess:              settingsBool(s.AllowLANAccess, false),
 		RemoteAccessUsername:        s.RemoteAccessUsername,
 		RemoteAccessPasswordHash:    s.RemoteAccessPasswordHash,
@@ -155,7 +161,6 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
-		InteractiveStoryTellerID:    s.InteractiveStoryTellerID,
 		IDEImagePresetID:            s.IDEImagePresetID,
 		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
@@ -189,6 +194,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		InteractiveReplyTargetChars: 2000,
 		ResumeLastWorkspace:         true,
 		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
+		StatisticsEnabled:           settingsBool(s.StatisticsEnabled, true),
 	}
 
 	// 环境变量始终最高优先级
@@ -271,6 +277,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIModel:              cfg.OpenAIModel,
 		ModelEndpoints:           sanitizeModelEndpoints(cfg.ModelEndpoints),
 		ModelProfiles:            sanitizeModelProfiles(cfg.ModelProfiles),
+		Decision:                 cfg.Decision,
 		LegacyImageAPIKey:        cfg.LegacyImageAPIKey,
 		LegacyImageAPIBaseURL:    cfg.LegacyImageAPIBaseURL,
 		LegacyImageAPIModel:      cfg.LegacyImageAPIModel,
@@ -288,6 +295,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		CustomAgents:             cfg.CustomAgents,
 		DefaultImageAgentID:      stringPtr(cfg.DefaultImageAgentID),
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
+		Market:                   cfg.Market,
 		Labs: LabSettings{
 			DeveloperMode: boolPtr(cfg.Labs.DeveloperMode),
 		},
@@ -300,7 +308,6 @@ func settingsFromConfig(cfg *Config) Settings {
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
 		IDEStoryTellerID:         cfg.IDEStoryTellerID,
-		InteractiveStoryTellerID: cfg.InteractiveStoryTellerID,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
 		TerminalCommands:         cloneTerminalCommands(cfg.TerminalCommands),
@@ -394,6 +401,7 @@ func Load() *Config {
 			OpenAIContextWindowTokens:   settingsInt(d.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 			ModelEndpoints:              d.ModelEndpoints,
 			ModelProfiles:               d.ModelProfiles,
+			Decision:                    d.Decision,
 			DefaultImageAPIProfileID:    d.DefaultImageAPIProfileID,
 			ImageAPIEndpoints:           d.ImageAPIEndpoints,
 			ImageAPIProfiles:            d.ImageAPIProfiles,
@@ -408,10 +416,11 @@ func Load() *Config {
 			CustomAgents:                d.CustomAgents,
 			DefaultImageAgentID:         settingsOptionalString(d.DefaultImageAgentID),
 			WebAccess:                   ResolveWebAccessSettings(d.WebAccess),
+			Market:                      d.Market,
 			Labs:                        ResolveLabs(d.Labs),
 			SkillsDir:                   d.SkillsDir,
-			BackendPort:                 settingsInt(d.BackendPort, 8080),
-			FrontendPort:                settingsInt(d.FrontendPort, 5173),
+			BackendPort:                 settingsInt(d.BackendPort, 7789),
+			FrontendPort:                settingsInt(d.FrontendPort, 7788),
 			AllowLANAccess:              settingsBool(d.AllowLANAccess, false),
 			RemoteAccessUsername:        d.RemoteAccessUsername,
 			RemoteAccessPasswordHash:    d.RemoteAccessPasswordHash,
@@ -419,7 +428,6 @@ func Load() *Config {
 			DenovaDir:                   normalizePath(d.DenovaDir),
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
-			InteractiveStoryTellerID:    d.InteractiveStoryTellerID,
 			IDEImagePresetID:            d.IDEImagePresetID,
 			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),
@@ -453,6 +461,7 @@ func Load() *Config {
 			InteractiveReplyTargetChars: 2000,
 			ResumeLastWorkspace:         true,
 			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
+			StatisticsEnabled:           settingsBool(d.StatisticsEnabled, true),
 		}
 		overrideFromEnv(cfg)
 		if cfg.Workspace != "" {

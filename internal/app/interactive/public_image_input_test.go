@@ -23,9 +23,14 @@ import (
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"denova/internal/interactive"
 	"denova/internal/project"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/permission"
-	"github.com/alfredxw/denova/agent/providers"
+
+	"github.com/alfredxw/denova/agent"
+	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	"github.com/alfredxw/denova/agent/tool/permission"
 )
 
 type imageProductModel struct {
@@ -38,17 +43,19 @@ type imageProductModel struct {
 	summaryImages int
 }
 
-func (m *imageProductModel) InputEstimator() agent.InputEstimator { return m.config.InputEstimator() }
+func (m *imageProductModel) InputEstimator() agentmodel.InputEstimator {
+	return m.config.InputEstimator()
+}
 
-func (m *imageProductModel) Generate(_ context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.Message, error) {
-	size, err := m.InputEstimator().Estimate(messages, agent.GetCommonOptions(nil, options...).Tools)
+func (m *imageProductModel) Generate(_ context.Context, messages []*agentschema.Message, options ...agentmodel.ModelOption) (*agentschema.Message, error) {
+	size, err := m.InputEstimator().Estimate(messages, agentmodel.GetCommonOptions(nil, options...).Tools)
 	if err != nil {
 		return nil, err
 	}
 	images := 0
 	for _, message := range messages {
 		for _, file := range message.Attachments {
-			encoded, err := agent.AttachmentBase64(file)
+			encoded, err := agentschema.AttachmentBase64(file)
 			if err != nil || encoded != m.image {
 				return nil, fmt.Errorf("original native image was lost: %v", err)
 			}
@@ -59,24 +66,24 @@ func (m *imageProductModel) Generate(_ context.Context, messages []*agent.Messag
 		if strings.Contains(message.Content, "[Runtime context compaction request]") {
 			m.summaries++
 			m.summaryImages += images
-			return agent.AssistantMessage("The reference depicts a blue station. Preserve the current request and latest image.", nil), nil
+			return agentschema.AssistantMessage("The reference depicts a blue station. Preserve the current request and latest image.", nil), nil
 		}
 	}
 	if (!m.pressure && images != min(m.calls+1, 2)) || images == 0 || size.Tokens > m.window {
 		return nil, fmt.Errorf("unexpected image input: count=%d size=%+v", images, size)
 	}
 	m.calls++
-	response := agent.AssistantMessage("The reference image remains available.", nil)
-	response.ResponseMeta = &agent.ResponseMeta{Usage: &agent.TokenUsage{PromptTokens: size.Tokens}}
+	response := agentschema.AssistantMessage("The reference image remains available.", nil)
+	response.ResponseMeta = &agentschema.ResponseMeta{Usage: &agentschema.TokenUsage{PromptTokens: size.Tokens}}
 	return response, nil
 }
 
-func (m *imageProductModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (m *imageProductModel) Stream(ctx context.Context, messages []*agentschema.Message, options ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	response, err := m.Generate(ctx, messages, options...)
 	if err != nil {
 		return nil, err
 	}
-	return agent.StreamReaderFromArray([]*agent.Message{response}), nil
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{response}), nil
 }
 
 // Exercise actual product journals, compaction and the provider hard guard.
@@ -158,8 +165,8 @@ func TestProductsAcceptNativeImageAfterColdReopen(t *testing.T) {
 							input = "Continue using the same reference."
 							files = nil
 						}
-						definition := agent.Definition{Key: "image-product", Name: "image-product", Model: model, ModelIdentity: agent.CapabilityIdentity{Kind: "test.image-product", Version: 1}, AttachmentRoot: layout.StoreRoot, Permission: permission.FullAccess(), Compaction: manager,
-							Middlewares: []agent.Middleware{agentrun.NewModelInputLoggingMiddleware(kind, model.config, scenario.window, 4<<20, prompts.SystemPromptComposition{})}}
+						definition := agent.Definition{Key: "image-product", Name: "image-product", Model: model, ModelIdentity: agentschema.CapabilityIdentity{Kind: "test.image-product", Version: 1}, AttachmentRoot: layout.StoreRoot, Permission: permission.FullAccess(), Compaction: manager,
+							Middlewares: []agentmiddleware.Middleware{agentrun.NewModelInputLoggingMiddleware(kind, model.config, scenario.window, 4<<20, prompts.SystemPromptComposition{})}}
 						var conversation agentchat.Conversation = agentconversation.NewSessionConversationForAgent(writing, cfg, kind)
 						if kind == agentrun.AgentKindInteractiveStory {
 							game := NewConversation(stories, "", workspace, story.ID, "main", input, 800, cfg)

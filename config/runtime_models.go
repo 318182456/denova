@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/alfredxw/denova/agent/providers"
-	"github.com/alfredxw/denova/agent/providers/builtin"
+	"github.com/alfredxw/denova/agent/model/providers"
+	"github.com/alfredxw/denova/agent/model/providers/builtin"
 )
 
 var ErrRuntimeModelProfile = errors.New("runtime API model profile is unavailable or incompatible")

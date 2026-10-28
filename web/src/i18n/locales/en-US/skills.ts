@@ -1,5 +1,6 @@
 const skills = {
   "skills.library.title": "Library",
+  "skills.library.export": "Batch export",
   "skills.library.search": "Search skills in your library…",
   "skills.library.all": "All",
   "skills.library.enabled": "Enabled",
@@ -116,6 +117,7 @@ const skills = {
   'skills.category.empty': 'No Skills in this category.',
   'skills.category.general': 'General',
   'skills.category.writing': 'Writing',
+  'skills.category.game': 'Game',
   'skills.category.image': 'Image',
   'skills.category.research': 'Research',
   'skills.category.configuration': 'Configuration',

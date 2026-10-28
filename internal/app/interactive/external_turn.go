@@ -3,7 +3,6 @@ package interactiveapp
 import (
 	"context"
 	"crypto/sha256"
-	"denova/internal/observability"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -21,7 +20,11 @@ import (
 	"denova/internal/book"
 	"denova/internal/i18n"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+	"denova/internal/observability"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 const externalGameOperationPrefix = "external-game-"
@@ -38,7 +41,7 @@ type ExternalTurnConfig struct {
 	Runtime        *external.Runtime
 	Release        func()
 	Emit           func(agentrun.Event)
-	Plan           []agent.TodoItem
+	Plan           []agentevent.TodoItem
 	ObservePlan    func(context.Context, agentrun.Event) error
 	Guidance       []agentchat.ChatRequest
 	PrepareHistory func(context.Context, external.HistoryPreparation) (external.Input, error)
@@ -56,9 +59,9 @@ type ExternalTurn struct {
 	cancel          context.CancelFunc
 	closed          bool
 	text, segment   string
-	tools           map[string]agent.ToolDefinition
+	tools           map[string]agenttool.ToolDefinition
 	calls           map[string]externalGameCall
-	restored        []*agent.Message
+	restored        []*agentschema.Message
 	replayed        *interactive.TurnEvent
 	observations    []external.Message
 	toolError       error
@@ -124,11 +127,11 @@ func StartExternalTurn(ctx context.Context, cfg ExternalTurnConfig) (*ExternalTu
 	}
 	for _, input := range snapshot.PendingPlayerInputs {
 		if strings.HasPrefix(input.AgentOperationID, externalGameOperationPrefix) && input.AgentOperationID != string(turn.identity.OperationID) {
-			return nil, fmt.Errorf("%w: resume the unfinished Game turn before starting another", agent.ErrSessionBusy)
+			return nil, fmt.Errorf("%w: resume the unfinished Game turn before starting another", agentschema.ErrSessionBusy)
 		}
 	}
 	c.BindAgentCycleIdentity(turn.identity)
-	c.draftCommit = func(_ context.Context, draft interactive.TurnDraft, _ *agent.ToolResult) error {
+	c.draftCommit = func(_ context.Context, draft interactive.TurnDraft, _ *agentschema.ToolResult) error {
 		return c.store.SaveTurnDraft(c.storyID, c.branchID, draft, nil)
 	}
 	input, err := c.MaterializeAgentCanonicalInput(ctx, turn.config.Request.Message, turn.config.Request.AttachedFiles, nil)
@@ -153,7 +156,7 @@ func StartExternalTurn(ctx context.Context, cfg ExternalTurnConfig) (*ExternalTu
 				return turn, nil
 			}
 		}
-		return nil, fmt.Errorf("%w: Game command is already settled", agent.ErrSessionBusy)
+		return nil, fmt.Errorf("%w: Game command is already settled", agentschema.ErrSessionBusy)
 	}
 	for _, batch := range snapshot.PendingModelContextBatches {
 		if batch.AgentOperationID == string(turn.identity.OperationID) {
@@ -324,7 +327,7 @@ func (turn *ExternalTurn) run(ctx context.Context) (outcome agentrun.Outcome) {
 }
 
 func (turn *ExternalTurn) commit(ctx context.Context, narrative string) agentrun.Outcome {
-	_, err := turn.config.Conversation.CommitAgentCanonicalOutput(context.WithoutCancel(ctx), agent.AssistantMessage(narrative, nil), session.MessageMetadata{RunID: string(turn.identity.OperationID), AgentKind: config.AgentKindInteractiveStory}, nil)
+	_, err := turn.config.Conversation.CommitAgentCanonicalOutput(context.WithoutCancel(ctx), agentschema.AssistantMessage(narrative, nil), session.MessageMetadata{RunID: string(turn.identity.OperationID), AgentKind: config.AgentKindInteractiveStory}, nil)
 	if err != nil {
 		return agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: err}
 	}

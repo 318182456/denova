@@ -8,7 +8,9 @@ import (
 
 	"denova/config"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestAgentManagerSummaryLimitUsesTightestTargetContextLimit(t *testing.T) {
@@ -43,10 +45,12 @@ func TestAgentManagerForModelSeparatesPolicyKindFromConcreteModelWindow(t *testi
 	if small.Identity() == large.Identity() {
 		t.Fatal("concrete model context window did not change Compaction behavior identity")
 	}
-	messages := []*agent.Message{agent.UserMessage(strings.Repeat("history ", 200)), agent.AssistantMessage("answer", nil), agent.UserMessage("continue")}
-	plan, err := small.Plan(context.Background(), agent.CompactionPlanRequest{
-		Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), Force: true,
-		EstimateAfter: func(int) (agent.InputSize, error) { return (agent.InputEstimator{}).Estimate(messages[2:], nil) },
+	messages := []*agentschema.Message{agentschema.UserMessage(strings.Repeat("history ", 200)), agentschema.AssistantMessage("answer", nil), agentschema.UserMessage("continue")}
+	plan, err := small.Plan(context.Background(), agentcompaction.CompactionPlanRequest{
+		Groups: []agentcompaction.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: (&agentmodel.ModelCall{Messages: messages}).Snapshot(), Force: true,
+		EstimateAfter: func(int) (agentmodel.InputSize, error) {
+			return (agentmodel.InputEstimator{}).Estimate(messages[2:], nil)
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -95,62 +99,62 @@ func TestAgentManagerAdvancesBeforeCacheSafeForkCapacityIsExhausted(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := []*agent.Message{
-		agent.UserMessage(strings.Repeat("old request ", 6_000)),
-		agent.AssistantMessage(strings.Repeat("old answer ", 6_000), nil),
-		agent.UserMessage("current request"),
-		agent.AssistantMessage("", []agent.ToolCall{{
-			ID: "latest-evidence", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`},
+	source := []*agentschema.Message{
+		agentschema.UserMessage(strings.Repeat("old request ", 6_000)),
+		agentschema.AssistantMessage(strings.Repeat("old answer ", 6_000), nil),
+		agentschema.UserMessage("current request"),
+		agentschema.AssistantMessage("", []agentschema.ToolCall{{
+			ID: "latest-evidence", Type: "function", Function: agentschema.FunctionCall{Name: "read", Arguments: `{}`},
 		}}),
-		agent.ToolMessage(agent.TextToolResult("Latest original evidence"), "latest-evidence", agent.WithToolName("read")),
+		agentschema.ToolMessage(agentschema.TextToolResult("Latest original evidence"), "latest-evidence", agentschema.WithToolName("read")),
 	}
-	primary := append([]*agent.Message{agent.SystemMessage("stable system")}, source...)
-	call := &agent.ModelCall{
+	primary := append([]*agentschema.Message{agentschema.SystemMessage("stable system")}, source...)
+	call := &agentmodel.ModelCall{
 		Messages: primary,
-		Options:  []agent.ModelOption{agent.WithTools(nil), agent.WithMaxTokens(70_000)},
+		Options:  []agentmodel.ModelOption{agentmodel.WithTools(nil), agentmodel.WithMaxTokens(70_000)},
 	}
-	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Groups: []agent.CompactionGroup{{Messages: source[:2]}}, ModelSnapshot: call.Snapshot(),
-		EstimateAfter: func(int) (agent.InputSize, error) {
+	plan, err := manager.Plan(context.Background(), agentcompaction.CompactionPlanRequest{
+		Groups: []agentcompaction.CompactionGroup{{Messages: source[:2]}}, ModelSnapshot: call.Snapshot(),
+		EstimateAfter: func(int) (agentmodel.InputSize, error) {
 			return call.Snapshot().WithMessages(append(primary[:1:1], source[2:]...)).EstimateInput()
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Action != agent.CompactionCreate || plan.GroupCount != 1 {
+	if plan.Action != agentcompaction.CompactionCreate || plan.GroupCount != 1 {
 		t.Fatalf("capacity preflight plan = %#v", plan)
 	}
 }
 
 func TestAgentManagerCompactionForkPreservesFinalModelRequestIdentity(t *testing.T) {
-	response := agent.AssistantMessage("## Goal\nPreserve the exact task.", nil)
+	response := agentschema.AssistantMessage("## Goal\nPreserve the exact task.", nil)
 	model := &compactionForkCaptureModel{response: response}
 	cfg := &config.Config{OpenAIContextWindowTokens: 100_000}
 	manager, err := NewAgentManager(cfg, config.AgentKindIDE)
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := []*agent.Message{
-		agent.UserMessage("old request"),
-		agent.AssistantMessage("old answer", nil),
+	source := []*agentschema.Message{
+		agentschema.UserMessage("old request"),
+		agentschema.AssistantMessage("old answer", nil),
 	}
-	primary := []*agent.Message{
-		agent.SystemMessage("stable system"),
+	primary := []*agentschema.Message{
+		agentschema.SystemMessage("stable system"),
 		source[0].Clone(),
 		source[1].Clone(),
-		agent.UserMessage("current request"),
+		agentschema.UserMessage("current request"),
 	}
-	tools := []*agent.ToolInfo{{Name: "read", Desc: "read files"}}
-	call := &agent.ModelCall{
+	tools := []*agentschema.ToolInfo{{Name: "read", Desc: "read files"}}
+	call := &agentmodel.ModelCall{
 		Model: model, Messages: primary,
-		Options: []agent.ModelOption{
-			agent.WithTools(tools),
-			agent.WithMaxTokens(2048),
-			agent.WithToolChoice(agent.ToolChoiceAllowed, "read"),
+		Options: []agentmodel.ModelOption{
+			agentmodel.WithTools(tools),
+			agentmodel.WithMaxTokens(2048),
+			agentmodel.WithToolChoice(agentmodel.ToolChoiceAllowed, "read"),
 		},
 	}
-	checkpoint, err := manager.Compact(context.Background(), agent.CompactionCompactRequest{
+	checkpoint, err := manager.Compact(context.Background(), agentcompaction.CompactionCompactRequest{
 		Messages: source, ModelSnapshot: call.Snapshot(),
 	})
 	if err != nil {
@@ -164,7 +168,7 @@ func TestAgentManagerCompactionForkPreservesFinalModelRequestIdentity(t *testing
 	}
 	resolved := model.options[0]
 	if len(resolved.Tools) != 1 || resolved.Tools[0].Name != "read" || resolved.MaxTokens == nil || *resolved.MaxTokens != 4000 ||
-		resolved.ToolChoice == nil || *resolved.ToolChoice != agent.ToolChoiceAllowed ||
+		resolved.ToolChoice == nil || *resolved.ToolChoice != agentmodel.ToolChoiceAllowed ||
 		!reflect.DeepEqual(resolved.AllowedToolNames, []string{"read"}) {
 		t.Fatalf("compaction fork changed model options: %#v", resolved)
 	}
@@ -172,7 +176,7 @@ func TestAgentManagerCompactionForkPreservesFinalModelRequestIdentity(t *testing
 
 func TestAgentManagerCompactionDoesNotSummarizeModelHiddenToolHistory(t *testing.T) {
 	disabled := false
-	model := &compactionForkCaptureModel{response: agent.AssistantMessage("summary without hidden tool body", nil)}
+	model := &compactionForkCaptureModel{response: agentschema.AssistantMessage("summary without hidden tool body", nil)}
 	cfg := &config.Config{
 		OpenAIContextWindowTokens: 100_000,
 		AgentContexts: config.AgentContextSettings{IDE: config.AgentContextOverride{
@@ -183,20 +187,20 @@ func TestAgentManagerCompactionDoesNotSummarizeModelHiddenToolHistory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolCall := agent.ToolCall{
+	toolCall := agentschema.ToolCall{
 		ID: "read-secret", Type: "function",
-		Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"secret.md"}`},
+		Function: agentschema.FunctionCall{Name: "read", Arguments: `{"path":"secret.md"}`},
 	}
-	raw := []*agent.Message{
-		agent.UserMessage("old request"),
-		agent.AssistantMessage("", []agent.ToolCall{toolCall}),
-		{Role: agent.ToolRole, ToolCallID: "read-secret", ToolName: "read", Content: "MODEL_HIDDEN_SECRET_BODY"},
-		agent.AssistantMessage("old answer", nil),
+	raw := []*agentschema.Message{
+		agentschema.UserMessage("old request"),
+		agentschema.AssistantMessage("", []agentschema.ToolCall{toolCall}),
+		{Role: agentschema.ToolRole, ToolCallID: "read-secret", ToolName: "read", Content: "MODEL_HIDDEN_SECRET_BODY"},
+		agentschema.AssistantMessage("old answer", nil),
 	}
-	visible := []*agent.Message{raw[0].Clone(), raw[3].Clone(), agent.UserMessage("current request")}
-	checkpoint, err := manager.Compact(context.Background(), agent.CompactionCompactRequest{
+	visible := []*agentschema.Message{raw[0].Clone(), raw[3].Clone(), agentschema.UserMessage("current request")}
+	checkpoint, err := manager.Compact(context.Background(), agentcompaction.CompactionCompactRequest{
 		Messages:      raw,
-		ModelSnapshot: (&agent.ModelCall{Model: model, Messages: visible}).Snapshot(),
+		ModelSnapshot: (&agentmodel.ModelCall{Model: model, Messages: visible}).Snapshot(),
 	})
 	if err != nil {
 		t.Fatal(err)

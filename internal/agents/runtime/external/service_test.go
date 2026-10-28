@@ -20,8 +20,10 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
 	workspacechange "denova/internal/workspace/change"
-	agent "github.com/alfredxw/denova/agent"
-	publictools "github.com/alfredxw/denova/agent/tools"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
+	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
 
 type adapterFunc func(context.Context, Input, Host) (Result, error)
@@ -33,19 +35,19 @@ func (fn adapterFunc) Run(ctx context.Context, input Input, host Host) (Result, 
 }
 
 type interruptedWrite struct {
-	agent.Tool
+	agenttool.Tool
 	cancel      context.CancelFunc
 	loseReceipt bool
 }
 
-func (tool interruptedWrite) Run(ctx context.Context, arguments string, options ...agent.ToolOption) (agent.ToolResult, error) {
+func (tool interruptedWrite) Run(ctx context.Context, arguments string, options ...agenttool.ToolOption) (agentschema.ToolResult, error) {
 	result, err := tool.Tool.Run(ctx, arguments, options...)
 	if err != nil {
 		return result, err
 	}
 	tool.cancel()
 	if tool.loseReceipt {
-		return agent.ToolResult{}, context.Canceled
+		return agentschema.ToolResult{}, context.Canceled
 	}
 	return result, context.Canceled
 }
@@ -218,14 +220,14 @@ func operationFixture(t *testing.T) (*Service, StartRequest, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	asks, err := publictools.Ask().PrepareTools(context.Background(), agent.ToolRequest{})
+	asks, err := publictools.Ask().PrepareTools(context.Background(), agenttool.ToolRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	request := StartRequest{
 		ProjectID: "project-fixture", AttachmentRoot: directory, Session: sess, CommandID: "command-fixture", Fingerprint: "fixture-v1", Revision: 1,
 		Input:   Input{Selection: selection.Engine(), Text: "Draft an opening."},
-		Message: *agent.UserMessage("Draft an opening."), Metadata: session.MessageMetadata{MessageID: "input-fixture"},
+		Message: *agentschema.UserMessage("Draft an opening."), Metadata: session.MessageMetadata{MessageID: "input-fixture"},
 		Definitions: append(definitions, asks...), ToolPolicy: toolruntime.OrchestratorConfig{AgentKind: config.AgentKindGeneral, Workspace: workspace, ToolSettings: settings, EnforceToolSettings: true, ToolResultMaxBytes: 32768},
 		ReviewThreadID: "review-fixture",
 	}
@@ -311,7 +313,7 @@ func TestExternalOperationUsesDomainWriteReceiptsAndCanonicalCompletion(t *testi
 		t.Fatal(err)
 	}
 	messages := request.Session.GetMessages()
-	if len(messages) != 2 || messages[1].Role != agent.Assistant || messages[1].Content != "Draft saved." {
+	if len(messages) != 2 || messages[1].Role != agentschema.Assistant || messages[1].Content != "Draft saved." {
 		t.Fatalf("completion messages=%#v", messages)
 	}
 	if _, err := operation.CallTool(context.Background(), ToolCall{ID: "late", Name: "write", Arguments: json.RawMessage(`{"path":"late.md","content":"invalid"}`)}); err == nil {

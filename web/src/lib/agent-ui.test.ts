@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AgentChatTransport,
-  AgentUIMessageNormalizer,
   buildAgentChatRequestBody,
   initialSubmissionOutcomeForStatus,
   normalizeAgentUIMessages,
@@ -34,16 +33,15 @@ describe('agent-ui', () => {
     ])
   })
   it('retracts failed streamed parts while retaining confirmed tools across later deltas', () => {
-    const normalizer = new AgentUIMessageNormalizer()
     const message: AgentUIMessage = { id: 'run', role: 'assistant', parts: [
       { type: 'dynamic-tool', toolName: 'read', toolCallId: 'confirmed', state: 'output-available', input: {}, output: 'kept' },
       { type: 'text', text: 'partial', providerMetadata: { agent: { display_segment_id: 'failed-text' } } },
       { type: 'dynamic-tool', toolName: 'write', toolCallId: 'failed-tool', state: 'input-streaming', input: {} },
       { type: 'data-agent-activity', id: 'retry', data: { event: 'model_retry', discard_ids: ['failed-text', 'failed-tool'] } },
     ] }
-    expect(normalizer.normalize([message])[0].parts).toHaveLength(2)
+    expect(normalizeAgentUIMessages([message])[0].parts).toHaveLength(2)
     const next = { ...message, parts: [...message.parts, { type: 'text' as const, text: 'recovered' }] }
-    expect(normalizer.normalize([next])[0].parts).toEqual([message.parts[0], message.parts[3], next.parts[4]])
+    expect(normalizeAgentUIMessages([next])[0].parts).toEqual([message.parts[0], message.parts[3], next.parts[4]])
   })
   it('classifies initial start acceptance without treating 5xx as a definite rejection', () => {
     expect(initialSubmissionOutcomeForStatus(200)).toBe('accepted')
@@ -158,8 +156,7 @@ describe('agent-ui', () => {
     expect(normalized[1].parts[0]).toBe(streamingPart)
   })
 
-  it('增量归一化复用稳定历史，并在 part 结构变化时恢复完整去重', () => {
-    const normalizer = new AgentUIMessageNormalizer()
+  it('reuses unchanged history while reconciling growing text and tool updates', () => {
     const history = {
       id: 'history-tool',
       role: 'assistant',
@@ -172,12 +169,12 @@ describe('agent-ui', () => {
       metadata: { run_id: 'run-1', display_segment_id: 'segment-1' },
       parts: [{ type: 'text', text: 'first', state: 'streaming' }],
     } as AgentUIMessage
-    const initial = normalizer.normalize([history, active])
+    const initial = normalizeAgentUIMessages([history, active])
     const growing = {
       ...active,
       parts: [{ type: 'text', text: 'first second', state: 'streaming' }],
     } as AgentUIMessage
-    const incremented = normalizer.normalize([history, growing])
+    const incremented = normalizeAgentUIMessages([history, growing])
     expect(incremented[0]).toBe(initial[0])
     expect(incremented[1].parts[0]).toMatchObject({ text: 'first second' })
 
@@ -188,7 +185,7 @@ describe('agent-ui', () => {
         { type: 'dynamic-tool', toolName: 'read', toolCallId: 'call-1', state: 'output-available', output: 'done' },
       ],
     } as AgentUIMessage
-    const deduped = normalizer.normalize([history, structural])
+    const deduped = normalizeAgentUIMessages([history, structural])
     expect(deduped[0].parts[0]).toMatchObject({ toolCallId: 'call-1', state: 'output-available', output: 'done' })
     expect(deduped[1].parts).toHaveLength(1)
   })
@@ -461,6 +458,7 @@ describe('agent-ui', () => {
 
   it('AgentChatTransport 只发送本轮 body 并解析 UI message stream', async () => {
     let requestBody: Record<string, unknown> | undefined
+    const onSubmissionAccepted = vi.fn()
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
       return new Response(
@@ -492,7 +490,9 @@ describe('agent-ui', () => {
           references: ['chapters/a.md'],
           plan_mode: true,
         },
+        metadata: { onSubmissionAccepted },
       })
+      expect(onSubmissionAccepted).toHaveBeenCalledTimes(1)
       const chunks = await readStream(stream)
 
       expect(requestBody).toEqual({
@@ -529,6 +529,7 @@ describe('agent-ui', () => {
   })
 
   it('preserves structured API errors and request IDs from a rejected initial turn', async () => {
+    const onSubmissionAccepted = vi.fn()
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
       JSON.stringify({
         error: 'Agent transcript source revision conflict',
@@ -542,12 +543,14 @@ describe('agent-ui', () => {
       await expect(transport.sendMessages({
         ...agentSendOptions(),
         body: { command_id: 'command-correlated', message: 'continue' },
+        metadata: { onSubmissionAccepted },
       })).rejects.toMatchObject({
         name: 'APIError',
         status: 500,
         requestID: '019ffb1f-0171-7436-828c-1d8f45095fe4',
       } satisfies Partial<APIError>)
       expect(transport.takeInitialSubmissionOutcome('command-correlated')).toBe('uncertain')
+      expect(onSubmissionAccepted).not.toHaveBeenCalled()
     } finally {
       fetchSpy.mockRestore()
     }

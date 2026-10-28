@@ -6,17 +6,18 @@ import (
 	agentcontext "denova/internal/agents/context"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
 )
 
 // BindAgentCompaction mirrors Agent's single checkpoint for context inspection
 // and the Game UI. Story identity is enforced by the branch-owned Session;
 // message coverage belongs to Agent, with no second story-turn cursor.
-func (c *Conversation) BindAgentCompaction(state *agent.CompactionState) error {
+func (c *Conversation) BindAgentCompaction(state *agentcompaction.CompactionState) error {
 	if c == nil {
 		return errors.New("interactive Conversation is unavailable")
 	}
-	var checkpoint *agent.CompactionState
+	var checkpoint *agentcompaction.CompactionState
 	if state != nil {
 		clone := *state
 		checkpoint = &clone
@@ -47,7 +48,7 @@ func interactiveAgentCompactionEvent(id string, revision uint64, summary string,
 	}
 }
 
-func (c *Conversation) boundAgentCompaction() *agent.CompactionState {
+func (c *Conversation) boundAgentCompaction() *agentcompaction.CompactionState {
 	if c == nil {
 		return nil
 	}

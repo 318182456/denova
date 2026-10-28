@@ -15,7 +15,10 @@ import (
 	productsession "denova/internal/agents/session"
 	"denova/internal/interactive"
 	"denova/internal/project"
-	agent "github.com/alfredxw/denova/agent"
+
+	"github.com/alfredxw/denova/agent"
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -96,7 +99,7 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 					i := batch*runsPerBatch + n
 					runID, commandID := fmt.Sprint("run-", i), fmt.Sprint("command-", i)
 					records = append(records,
-						makeRecord("session.input", map[string]any{"receipt": agent.CommandReceipt{RunID: runID, CommandID: commandID, Cursor: agent.Cursor(i + 1)}, "kind": "run", "hash": "retained-original-hash", "input": map[string]any{"text": body}}),
+						makeRecord("session.input", map[string]any{"receipt": agentevent.CommandReceipt{RunID: runID, CommandID: commandID, Cursor: agentevent.Cursor(i + 1)}, "kind": "run", "hash": "retained-original-hash", "input": map[string]any{"text": body}}),
 						makeRecord("turn.started", map[string]any{"run_id": runID, "command_id": commandID, "at": "2026-09-20T00:00:00Z"}),
 						makeRecord("session.input_update", map[string]any{"command_id": commandID, "run_id": runID, "status": "consumed"}),
 						makeRecord("turn.tool", map[string]any{"run_id": runID, "call_id": runID + "-tool", "name": "read", "arguments": map[string]any{}, "started": true, "result": map[string]any{"status": "success", "model_content": body, "display_content": body}}),
@@ -108,7 +111,7 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			queued := makeRecord("session.input", map[string]any{"receipt": agent.CommandReceipt{CommandID: "pending", Cursor: completedRuns + 1}, "kind": "queue", "hash": "pending-hash", "input": map[string]any{"text": "Keep this unfinished input"}})
+			queued := makeRecord("session.input", map[string]any{"receipt": agentevent.CommandReceipt{CommandID: "pending", Cursor: completedRuns + 1}, "kind": "queue", "hash": "pending-hash", "input": map[string]any{"text": "Keep this unfinished input"}})
 			if _, err := log.Append(ctx, revision, queued); err != nil {
 				t.Fatal(err)
 			}
@@ -123,6 +126,43 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 				t.Error("history lookup started execution")
 				return agent.Definition{}, fmt.Errorf("unexpected execution")
 			})
+			currentPath := conversationjournal.SidecarPath(path) + ".current"
+			for _, cache := range []string{"valid", "missing", "corrupt"} {
+				if cache == "missing" {
+					if err := os.Remove(currentPath); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if cache == "corrupt" {
+					if err := os.WriteFile(currentPath, []byte(`{"invalid":true}`), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				reader, err := store.OpenReader(ctx, key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				recovery, err := reader.(agent.RecoveryLog).Recovery(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(recovery.Inputs) != 1 || len(recovery.Runs) != 32 || recovery.Cursor != completedRuns+1 {
+					t.Fatalf("cache=%s current recovery retained history or lost pending work: inputs=%d runs=%d cursor=%d", cache, len(recovery.Inputs), len(recovery.Runs), recovery.Cursor)
+				}
+				if _, err := reader.Append(ctx, recovery.Revision, queued); err == nil {
+					t.Fatal("status reader accepted a mutation")
+				}
+				if err := reader.Close(); err != nil {
+					t.Fatal(err)
+				}
+				current, err := os.ReadFile(currentPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(current) > 100_000 || bytes.Contains(current, []byte(body)) {
+					t.Fatalf("current checkpoint retained historical bodies: bytes=%d", len(current))
+				}
+			}
 			for _, rebuild := range []bool{false, true} {
 				if rebuild {
 					if err := os.Remove(conversationjournal.SidecarPath(path)); err != nil {
@@ -139,7 +179,7 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 				}
 				for _, id := range []string{"command-0", fmt.Sprint("command-", completedRuns-1)} {
 					snapshot, found, err := sess.CommandSnapshot(ctx, id)
-					if err != nil || !found || snapshot.Output != body || snapshot.Result == nil || snapshot.Result.Status != agent.ResultCompleted {
+					if err != nil || !found || snapshot.Output != body || snapshot.Result == nil || snapshot.Result.Status != agentschema.ResultCompleted {
 						t.Fatalf("old result %s: %+v %v %v", id, snapshot, found, err)
 					}
 				}

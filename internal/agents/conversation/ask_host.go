@@ -4,7 +4,8 @@ import (
 	"strings"
 
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 )
 
 // HostAskAnswer is the transport-neutral answer accepted from an interactive
@@ -40,8 +41,8 @@ type HostAskResolution struct {
 
 // InteractionAnswers converts host choices to the public validator's input.
 // The UI's Other marker is represented by free text, never an option value.
-func InteractionAnswers(answers []HostAskAnswer) []agent.InteractionAnswer {
-	result := make([]agent.InteractionAnswer, len(answers))
+func InteractionAnswers(answers []HostAskAnswer) []agentinteraction.InteractionAnswer {
+	result := make([]agentinteraction.InteractionAnswer, len(answers))
 	for index, answer := range answers {
 		values := make([]string, 0, len(answer.SelectedOptionIDs))
 		for _, value := range answer.SelectedOptionIDs {
@@ -49,14 +50,14 @@ func InteractionAnswers(answers []HostAskAnswer) []agent.InteractionAnswer {
 				values = append(values, value)
 			}
 		}
-		result[index] = agent.InteractionAnswer{QuestionID: answer.QuestionID, Values: values, Text: answer.CustomInput}
+		result[index] = agentinteraction.InteractionAnswer{QuestionID: answer.QuestionID, Values: values, Text: answer.CustomInput}
 	}
 	return result
 }
 
 // ProjectAskResolution formats an already validated resolution for the host.
 // The caller owns durable acceptance and any permission/verification effects.
-func ProjectAskResolution(request agent.InteractionRequest, resolution agent.InteractionResolution, cancelReason string) HostAskResolution {
+func ProjectAskResolution(request agentinteraction.InteractionRequest, resolution agentinteraction.InteractionResolution, cancelReason string) HostAskResolution {
 	result := HostAskResolution{Schema: "ask.result.v1", ID: request.ID, Status: session.AskAnswered}
 	if resolution.Cancelled {
 		result.Status, result.CancelReason = session.AskCancelled, strings.TrimSpace(cancelReason)

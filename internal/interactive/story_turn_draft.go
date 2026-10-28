@@ -11,7 +11,7 @@ import (
 	"denova/internal/agents/conversationjournal"
 	"denova/internal/agents/sessionjournal"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 const maxTurnDraftBytes = 16 << 20
@@ -95,7 +95,7 @@ func validateTurnDraft(draft TurnDraft) error {
 
 // SaveTurnDraft confirms product progress and the Agent acceptance facts in
 // one journal transaction, before returning acceptance to a model or tool.
-func (s *Store) SaveTurnDraft(storyID, branchID string, draft TurnDraft, checkpoint agent.CanonicalCheckpoint) error {
+func (s *Store) SaveTurnDraft(storyID, branchID string, draft TurnDraft, checkpoint agentcanonical.CanonicalCheckpoint) error {
 	if err := validateTurnDraft(draft); err != nil {
 		return err
 	}

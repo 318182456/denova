@@ -11,7 +11,8 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestEngineSwitchChecksWritingOwnerAndRejectsPreviouslyPreparedNativeExecution(t *testing.T) {
@@ -32,7 +33,7 @@ func TestEngineSwitchChecksWritingOwnerAndRejectsPreviouslyPreparedNativeExecuti
 	connection := &testConnection{state: external.ConnectionState{Status: "ready"}}
 	engines.entries[config.RuntimeCodex].factory = func(context.Context) (external.Connection, error) { return connection, nil }
 	options := agentrun.Options{AgentKind: config.AgentKindIDE, ProjectID: "book", Workspace: t.TempDir(), SessionID: sess.ID, Mode: "ide"}
-	goal, err := native.UpdateGoal(t.Context(), options, agent.GoalMutation{Kind: agent.GoalSet, Objective: "Finish the current chapter."})
+	goal, err := native.UpdateGoal(t.Context(), options, agentschema.GoalMutation{Kind: agentschema.GoalSet, Objective: "Finish the current chapter."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestEngineSwitchChecksWritingOwnerAndRejectsPreviouslyPreparedNativeExecuti
 	if connection.probes != 0 {
 		t.Fatal("busy selection started an engine")
 	}
-	if _, err := native.UpdateGoal(t.Context(), options, agent.GoalMutation{Kind: agent.GoalClear, ExpectedRevision: goal.Revision}); err != nil {
+	if _, err := native.UpdateGoal(t.Context(), options, agentschema.GoalMutation{Kind: agentschema.GoalClear, ExpectedRevision: goal.Revision}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := engines.ApplyEngineSelection(t.Context(), native, sess, fromAgents, selection, 1, config.Config{}); err != nil {

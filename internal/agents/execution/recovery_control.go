@@ -8,7 +8,9 @@ import (
 
 	agentrun "denova/internal/agents/run"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func (r *RecoveryObservation) Resume(
@@ -56,7 +58,7 @@ func (r *RecoveryObservation) Resume(
 		return mapPublicReceipt(handle.run), nil
 	}
 	if action.Kind == RuntimeRecoveryAbort {
-		receipt, err := r.publicBackend.agent.AbortTree(ctx, r.publicSession.Key(), agent.AbortRequest{
+		receipt, err := r.publicBackend.agent.AbortTree(ctx, r.publicSession.Key(), agentevent.AbortRequest{
 			Reason: agentrun.AbortReasonUserRequested, IdempotencyKey: "abort:" + string(action.OperationID) + ":" + action.ActionID,
 		})
 		if err != nil {
@@ -77,7 +79,7 @@ func (r *RecoveryObservation) Resume(
 		return agentrun.CommandReceipt{}, err
 	}
 	if !found {
-		return agentrun.CommandReceipt{}, agent.ErrNoActiveRun
+		return agentrun.CommandReceipt{}, agentschema.ErrNoActiveRun
 	}
 	r.mu.Lock()
 	r.publicHandle = r.publicBackend.trackRun(r.publicSession, attached, registration, "")
@@ -147,7 +149,7 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(agentrun.Event
 			if event.Cursor <= initialCursor {
 				continue
 			}
-			settled, ok := event.Payload.(agent.RunSettled)
+			settled, ok := event.Payload.(agentevent.RunSettled)
 			if !ok {
 				continue
 			}

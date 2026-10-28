@@ -1,3 +1,4 @@
+import { AgentPageAccessories, type AgentPage } from './AgentPageContext'
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import { BarChart3, ClipboardList, List, Paperclip, ScrollText, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -8,6 +9,7 @@ import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
+import { ConversationConfigError } from '@/features/conversation-config/ConversationConfigError'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import { workspaceFileName } from '@/lib/workspace-path'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -48,6 +50,9 @@ export function applyInputPrefill(current: string, prefill: InputAreaPrefill): s
 }
 
 interface InputAreaProps {
+  page?: AgentPage
+  /** Focus a newly opened draft on desktop without raising the mobile keyboard. */
+  autoFocus?: boolean
   onSend: (message: string, options?: InputAreaSendOptions) => boolean | void | Promise<boolean | void>
   onStop?: () => void
   disabled: boolean
@@ -56,6 +61,7 @@ interface InputAreaProps {
   /** An idle empty composer can continue the exact durable interruption. */
   resumeAvailable?: boolean
   queuedCommands?: AgentRuntimeQueuedCommand[]
+  activeOperationID?: string
   queueActionPendingCommandID?: string
   onQueuedCommandSteer?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
   onQueuedCommandDelete?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
@@ -115,12 +121,15 @@ interface InputAreaProps {
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
 export function InputArea({
+  page,
+  autoFocus = false,
   onSend,
   onStop,
   disabled,
   generationActive,
   resumeAvailable = false,
   queuedCommands = [],
+  activeOperationID = '',
   queueActionPendingCommandID = '',
   onQueuedCommandSteer,
   onQueuedCommandDelete,
@@ -273,6 +282,12 @@ export function InputArea({
     submittingRef.current = false
     setSubmitting(false)
   }, [generationActive])
+
+  useEffect(() => {
+    if (!autoFocus || isMobile || disabled) return
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [autoFocus, disabled, isMobile])
 
   useEffect(() => {
     if (!inputPrefill) return
@@ -589,10 +604,16 @@ export function InputArea({
           heading={t('chat.styleReference.heading')}
         />
 
+        {page && <AgentPageAccessories page={page} onPrefill={(prompt) => {
+          setValue(prompt)
+          inputRef.current?.focus()
+        }} />}
         <AgentQueuedCommandList
           items={queuedCommands}
           pendingCommandID={queueActionPendingCommandID}
-          disabled={activeControlsDisabled || abortPending || commandSubmitting}
+          disabled={disabled || abortPending || commandSubmitting}
+          activeOperationID={activeOperationID}
+          steerDisabled={activeControlsDisabled}
           onSteer={onQueuedCommandSteer}
           onDelete={onQueuedCommandDelete}
           onEdit={onQueuedCommandEdit}
@@ -609,6 +630,7 @@ export function InputArea({
           />
         ) : null}
 
+        <ConversationConfigError controller={conversationConfig} agentKey={agentKey} />
         <AgentComposerShell
           references={hasReferences ? (
             <>

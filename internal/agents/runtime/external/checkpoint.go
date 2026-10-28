@@ -8,13 +8,15 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	externaljournal "denova/internal/agents/runtime/external/journal"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // Cold reconstruction has independent semantic-byte and visual/text-token
 // allowances. Encoded image bytes belong to adapter transport, not these limits.
-// The 64K token allowance admits a conservative 32K unknown-model image plus
-// text; provider-native continuation/compaction remains responsible for its window.
+// The 64K token allowance bounds reconstructed history; provider-native
+// continuation/compaction remains responsible for its window.
 const (
 	historyBudget          = 96 << 10
 	historyTokenBudget     = 64 << 10
@@ -55,7 +57,7 @@ type HistoryPreparation struct {
 	Checkpoint            *externaljournal.Checkpoint
 	Adapter               Adapter
 	ProviderInputMaxBytes int
-	AddUsage              func(*agent.TokenUsage)
+	AddUsage              func(*agentschema.TokenUsage)
 	SaveCheckpoint        func(externaljournal.Checkpoint) error
 	// LoadHistory is product-owned and bound to a fixed canonical source interval.
 	// Aligned provider sessions skip it, including during manual compaction.
@@ -107,8 +109,8 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 		}
 	}
 	estimator := estimatorFor(request.Adapter, input)
-	costs := make([]agent.InputSize, len(input.History))
-	total := agent.InputSize{Bytes: len(summary), Tokens: agent.EstimateTextTokens(summary)}
+	costs := make([]agentmodel.InputSize, len(input.History))
+	total := agentmodel.InputSize{Bytes: len(summary), Tokens: agentmodel.EstimateTextTokens(summary)}
 	for index, message := range input.History {
 		cost, err := messageCost(estimator, message)
 		if err != nil {
@@ -122,11 +124,10 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 	if total.Bytes > historyBudget || total.Tokens > historyTokenBudget {
 		// Keep complete recent messages inside both budgets, including images.
 		// A transaction is atomic for durable source coverage.
-		end, retained := len(input.History), (agent.InputSize{})
+		end, retained := len(input.History), (agentmodel.InputSize{})
 		for end > 0 {
 			cost := costs[end-1]
-			// Reserve conservatively for the bounded summary and its envelope,
-			// while still allowing a 32K unknown-model image in recent history.
+			// Reserve conservatively for the bounded summary and its envelope.
 			if retained.Bytes+cost.Bytes > historyBudget/2 || retained.Tokens+cost.Tokens > historyTokenBudget-checkpointSummaryBytes {
 				break
 			}
@@ -172,7 +173,7 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 func messageBytes(message Message) int {
 	// Semantic bytes include descriptors, never encoded image payloads.
 	total := len(message.Role) + len(message.Text) + 16
-	for _, files := range [][]agent.Attachment{message.Attachments, message.ToolImages} {
+	for _, files := range [][]agentschema.Attachment{message.Attachments, message.ToolImages} {
 		for _, file := range files {
 			total += len(file.Path) + len(file.Name) + 256
 		}

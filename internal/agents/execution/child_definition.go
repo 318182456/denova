@@ -11,15 +11,17 @@ import (
 	agentrun "denova/internal/agents/run"
 	agenttoolartifact "denova/internal/agents/toolartifact"
 
-	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent"
+	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
 	agentsession "github.com/alfredxw/denova/agent/session"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 // ChildDefinitionRequest rebuilds one named child from the exact durable
 // parent Session. HostData is the immutable accepted parent-turn descriptor;
 // delegated Sessions still own isolated transcripts and canonical state.
 type ChildDefinitionRequest struct {
-	Parent   agent.SessionKey
+	Parent   agentsession.Key
 	Child    string
 	HostData *agent.HostData
 }
@@ -107,7 +109,7 @@ func (backend *publicBackend) resolveTaskDefinition(
 	if child.Definition.AttachmentRoot != "" {
 		options.StateRoot = child.Definition.AttachmentRoot
 	}
-	if !agent.IsInspection(ctx) {
+	if !agentexecution.IsInspection(ctx) {
 		middleware, traceErr := backend.bindChildTrace(ctx, request, options, registration)
 		if traceErr != nil {
 			return agent.Definition{}, fmt.Errorf("bind delegated Run trace: %w", traceErr)
@@ -130,7 +132,7 @@ func (backend *publicBackend) resolveTaskDefinition(
 		if storeErr != nil {
 			return agent.Definition{}, fmt.Errorf("create delegated Agent artifact Store: %w", storeErr)
 		}
-		definition.Artifacts, err = agent.IdentifyToolArtifactStorage(
+		definition.Artifacts, err = agenttool.IdentifyToolArtifactStorage(
 			store, publicCapabilityIdentity("denova.task.tool_artifacts", request.Session.Key),
 		)
 		if err != nil {

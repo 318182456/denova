@@ -554,7 +554,6 @@ export function useStoryStageRuntime({
         recoveryAbortAvailable: false,
         operationId: '',
         cycle: 0,
-        queue: [],
         openTools: [],
         connection: 'connected',
         abortPending: false,
@@ -639,7 +638,7 @@ export function useStoryStageRuntime({
         ...current.runtime,
         ...(current.runtime.phase === 'suspended' ? {} : {
           phase: 'idle', recoveryPaused: false, recoveryAbortAvailable: false,
-          operationId: '', cycle: 0, activeOutput: undefined, queue: [], openTools: [],
+          operationId: '', cycle: 0, activeOutput: undefined, openTools: [],
         }),
         connection: 'disconnected',
         streamEventCursor: '',

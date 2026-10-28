@@ -16,6 +16,10 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
+  maxFailures: process.env.DENOVA_CI_SUITE === 'smoke' ? 1 : 0,
+  // Push/PR CI exercises both products on the production package. Daily,
+  // explicit full runs and release verification retain every regression.
+  grep: process.env.DENOVA_CI_SUITE === 'smoke' ? /@smoke/ : undefined,
   reporter: process.env.CI
     ? [['line'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/playwright.json' }]]
     : [['list'], ['html', { open: 'never' }]],

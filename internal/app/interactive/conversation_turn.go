@@ -6,15 +6,18 @@ import (
 	"log/slog"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
-
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents"
+	agentinteractive "denova/internal/agents/interactive"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolresult"
 	"denova/internal/interactive"
+
+	agentcontext "github.com/alfredxw/denova/agent/context"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -107,7 +110,22 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 	director := c.StoryRuntimeForMeta(storyCtx.Meta)
 	c.mu.Lock()
 	current := c.turnProtocol.draft()
+	c.mu.Unlock()
+	basePresentation := snapshotPresentation(storyCtx.Snapshot, storyCtx.Meta.PresentationSettings)
+	if current != nil && current.TurnResult().Presentation != nil {
+		basePresentation = current.TurnResult().Presentation
+	}
+	if c.PresentationSelectedByHost() {
+		input.Presentation = nil
+	}
+	presentation, presentationReceipt := interactive.ResolvePresentationPatch(c.workspace, basePresentation, input.Presentation, storyCtx.Meta.PresentationSettings)
+	if presentationReceipt != nil && presentationReceipt.Ignored > 0 {
+		slog.WarnContext(ctx, "[interactive-presentation] ignored visual changes", "story_id", c.storyID, "branch_id", c.branchID, "applied", presentationReceipt.Applied, "ignored", presentationReceipt.Ignored, "reasons", presentationReceipt.Reasons)
+	}
+	c.mu.Lock()
 	prepared, receipt := interactive.PrepareTurnSubmission(interactive.TurnSubmissionContext{
+		Presentation:                presentation,
+		PresentationReceipt:         presentationReceipt,
 		ActorState:                  actorState,
 		CurrentState:                currentState,
 		ChoiceCount:                 storyCtx.Meta.ChoiceCount,
@@ -119,6 +137,22 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 	}, current, input)
 	draft := c.turnDraft
 	c.mu.Unlock()
+	if receipt.Ready && c.PresentationSelectedByHost() {
+		if strings.TrimSpace(draft.Narrative) == "" {
+			return interactive.TurnSubmissionReceipt{}, fmt.Errorf("completed prose is required before stage selection")
+		}
+		selected, mediaReceipt, selectionErr := c.selectTurnPresentation(ctx, draft.Narrative, prepared.TurnResult(), currentState, basePresentation, storyCtx.Meta.PresentationSettings, storyCtx.Snapshot.BranchPlan)
+		if ctx.Err() != nil {
+			return interactive.TurnSubmissionReceipt{}, ctx.Err()
+		}
+		if selectionErr != nil {
+			slog.WarnContext(ctx, "Stage selection degraded", "story_id", c.storyID, "error", selectionErr)
+		}
+		progress := prepared.Progress()
+		progress.Result.Presentation = selected
+		prepared = progress.Prepared()
+		receipt.Presentation = mediaReceipt
+	}
 	draft.Submission = prepared.Progress()
 	result, err := turnSubmissionToolResult(receipt)
 	if err != nil {
@@ -164,9 +198,6 @@ func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.Model
 	}
 	switch cloned.Role {
 	case agents.RoleAssistant:
-		if len(cloned.ToolCalls) == 0 {
-			return interactive.ModelContextMessage{}, false
-		}
 		return interactive.ModelContextMessageFromAgent(cloned, continuation), true
 	case agents.RoleTool:
 		if strings.TrimSpace(cloned.ToolCallID) == "" && strings.TrimSpace(cloned.ToolName) == "" {
@@ -174,7 +205,7 @@ func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.Model
 		}
 		return interactive.ModelContextMessageFromAgent(cloned, continuation), true
 	case agents.RoleUser:
-		if cloned.TaskCompletion == nil && !agent.IsContextStateMessage(cloned) {
+		if cloned.TaskCompletion == nil && !agentcontext.IsContextStateMessage(cloned) && !agentschema.IsAgentContinuationMessage(cloned) {
 			return interactive.ModelContextMessage{}, false
 		}
 		return interactive.ModelContextMessageFromAgent(cloned, continuation), true
@@ -207,27 +238,7 @@ func interactiveToolCallsFromSchema(calls []agents.ToolCall) []interactive.Model
 }
 
 func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*agents.Message {
-	if len(messages) == 0 {
-		return nil
-	}
-	result := make([]*agents.Message, 0, len(messages))
-	for _, msg := range messages {
-		message := interactive.AgentMessageFromModelContext(msg)
-		if message == nil {
-			continue
-		}
-		continuation := providers.ContinuationExtra(msg.ProviderContinuation)
-		if len(continuation) > 0 {
-			if message.Extra == nil {
-				message.Extra = make(map[string]any)
-			}
-			for key, value := range continuation {
-				message.Extra[key] = value
-			}
-		}
-		result = append(result, message)
-	}
-	return result
+	return interactive.AgentMessagesFromModelContext(messages)
 }
 
 func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []agents.ToolCall {
@@ -327,9 +338,14 @@ func (c *Conversation) AppendContextMessages(messages ...*agents.Message) error 
 // the Story journal. The batch remains side evidence until the final Turn
 // absorbs it; memory tracks only the next sequence and never duplicates the
 // journal's canonical message payload.
-func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request agent.ContextCommitRequest) (string, error) {
+func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request agentcanonical.ContextCommitRequest) (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("game conversation is unavailable")
+	}
+	c.turnCheckMu.Lock()
+	defer c.turnCheckMu.Unlock()
+	if err := c.loadTurnDraft(); err != nil {
+		return "", err
 	}
 	converted := make([]interactive.ModelContextMessage, 0, len(request.Messages))
 	for index := range request.Messages {
@@ -368,9 +384,21 @@ func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request 
 		return "", err
 	}
 	intent.Checkpoint = request.Checkpoint
+	c.mu.Lock()
+	draft := c.turnDraft
+	c.mu.Unlock()
+	if draft.Narrative == "" && len(request.Messages) > 0 && agentinteractive.OutputContainsNarrativeCandidate(&request.Messages[0]) {
+		draft.Narrative, draft.NarrativeSource = request.Messages[0].Content, "canonical_model_message"
+		intent.Draft = &draft
+	}
 	receipt, err := c.store.AppendModelContextBatch(c.storyID, intent)
 	if err != nil {
 		return "", err
+	}
+	if intent.Draft != nil {
+		c.mu.Lock()
+		c.turnDraft = draft
+		c.mu.Unlock()
 	}
 	if request.Sequence >= currentSequence {
 		c.mu.Lock()
@@ -467,9 +495,9 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	ctx context.Context,
 	message *agents.Message,
 	metadata session.MessageMetadata,
-	checkpoint agent.CanonicalCheckpoint,
+	checkpoint agentcanonical.CanonicalCheckpoint,
 ) (interactive.DomainCommitReceipt, error) {
-	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
+	if message == nil || message.Role != agentschema.Assistant || len(message.ToolCalls) != 0 {
 		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output requires a final assistant message")
 	}
 	metadata.ProviderContinuation = providers.ContinuationExtra(message.Extra)

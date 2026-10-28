@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	agent "github.com/alfredxw/denova/agent"
 	agentsession "github.com/alfredxw/denova/agent/session"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 // CheckpointRecords prepares the embedded Agent half of a product transaction.
 // The caller holds its domain mutation lease and appends the returned records
 // with the product change in one canonical journal transaction.
-func CheckpointRecords(projection *Projection, checkpoint agent.CanonicalCheckpoint, revision string) ([]any, error) {
+func CheckpointRecords(projection *Projection, checkpoint agentcanonical.CanonicalCheckpoint, revision string) ([]any, error) {
 	if checkpoint == nil {
 		return nil, nil
 	}
-	value, err := checkpoint(agent.CommitReceipt{Revision: revision})
+	value, err := checkpoint(agentcanonical.CommitReceipt{Revision: revision})
 	if err != nil {
 		return nil, err
 	}

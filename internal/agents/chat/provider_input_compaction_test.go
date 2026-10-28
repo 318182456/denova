@@ -3,22 +3,24 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/compaction"
 	"strings"
 	"testing"
+
+	"github.com/alfredxw/denova/agent/context/compaction"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testing.T) {
 	payload := strings.Repeat("不可丢失的历史事实。", 2500)
-	source := []*agent.Message{agent.UserMessage(payload), agent.AssistantMessage(payload, nil), agent.UserMessage(payload)}
-	model := &compactionForkCaptureModel{response: agent.AssistantMessage(strings.Repeat("摘要", 32), nil)}
+	source := []*agentschema.Message{agentschema.UserMessage(payload), agentschema.AssistantMessage(payload, nil), agentschema.UserMessage(payload)}
+	model := &compactionForkCaptureModel{response: agentschema.AssistantMessage(strings.Repeat("摘要", 32), nil)}
 	summarizer, err := compaction.ModelSummarizer(compaction.ModelSummarizerConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := summarizer.Summarize(context.Background(), compaction.SummaryRequest{
-		Messages: source, ModelSnapshot: (&agent.ModelCall{Model: model, Messages: source}).Snapshot(),
+		Messages: source, ModelSnapshot: (&agentmodel.ModelCall{Model: model, Messages: source}).Snapshot(),
 		ContextWindowTokens: 32_000, HardLimitBytes: 48 * 1024, SummaryLimitBytes: 4096,
 	})
 	if err != nil || result.Summary == "" || len(model.inputs) < 2 {

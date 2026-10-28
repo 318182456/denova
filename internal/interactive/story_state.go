@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	interactivestate "denova/internal/interactive/state"
+
+	agentcontext "github.com/alfredxw/denova/agent/context"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
@@ -68,7 +70,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 	return result
 }
 
-func normalizedToolPresentation(presentation *agent.ToolPresentation) *agent.ToolPresentation {
+func normalizedToolPresentation(presentation *agenttool.ToolPresentation) *agenttool.ToolPresentation {
 	if presentation == nil {
 		return nil
 	}
@@ -107,16 +109,13 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 			continue
 		}
 		switch message.Role {
-		case agent.Assistant:
-			if len(message.ToolCalls) == 0 {
-				continue
-			}
-		case agent.ToolRole:
+		case agentschema.Assistant:
+		case agentschema.ToolRole:
 			if strings.TrimSpace(message.ToolCallID) == "" && strings.TrimSpace(message.ToolName) == "" {
 				continue
 			}
-		case agent.User:
-			if message.TaskCompletion == nil && !agent.IsContextStateMessage(message) && UserGuidanceCommand(message) == "" {
+		case agentschema.User:
+			if message.TaskCompletion == nil && !agentcontext.IsContextStateMessage(message) && !agentschema.IsAgentContinuationMessage(message) && UserGuidanceCommand(message) == "" {
 				continue
 			}
 		default:
@@ -132,21 +131,21 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 
 // AgentMessageFromModelContext reconstructs the complete provider-neutral
 // Agent message stored by a Game context event.
-func AgentMessageFromModelContext(msg ModelContextMessage) *agent.Message {
+func AgentMessageFromModelContext(msg ModelContextMessage) *agentschema.Message {
 	calls := sanitizeModelContextToolCalls(msg.ToolCalls)
-	var toolCalls []agent.ToolCall
+	var toolCalls []agentschema.ToolCall
 	if len(calls) > 0 {
-		toolCalls = make([]agent.ToolCall, len(calls))
+		toolCalls = make([]agentschema.ToolCall, len(calls))
 	}
 	for index, call := range calls {
-		toolCalls[index] = agent.ToolCall{
+		toolCalls[index] = agentschema.ToolCall{
 			Index: call.Index, ID: call.ID, Type: call.Type,
-			Function: agent.FunctionCall{Name: call.Function.Name, Arguments: call.Function.Arguments},
+			Function: agentschema.FunctionCall{Name: call.Function.Name, Arguments: call.Function.Arguments},
 			Extra:    call.Extra,
 		}
 	}
-	return (&agent.Message{
-		Role: agent.RoleType(strings.TrimSpace(msg.Role)), Content: msg.Content,
+	return (&agentschema.Message{
+		Role: agentschema.RoleType(strings.TrimSpace(msg.Role)), Content: msg.Content,
 		Attachments: msg.Attachments, MultiContent: msg.MultiContent,
 		UserInputMultiContent: msg.UserInputMultiContent, AssistantGenMultiContent: msg.AssistantGenMultiContent,
 		Name: strings.TrimSpace(msg.Name), ToolCalls: toolCalls,
@@ -158,7 +157,7 @@ func AgentMessageFromModelContext(msg ModelContextMessage) *agent.Message {
 
 // ModelContextMessageFromAgent stores all provider-neutral Agent fields while
 // keeping provider continuation in the existing private side-event lane.
-func ModelContextMessageFromAgent(message *agent.Message, continuation map[string]any) ModelContextMessage {
+func ModelContextMessageFromAgent(message *agentschema.Message, continuation map[string]any) ModelContextMessage {
 	cloned := message.Clone()
 	var calls []ModelContextToolCall
 	if len(cloned.ToolCalls) > 0 {
@@ -188,11 +187,11 @@ func CloneModelContextMessages(messages []ModelContextMessage) []ModelContextMes
 	return sanitizeModelContextMessages(messages)
 }
 
-func cloneModelContextToolResult(summary *agent.ToolResultSummary) *agent.ToolResultSummary {
+func cloneModelContextToolResult(summary *agentschema.ToolResultSummary) *agentschema.ToolResultSummary {
 	if summary == nil {
 		return nil
 	}
-	return agent.CloneMessage(&agent.Message{ToolResult: summary}).ToolResult
+	return agentschema.CloneMessage(&agentschema.Message{ToolResult: summary}).ToolResult
 }
 
 func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextToolCall {

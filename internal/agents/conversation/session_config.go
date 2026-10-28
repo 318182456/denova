@@ -20,6 +20,11 @@ func IsReservedSessionID(id string) bool {
 	if id == "" {
 		return false
 	}
+	// Platform consumers own their frozen definitions and canonical journals;
+	// ordinary Writing/Project conversations must not adopt those sessions.
+	if strings.HasPrefix(id, "platform-") {
+		return true
+	}
 	// Config Manager sessions remain on disk after the Agent's retirement, but
 	// must never appear as runnable Project Agent conversations.
 	if id == "config-manager-agent" || strings.HasPrefix(id, "config-manager-agent-") {
@@ -73,7 +78,9 @@ func RecentSessionSeed(store *session.Store, runtime *config.Config, agentKind, 
 	if err != nil {
 		return conversationconfig.Config{}, err
 	}
-	if err := conversationconfig.Validate(runtime, seed, agentKind); err != nil {
+	// Defaults must remain inspectable when their model catalog entry disappears.
+	// ApplySession validates availability immediately before execution.
+	if err := conversationconfig.ValidateShape(seed, agentKind); err != nil {
 		return conversationconfig.Config{}, fmt.Errorf("resolve default conversation config: %w", err)
 	}
 	return seed, nil
@@ -158,5 +165,6 @@ func ApplySession(sess *session.Session, runtime *config.Config, agentKind strin
 	if err := conversationconfig.Apply(runtime, snapshot.Config); err != nil {
 		return conversationconfig.Snapshot{}, fmt.Errorf("apply conversation runtime config: %w", err)
 	}
+	runtime.AgentPluginScope = config.AgentPluginScope{SessionID: sess.ID}
 	return snapshot, nil
 }

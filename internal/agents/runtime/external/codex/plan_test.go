@@ -7,7 +7,8 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
 )
 
 func TestNativePlanNotificationsIncludeReplacementAndClear(t *testing.T) {
@@ -22,7 +23,7 @@ func TestNativePlanNotificationsIncludeReplacementAndClear(t *testing.T) {
 			if err != nil || event.Type != "todo_updated" {
 				t.Fatalf("event=%+v err=%v", event, err)
 			}
-			if len(plan) != 0 && !reflect.DeepEqual(items, []agent.TodoItem{{ID: "1", Text: "Verify", Status: agent.TodoInProgress}}) {
+			if len(plan) != 0 && !reflect.DeepEqual(items, []agentevent.TodoItem{{ID: "1", Text: "Verify", Status: agentevent.TodoInProgress}}) {
 				t.Fatalf("items=%+v", items)
 			}
 			if len(plan) == 0 && len(items) != 0 {

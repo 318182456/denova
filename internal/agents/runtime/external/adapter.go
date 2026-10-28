@@ -9,7 +9,9 @@ import (
 
 	"denova/config"
 	agentrun "denova/internal/agents/run"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // Adapter runs one engine turn or maintenance operation. Result is a candidate response;
@@ -31,16 +33,16 @@ type Input struct {
 	// are relative to that view. Session journal messages already carry cursors.
 	HistoryBoundary string
 	Text            string
-	Attachments     []agent.Attachment
+	Attachments     []agentschema.Attachment
 	Tools           []Tool
 	// Plan is the last canonical provider observation. It seeds event projection
 	// on resume and supplies progress context when the disposable cache is gone.
-	Plan []agent.TodoItem
+	Plan []agentevent.TodoItem
 	// These fields are host-local cache projections, never canonical facts.
 	SessionID       string
 	Directory       string
 	Mode            OperationMode
-	CumulativeUsage *agent.TokenUsage
+	CumulativeUsage *agentschema.TokenUsage
 }
 
 type OperationMode string
@@ -57,8 +59,8 @@ const (
 type Message struct {
 	Role        string
 	Text        string
-	Attachments []agent.Attachment
-	ToolImages  []agent.Attachment
+	Attachments []agentschema.Attachment
+	ToolImages  []agentschema.Attachment
 	// Cursor is host-only provenance and is never sent to the engine.
 	Cursor uint64
 }
@@ -80,7 +82,7 @@ type ToolCall struct {
 type ToolResult struct {
 	Text    string
 	Success bool
-	Images  []agent.Attachment
+	Images  []agentschema.Attachment
 }
 
 type Result struct {
@@ -88,15 +90,15 @@ type Result struct {
 	SessionID string
 	// Plan carries the final observed snapshot to a continuation of this lease.
 	// Nil means no plan observation; an empty snapshot means the plan was cleared.
-	Plan *agent.TodoState
+	Plan *agentevent.TodoState
 	// Settled means the provider terminal response and all host callbacks were
 	// drained. Only this acknowledgement permits cache reuse after interruption.
 	Settled bool
 	// Usage is the attempt's reported total, including failed attempts when
 	// available. A missing value is not an estimate of zero consumption.
-	Usage *agent.TokenUsage
+	Usage *agentschema.TokenUsage
 	// CumulativeUsage is a host-only baseline for engines reporting thread totals.
-	CumulativeUsage *agent.TokenUsage
+	CumulativeUsage *agentschema.TokenUsage
 }
 
 // Host binds the Project, Session and accepted configuration revision. A tool

@@ -2,16 +2,15 @@ package app
 
 import (
 	"context"
-	agentchat "denova/internal/agents/chat"
-	agentexecution "denova/internal/agents/execution"
-	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
-	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents"
+	agentchat "denova/internal/agents/chat"
+	agentexecution "denova/internal/agents/execution"
+	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -20,6 +19,8 @@ import (
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	"denova/internal/interactive"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // interactiveAgentCycle is the complete, process-local adapter state for one
@@ -59,7 +60,7 @@ type interactiveAgentCycleRequest struct {
 	InputVisibility      agentrun.InputVisibility
 	RegenerateFromTurnID string
 	AttachmentIDs        []string
-	AttachedFiles        []agent.Attachment
+	AttachedFiles        []agentschema.Attachment
 }
 
 func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context, request interactiveAgentCycleRequest) (*interactiveAgentCycle, error) {
@@ -155,7 +156,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		CommandID: request.CommandID, Message: strings.TrimSpace(request.Message), ResumeInterruptionID: strings.TrimSpace(request.ResumeInterruptionID),
 		StyleScenes:   append([]string(nil), request.StyleScenes...),
 		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
-		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
+		AttachedFiles: append([]agentschema.Attachment(nil), request.AttachedFiles...),
 		StyleRules:    styleRules, Locale: strings.TrimSpace(request.Locale), InputVisibility: request.InputVisibility,
 	}
 	requireProtagonistSelection := request.InputVisibility == agentrun.InputModelOnly &&
@@ -186,16 +187,16 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		return nil, err
 	}
 	toolContext := agentinteractive.InteractiveStoryToolContext{
-		Store:                    cycle.store,
-		StoryID:                  cycle.storyID,
-		BranchID:                 cycle.branchID,
-		SubmitStateSchemaBatch:   submitOpeningStateSchema,
-		PrepareTurn:              prepareTurn,
-		SelectProtagonist:        selectProtagonist,
-		SubmitTurnResult:         cycle.conversation.SubmitTurnResult,
-		TurnResultReady:          cycle.conversation.InteractiveNarrativeReady,
-		LoadNarrativeCandidate:   cycle.conversation.LoadNarrativeCandidate,
-		AcceptNarrativeCandidate: cycle.conversation.AcceptNarrativeCandidate,
+		Store:                      cycle.store,
+		PresentationSelectedByHost: cycle.conversation.PresentationSelectedByHost(),
+		StoryID:                    cycle.storyID,
+		BranchID:                   cycle.branchID,
+		SubmitStateSchemaBatch:     submitOpeningStateSchema,
+		PrepareTurn:                prepareTurn,
+		SelectProtagonist:          selectProtagonist,
+		SubmitTurnResult:           cycle.conversation.SubmitTurnResult,
+		TurnResultReady:            cycle.conversation.InteractiveNarrativeReady,
+		LoadNarrativeCandidate:     cycle.conversation.LoadAgentNarrativeCandidate,
 	}
 	if cycle.runtimeCfg.ActiveAgentRuntime != nil && cycle.runtimeCfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
 		assembly, err := agents.BuildExternalGameAssembly(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentHost, toolContext)

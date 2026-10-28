@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"denova/config"
 	"denova/internal/agents/canonicalstore"
@@ -16,6 +17,7 @@ import (
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
+	"denova/internal/analytics"
 	activityapp "denova/internal/app/activity"
 	agentchatapp "denova/internal/app/agentchat"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -24,24 +26,31 @@ import (
 	imageapp "denova/internal/app/image"
 	loreapp "denova/internal/app/lore"
 	modelsapp "denova/internal/app/models"
+	platformapp "denova/internal/app/platform"
 	projectbookapp "denova/internal/app/projectbook"
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
+	"denova/internal/app/resourceexchange"
 	settingsapp "denova/internal/app/settings"
+	statisticsapp "denova/internal/app/statistics"
 	apptask "denova/internal/app/task"
 	"denova/internal/book"
 	"denova/internal/concurrency"
 	"denova/internal/interactive"
 	"denova/internal/localfs"
+	"denova/internal/observability"
+	"denova/internal/platform"
 	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
+	"denova/internal/update"
 	"denova/internal/workspace/filewatch"
 )
 
 // App 是 API 层使用的应用门面；具体业务由领域应用服务承接。
 type App struct {
-	cfg *config.Config
+	cfg       *config.Config
+	analytics *analytics.Service
 
 	workspace                       string
 	bookState                       *book.State
@@ -75,6 +84,12 @@ type App struct {
 	workspaceGeneration             uint64
 	closed                          bool
 	closeOnce                       sync.Once
+	updates                         *update.Service
+	updateRestartMu                 sync.Mutex
+	updateWaitID                    string
+	updateRestarting                bool
+	updateRestartError              string
+	updateRestartErrorID            string
 	activeTaskReplay                apptask.ReplayAdmission
 
 	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
@@ -91,22 +106,28 @@ type App struct {
 	activityApp        *activityapp.Service
 	bookApp            *bookapp.Service
 	resourceCatalog    *resourcecatalogapp.Service
+	resourceMarket     *resourceexchange.Market
+	resourceExchange   *resourceexchange.Service
 	settingsApp        *settingsapp.Service
 	modelsApp          *modelsapp.Service
 	imageApp           *imageapp.Service
 	projectBook        *projectbookapp.Service
+	statisticsApp      *statisticsapp.Service
 	projectFiles       *projectfilesapp.Service
 	servicesOnce       sync.Once
+	platform           *platform.Manager
 
 	mu sync.RWMutex
 	// Keep concurrent manual selections ordered across their conversation and
 	// user-default writes, including selections made in different Projects.
-	modelSelectionMu sync.Mutex
+	conversationSelectionMu sync.Mutex
 }
 
 // New creates the application runtime. When neither an explicit nor resumable
 // workspace exists, App stays unbound until the user selects or creates a Book.
-func New(ctx context.Context, cfg *config.Config) (*App, error) {
+func New(ctx context.Context, cfg *config.Config) (_ *App, err error) {
+	finishStage := observability.StartStartupStage(ctx, "data_directory_lock")
+	defer func() { finishStage(err) }()
 	dataDir := ""
 	if cfg != nil {
 		dataDir = strings.TrimSpace(cfg.DataDir())
@@ -114,8 +135,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if dataDir == "" {
 		return nil, ErrAgentDataDirRequired
 	}
+	if err := portablepath.CheckDirectory(dataDir); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect Denova data directory: %w", err)
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("initialize Denova data directory: %w", err)
+	}
+	if err := portablepath.CheckPath(dataDir, "runtime/portable-startup.lock"); err != nil {
+		return nil, fmt.Errorf("inspect Denova startup lock path: %w", err)
 	}
 	releaseStartupLease, err := localfs.AcquireLease(ctx, filepath.Join(dataDir, "runtime", "portable-startup.lock"))
 	if err != nil {
@@ -126,8 +153,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 			slog.ErrorContext(context.Background(), "[internal/app/app.go] release portable startup lock failed", "error", releaseErr)
 		}
 	}()
-	if err := portablepath.PreflightTree(dataDir); err != nil {
-		return nil, fmt.Errorf("Denova data directory is not portable across Windows, WSL, Linux, and macOS: %w", err)
+	finishStage(nil)
+	finishStage = observability.StartStartupStage(ctx, "data_migration")
+	// Inspect only paths used by global initialization. Historical descendants
+	// and unused Project content are checked by their operation boundaries.
+	for _, relative := range []string{"config.toml", "projects.json", "books.json", "agents", "presets", "book_meta", "project-state", "backups/" + portableDataBackupDirectory + "/migration.json"} {
+		if err := portablepath.CheckPath(dataDir, relative); err != nil {
+			return nil, fmt.Errorf("inspect startup data path %s: %w", relative, err)
+		}
 	}
 	if _, err := backupUnreleasedAgentTranscripts(dataDir); err != nil {
 		return nil, err
@@ -146,6 +179,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("initialize Agents Project profiles: %w", err)
 	}
 	registry := projectdomain.NewRegistry(dataDir)
+	if err := resourceexchange.Recover(dataDir, registry); err != nil {
+		return nil, fmt.Errorf("recover resource installation: %w", err)
+	}
 	agentsRecord, err := registry.EnsureAgents(config.AgentProfilesRoot(dataDir))
 	if err != nil {
 		return nil, fmt.Errorf("register Agents Project: %w", err)
@@ -162,18 +198,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	registeredProjects, err := registry.List(true)
 	if err != nil {
 		return nil, fmt.Errorf("load registered Projects for metadata migration: %w", err)
-	}
-	for _, record := range registeredProjects {
-		if record.Type != projectdomain.TypeBook || record.Status != projectdomain.StatusAvailable {
-			continue
-		}
-		layout, layoutErr := registry.EnsureStore(record)
-		if layoutErr != nil {
-			return nil, fmt.Errorf("prepare Book Project Store for metadata migration: %w", layoutErr)
-		}
-		if migrationErr := bookMetaStore.MigrateLegacy(layout.ContentRoot, layout.StoreRoot); migrationErr != nil {
-			return nil, fmt.Errorf("migrate Book metadata: %w", migrationErr)
-		}
 	}
 	if err := migratePortableApprovalSettings(dataDir, registry); err != nil {
 		return nil, fmt.Errorf("migrate Agent approval rules: %w", err)
@@ -197,6 +221,17 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
 	}
+	app.platform = platform.New(dataDir, registry)
+	app.platform.ConfigureGitHubToken(func() string {
+		app.mu.RLock()
+		defer app.mu.RUnlock()
+		return app.cfg.Market.GitHubToken
+	})
+	finishStage(nil)
+	finishStage = observability.StartStartupStage(ctx, "application_runtime")
+	app.platform.ConfigureAgents(canonicalSessions, platformapp.NewModels(platformHost{app}).Resolve)
+	app.platform.ConfigureResources(platformapp.NewResources(platformHost{app}))
+	app.platform.ConfigureStories(platformapp.NewStories(platformHost{app}))
 	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,
@@ -238,12 +273,15 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	}
 	app.mu.Unlock()
 	app.ensureServices()
+	finishStage(nil)
+	finishStage = observability.StartStartupStage(ctx, "workspace_restore")
 
 	if workspace == "" {
 		slog.InfoContext(ctx, "[app] No workspace or previously opened book at startup; waiting for frontend selection")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
-		app.startSkillUpdates(ctx)
+		app.startResourceUpdates(ctx)
+		app.startSoftwareUpdates(ctx)
 		return app, nil
 	}
 
@@ -274,7 +312,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
-	app.startSkillUpdates(ctx)
+	app.startResourceUpdates(ctx)
+	app.startSoftwareUpdates(ctx)
 	return app, nil
 }
 
@@ -303,6 +342,7 @@ var ErrAgentContextChanged = appagentruntime.ErrContextChanged
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
+		a.updates = update.NewService()
 		a.agentEngines = agentruntime.NewEngines()
 		a.workspaceApp = &workspaceService{app: a}
 		a.chatApp = &ChatAppService{
@@ -317,14 +357,20 @@ func (a *App) ensureServices() {
 		if a.cfg != nil {
 			dataDir = a.cfg.DataDir()
 		}
-		a.activityApp = activityapp.NewService(dataDir, a.automationApp)
+		a.activityApp = activityapp.NewService(dataDir, a.automationApp, a.updates)
 		a.bookApp = bookapp.NewService(dataDir, a.projectRegistry, a.bookMetaStore)
 		a.resourceCatalog = resourcecatalogapp.NewService(dataDir, resourceCatalogHost{app: a})
+		a.resourceMarket = resourceexchange.NewMarket(dataDir)
+		a.resourceExchange = resourceexchange.New(dataDir, a.projectRegistry, a.resourceCatalog, a.platform)
 		a.settingsApp = settingsapp.NewService(settingsHost{app: a})
 		a.modelsApp = modelsapp.NewService(modelHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
 		a.projectBook = projectbookapp.NewService(a.projectRegistry)
+		a.statisticsApp = statisticsapp.New(a.projectRegistry, a.projectBook)
+		if a.cfg != nil {
+			a.statisticsApp.SetEnabled(a.cfg.StatisticsEnabled)
+		}
 		if a.workspaceFiles != nil {
 			a.workspaceFiles.SetObserver(a.observeProjectFileChange)
 		}
@@ -473,6 +519,9 @@ func (a *App) Close() {
 		return
 	}
 	a.closeOnce.Do(func() {
+		started := time.Now()
+		slog.Info("app_shutdown_started")
+		defer func() { slog.Info("app_shutdown_finished", "duration", time.Since(started)) }()
 		a.ensureServices()
 		a.mu.Lock()
 		a.closed = true
@@ -483,11 +532,22 @@ func (a *App) Close() {
 		sessionStore := a.sessionStore
 		a.mu.Unlock()
 
+		if a.analytics != nil {
+			a.analytics.Close()
+		}
 		if workspaceFiles != nil {
 			workspaceFiles.Close()
 		}
+		if a.statisticsApp != nil {
+			a.statisticsApp.Close()
+		}
 		if a.terminals != nil {
 			a.terminals.CloseAll()
+		}
+		if a.platform != nil {
+			if err := a.platform.Close(context.Background()); err != nil {
+				slog.Error("platform_close_failed", "error", err)
+			}
 		}
 		// Admission closes before cancellation so no task can slip between the
 		// final registry snapshot and the resource barrier.

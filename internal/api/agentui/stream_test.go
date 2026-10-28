@@ -40,7 +40,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 			"turn_version_index": 0,
 		}},
 		{Type: "chunk", Data: map[string]any{"content": "正文", "run_id": "run-1"}},
-		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read", "args": `{"path"`, "tool_presentation": map[string]any{"call": "search", "result": "search"}}},
+		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "run_id": "run-1", "name": "read", "args": `{"path"`, "tool_presentation": map[string]any{"call": "search", "result": "search"}}},
 		{Type: "tool_args_delta", Data: map[string]any{"id": "tool-1", "delta": `:"a.md"}`}},
 		{Type: "tool_started", Data: map[string]any{"id": "tool-1", "name": "read"}},
 		{Type: "tool_result", Data: map[string]any{"id": "tool-1", "name": "read", "content": "ok"}},

@@ -9,7 +9,8 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 type controlAdapter func(context.Context, external.Input, external.Host) (external.Result, error)
@@ -21,7 +22,7 @@ func (adapter controlAdapter) Run(ctx context.Context, input external.Input, hos
 
 func TestExternalGoalResumesAfterPauseDuringCommittedEvaluation(t *testing.T) {
 	_, _, state, options, _ := controlFixture(t)
-	goal, err := state.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalSet, Objective: "Finish and verify the draft"})
+	goal, err := state.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalSet, Objective: "Finish and verify the draft"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +97,7 @@ func TestExternalGoalContinuesThenAcceptsReadOnlyVerdict(t *testing.T) {
 	for _, terminal := range []string{"complete", "blocked"} {
 		t.Run(terminal, func(t *testing.T) {
 			_, _, state, options, _ := controlFixture(t)
-			if _, err := state.UpdateGoal(t.Context(), agent.GoalMutation{Kind: agent.GoalSet, Objective: "Complete and verify the draft"}); err != nil {
+			if _, err := state.UpdateGoal(t.Context(), agentschema.GoalMutation{Kind: agentschema.GoalSet, Objective: "Complete and verify the draft"}); err != nil {
 				t.Fatal(err)
 			}
 			engines := NewEngines()

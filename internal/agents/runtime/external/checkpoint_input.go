@@ -4,35 +4,36 @@ import (
 	"encoding/json"
 	"fmt"
 
-	agent "github.com/alfredxw/denova/agent"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 // Adapters may report the resolved model's existing visual estimator. Unknown
-// models use Agent's conservative reserve; no Native execution is involved.
+// models use Agent's shared image fallback; no Native execution is involved.
 type modelInputEstimator interface {
-	InputEstimator(Input) agent.InputEstimator
+	InputEstimator(Input) agentmodel.InputEstimator
 }
 
-func estimatorFor(adapter Adapter, input Input) agent.InputEstimator {
+func estimatorFor(adapter Adapter, input Input) agentmodel.InputEstimator {
 	if provider, ok := adapter.(modelInputEstimator); ok {
 		return provider.InputEstimator(input)
 	}
-	return agent.InputEstimator{}
+	return agentmodel.InputEstimator{}
 }
 
-func messageCost(estimator agent.InputEstimator, message Message) (agent.InputSize, error) {
+func messageCost(estimator agentmodel.InputEstimator, message Message) (agentmodel.InputSize, error) {
 	// Tool images can accompany any projected public role. The neutral User
 	// envelope ensures all of them receive the same visual estimate.
-	files := append(append([]agent.Attachment(nil), message.Attachments...), message.ToolImages...)
-	size, err := estimator.Estimate([]*agent.Message{agent.UserMessageWithAttachments(message.Text, files)}, nil)
+	files := append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...)
+	size, err := estimator.Estimate([]*agentschema.Message{agentschema.UserMessageWithAttachments(message.Text, files)}, nil)
 	size.Bytes = messageBytes(message)
 	return size, err
 }
 
-func inputTokens(estimator agent.InputEstimator, input Input) (int, error) {
+func inputTokens(estimator agentmodel.InputEstimator, input Input) (int, error) {
 	// Maintenance has no tools; this estimate includes its complete instructions,
 	// rolling summary, ordered text records and native image parts.
-	tokens := agent.EstimateTextTokens(input.Instructions) + agent.EstimateTextTokens(input.Text)
+	tokens := agentmodel.EstimateTextTokens(input.Instructions) + agentmodel.EstimateTextTokens(input.Text)
 	for _, message := range input.History {
 		cost, err := messageCost(estimator, message)
 		if err != nil {
@@ -59,10 +60,10 @@ func checkInputBytes(input Input, limit int) error {
 
 func prepareInput(input Input, limit int) (Input, error) {
 	input.History = append([]Message(nil), input.History...)
-	input.Text = agent.ModelUserContent(&agent.Message{Content: input.Text, Attachments: input.Attachments})
+	input.Text = agentschema.ModelUserContent(&agentschema.Message{Content: input.Text, Attachments: input.Attachments})
 	for index := range input.History {
 		message := &input.History[index]
-		message.Text = agent.ModelUserContent(&agent.Message{Content: message.Text, Attachments: message.Attachments})
+		message.Text = agentschema.ModelUserContent(&agentschema.Message{Content: message.Text, Attachments: message.Attachments})
 	}
 	if err := checkInputBytes(input, limit); err != nil {
 		return Input{}, err

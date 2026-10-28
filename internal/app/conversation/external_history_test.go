@@ -19,7 +19,8 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
-	agent "github.com/alfredxw/denova/agent"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
 func TestExternalPreparationDefersCanonicalHistory(t *testing.T) {
@@ -45,7 +46,7 @@ func TestExternalPreparationDefersCanonicalHistory(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := sess.Append(agent.UserMessage("Keep the original ending.")); err != nil {
+				if err := sess.Append(agentschema.UserMessage("Keep the original ending.")); err != nil {
 					t.Fatal(err)
 				}
 				runtime := Runtime{ProjectID: cfg.ProjectID, ProjectStore: cfg.ProjectStoreDir, ProjectType: projectdomain.TypeGeneral, AgentKind: kind, Session: sess, Config: cfg, Workspace: workspace, BookService: book.NewService(workspace)}

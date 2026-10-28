@@ -33,6 +33,7 @@ const binaryPath = packageDir
 let config = `language = "zh-CN"
 update_check_enabled = false
 model_max_retries = 1
+default_image_api_profile_id = "e2e-image"
 
 [[model_endpoints]]
 id = "e2e"
@@ -60,6 +61,20 @@ thinking_level = "off"
 [agent_models.interactive_story]
 profile_id = "e2e"
 thinking_level = "off"
+
+[[image_api_endpoints]]
+id = "e2e-image"
+name = "E2E image endpoint"
+provider = "openai"
+protocol = "openai-images"
+api_key = "e2e-test-key"
+base_url = "http://127.0.0.1:${modelPort}/v1"
+
+[[image_api_profiles]]
+id = "e2e-image"
+name = "E2E image model"
+endpoint_id = "e2e-image"
+model = "denova-e2e-image"
 `
 if (codexExecutable) config += `
 [[model_endpoints]]
@@ -233,7 +248,9 @@ if (!packageDir) {
   if (build.status !== 0) process.exit(build.status ?? 1)
 }
 
-const backend = spawn(binaryPath, ['--no-open', `--port=${backendPort}`], {
+// Release binaries must also leave host analytics preferences and telemetry
+// untouched. Diagnostics mode retains the embedded frontend; --dev starts Vite.
+const backend = spawn(binaryPath, ['--dev-mode', '--no-open', `--port=${backendPort}`], {
   cwd: runtimeRoot,
   env: {
     ...process.env,

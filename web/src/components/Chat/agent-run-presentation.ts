@@ -24,7 +24,7 @@ export type AgentRunPresentationSection =
 /**
  * Builds stable ordered process/prose sections without changing persisted
  * history. A run keeps one process before its terminal result in both active
- * and completed states; AgentExecutionProcess owns the inner progress segments.
+ * and completed states; the list projects its inner progress segments into individual virtual rows.
  */
 export function buildAgentRunPresentation(
   views: AgentMessageView[],

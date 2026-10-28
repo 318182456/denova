@@ -23,11 +23,15 @@ import (
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"denova/internal/interactive"
 	"denova/internal/project"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/permission"
-	"github.com/alfredxw/denova/agent/providers"
-	"github.com/alfredxw/denova/agent/toolresult"
-	agenttools "github.com/alfredxw/denova/agent/tools"
+
+	"github.com/alfredxw/denova/agent"
+	agentmodel "github.com/alfredxw/denova/agent/model"
+	"github.com/alfredxw/denova/agent/model/providers"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agenttools "github.com/alfredxw/denova/agent/tool/builtin"
+	"github.com/alfredxw/denova/agent/tool/permission"
+	toolresult "github.com/alfredxw/denova/agent/tool/result"
 )
 
 type toolImageProductModel struct {
@@ -36,26 +40,26 @@ type toolImageProductModel struct {
 	calls  int
 }
 
-func (model *toolImageProductModel) InputEstimator() agent.InputEstimator {
+func (model *toolImageProductModel) InputEstimator() agentmodel.InputEstimator {
 	return model.config.InputEstimator()
 }
 
-func (model *toolImageProductModel) Generate(_ context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.Message, error) {
+func (model *toolImageProductModel) Generate(_ context.Context, messages []*agentschema.Message, options ...agentmodel.ModelOption) (*agentschema.Message, error) {
 	if model.calls == 0 {
 		model.calls++
-		return agent.AssistantMessage("", []agent.ToolCall{
-			{ID: "image-one", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"reference.png"}`}},
-			{ID: "image-two", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"reference.png"}`}},
-			{ID: "image-missing", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"missing.png"}`}},
+		return agentschema.AssistantMessage("", []agentschema.ToolCall{
+			{ID: "image-one", Type: "function", Function: agentschema.FunctionCall{Name: "read", Arguments: `{"path":"reference.png"}`}},
+			{ID: "image-two", Type: "function", Function: agentschema.FunctionCall{Name: "read", Arguments: `{"path":"reference.png"}`}},
+			{ID: "image-missing", Type: "function", Function: agentschema.FunctionCall{Name: "read", Arguments: `{"path":"missing.png"}`}},
 		}), nil
 	}
 	images := 0
 	for _, message := range messages {
 		for _, attachment := range message.Attachments {
-			if message.Role != agent.ToolRole || !fs.ValidPath(attachment.Path) || filepath.IsAbs(attachment.Path) || !filepath.IsAbs(attachment.RuntimePath) {
+			if message.Role != agentschema.ToolRole || !fs.ValidPath(attachment.Path) || filepath.IsAbs(attachment.Path) || !filepath.IsAbs(attachment.RuntimePath) {
 				return nil, fmt.Errorf("invalid recovered tool image: %+v", attachment)
 			}
-			data, err := agent.ReadAttachmentImage(attachment)
+			data, err := agentschema.ReadAttachmentImage(attachment)
 			if err != nil || !bytes.Equal(data, model.image) {
 				return nil, fmt.Errorf("tool image pixels changed after recovery: %v", err)
 			}
@@ -66,20 +70,20 @@ func (model *toolImageProductModel) Generate(_ context.Context, messages []*agen
 			images++
 		}
 	}
-	size, err := model.InputEstimator().Estimate(messages, agent.GetCommonOptions(nil, options...).Tools)
+	size, err := model.InputEstimator().Estimate(messages, agentmodel.GetCommonOptions(nil, options...).Tools)
 	if err != nil || images != 2 || size.Tokens >= 20_000 || providers.NativeImageCount(messages) != 2 {
 		return nil, fmt.Errorf("tool image accounting/recovery: images=%d size=%+v err=%v", images, size, err)
 	}
 	model.calls++
-	return agent.AssistantMessage("The captured tool images remain available.", nil), nil
+	return agentschema.AssistantMessage("The captured tool images remain available.", nil), nil
 }
 
-func (model *toolImageProductModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+func (model *toolImageProductModel) Stream(ctx context.Context, messages []*agentschema.Message, options ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
 	response, err := model.Generate(ctx, messages, options...)
 	if err != nil {
 		return nil, err
 	}
-	return agent.StreamReaderFromArray([]*agent.Message{response}), nil
+	return agentstream.StreamReaderFromArray([]*agentschema.Message{response}), nil
 }
 
 func TestProductsRecoverToolImagesAfterSourceDeletionAndColdReopen(t *testing.T) {
@@ -145,7 +149,7 @@ func TestProductsRecoverToolImagesAfterSourceDeletionAndColdReopen(t *testing.T)
 					input = "Continue using the previously captured images."
 				}
 				definition := agent.Definition{
-					Key: "tool-image-product", Name: "tool-image-product", Model: model, ModelIdentity: agent.CapabilityIdentity{Kind: "test.tool-image", Version: 1},
+					Key: "tool-image-product", Name: "tool-image-product", Model: model, ModelIdentity: agentschema.CapabilityIdentity{Kind: "test.tool-image", Version: 1},
 					Tools:      agenttools.Workspace(agenttools.WorkspaceConfig{Root: workspace}),
 					Permission: permission.FullAccess(), Compaction: manager, ResultProcessor: toolresult.Standard(toolresult.Policy{MaxBytes: 1024}),
 				}

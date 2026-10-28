@@ -1,6 +1,6 @@
 ---
 name: configuration
-description: Use when a Project Agent reads or changes managed presets, game modules, automations, Skills, or Agent profiles through config_read and config_apply.
+description: Use when a Project Agent reads or changes lore indexes and group memberships, managed presets, game modules, automations, Skills, or Agent profiles through config_read and config_apply.
 category: configuration
 agent: general,ide
 ---
@@ -26,11 +26,13 @@ Deletion must be explicitly requested by the user. If a stale-revision conflict 
 
 | Resources | Update behavior |
 | --- | --- |
-| `narrative_style`, `story_director`, `event_package`, `rule_system`, `state_system`, `image_preset` | Complete editable-resource replacement. Start from `get`, change only requested fields, and submit the complete editable value. Omitted arrays and objects are cleared or defaulted. |
+| `narrative_style`, `game_planning`, `event_package`, `rule_system`, `state_system`, `image_preset` | Complete editable-resource replacement. Start from `get`, change only requested fields, and submit the complete editable value. Omitted arrays and objects are cleared or defaulted. |
 | `automation` | Sparse patch. Omitted fields stay unchanged; a present `triggers` array replaces the whole trigger list. `target` is create-only and immutable. |
 | `agent_profile` | Fixed Agents use sectional layered updates. A `custom_agent` mutation is user-only and replaces its complete independent definition; General SubAgent and custom SubAgent mutations follow the resource reference. |
 | `skill` | Complete replacement of one root `SKILL.md` or one supporting reference file. The root revision covers the whole Skill directory. |
 | `style_reference` | Create writes one document; update replaces its complete Markdown content. |
+| `lore_index` | Workspace singleton `index`. Update replaces the complete guide: introduction, ordered custom groups and automatic-group detail overrides. Removing a group backs up the collection and clears only its associations. |
+| `lore_index_membership` | One existing lore item by ID. Update replaces only its complete `index_memberships` array; `[]` restores automatic grouping. Apply independently per item, preserving unrelated associations. |
 
 Fields returned for inspection such as `path`, `custom`, `builtin_overridden`, `invalid`, `error`, timestamps, resolved snapshots, run history, and secrets are host-owned unless the resource reference explicitly says otherwise. Never add an unknown field: configuration values reject unknown keys.
 
@@ -40,7 +42,7 @@ Examples use `REVISION_FROM_GET` as a visible placeholder. Always replace it wit
 
 - `style_reference` → `skill://configuration/references/style-reference.md`
 - `narrative_style` → `skill://configuration/references/narrative-style.md`
-- `story_director` → `skill://configuration/references/story-director.md`
+- `game_planning` → `skill://configuration/references/game-planning.md`
 - `event_package` → `skill://configuration/references/event-package.md`
 - `rule_system` → `skill://configuration/references/rule-system.md`
 - `state_system` → `skill://configuration/references/state-system.md`
@@ -48,5 +50,8 @@ Examples use `REVISION_FROM_GET` as a visible placeholder. Always replace it wit
 - `automation` → `skill://configuration/references/automation.md`
 - `skill` → `skill://configuration/references/skill.md`
 - `agent_profile` → `skill://configuration/references/agent-profile.md`
+- `lore_index`, `lore_index_membership` → `skill://configuration/references/lore-index.md`
+
+For lore index organization, use these configuration resources. For creating or editing lore bodies, use `query_lore_items` with `detail=full` and `write_lore_items` when available. Do not pass index fields to `write_lore_items` or edit the backing JSON directly. Index management applies to the current project in both writing and game configuration pages; it does not enable configuration mutations during game play.
 
 These are references, not sub-Skills. Do not pass a `sub_skill` argument or invoke another Skill name.

@@ -86,7 +86,7 @@ describe('StoryStage runtime stream lifecycle', () => {
     await user.type(getStageInput(), '推门')
     await user.click(screen.getByRole('button', { name: '发送' }))
     await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
-    expect(screen.getByText('思考中...')).toBeVisible()
+    await waitFor(() => expect(screen.getByText('思考中...')).toBeVisible())
     try {
       for (const content of ['门外', '有灯', '。']) {
         await act(async () => { stream.enqueue({ event: 'chunk', data: JSON.stringify({ content }) }) })
@@ -441,7 +441,7 @@ describe('StoryStage runtime stream lifecycle', () => {
           signal: expect.any(AbortSignal),
         })
       })
-      expect(screen.getByText('推开石门')).toBeInTheDocument()
+      expect(await screen.findByText('推开石门')).toBeInTheDocument()
       expect(screen.getByText('石门地图.png')).toBeInTheDocument()
       expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
 

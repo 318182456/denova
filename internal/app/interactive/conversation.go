@@ -3,20 +3,24 @@ package interactiveapp
 import (
 	"context"
 	"fmt"
-	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 	"sync"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
 	"denova/internal/book/lore"
+	"denova/internal/i18n"
 	"denova/internal/interactive"
+
+	agentcompaction "github.com/alfredxw/denova/agent/context/compaction"
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
 type Conversation struct {
@@ -55,7 +59,7 @@ type Conversation struct {
 	acceptedPlayerInputID       string
 	pendingDomainCommit         *interactive.DomainCommitIntent
 	lastDomainReceipt           *interactive.DomainCommitReceipt
-	agentCompaction             *agent.CompactionState
+	agentCompaction             *agentcompaction.CompactionState
 	modelHistoryKey             string
 	modelHistory                *interactive.StoryModelHistory
 	openingStateSchemaDraft     *interactive.ActorStateSchemaBatchDraft
@@ -65,7 +69,7 @@ type Conversation struct {
 	// draftCommit is supplied by a product execution host before admission.
 	// Native uses its atomic checkpoint callback; external turns commit only
 	// product-owned Story facts and never enter the Native lifecycle.
-	draftCommit func(context.Context, interactive.TurnDraft, *agent.ToolResult) error
+	draftCommit func(context.Context, interactive.TurnDraft, *agentschema.ToolResult) error
 }
 
 var _ novaskills.ExplicitResolver = (*Conversation)(nil)
@@ -315,6 +319,7 @@ func applyCycleStoryConfig(target *interactive.StoryMeta, source interactive.Sto
 	target.ChoiceCount = source.ChoiceCount
 	target.Opening = source.Opening
 	target.ImageSettings = source.ImageSettings
+	target.PresentationSettings = interactive.NormalizeStoryPresentationSettings(source.PresentationSettings)
 	target.CheckSettings = source.CheckSettings
 }
 
@@ -510,16 +515,9 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		return agentcontext.ModelContextResult{}, err
 	}
 	loreStore := lore.NewStore(c.workspace)
-	residentLore, err := loreStore.ResidentContextMarkdown()
+	residentLore, err := loreStore.ProgressiveContextMarkdown()
 	if err != nil {
 		return agentcontext.ModelContextResult{}, fmt.Errorf("读取常驻资料失败: %w", err)
-	}
-	residentContentBytes, err := loreStore.ResidentContentBytes()
-	if err != nil {
-		return agentcontext.ModelContextResult{}, fmt.Errorf("读取常驻资料预算失败: %w", err)
-	}
-	if residentContentBytes > lore.ResidentLoreSafetyMaxBytes {
-		return agentcontext.ModelContextResult{}, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
 	}
 	if len([]byte(residentLore)) > interactiveResidentLoreMessageMaxBytes {
 		return agentcontext.ModelContextResult{}, fmt.Errorf("常驻资料模型上下文过大: %d > %d bytes", len([]byte(residentLore)), interactiveResidentLoreMessageMaxBytes)
@@ -529,7 +527,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		return agentcontext.ModelContextResult{}, fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
 	ruleSummary := interactive.StoryRuleSummary(storyDirector, StoryRuntimeContextMaxBytes)
-	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, StoryRuntimeContextMaxBytes, storyCtx.Meta.ChoiceCount)
+	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, storyCtx.Meta.ChoiceCount)
 	stateSchemaInitialization := interactive.OpeningGameStateSchemaInstruction(storyCtx.Meta)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
 		Title:                     storyCtx.Meta.Title,
@@ -562,17 +560,17 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 			ID: "interactive_story_protagonist", Source: "story.protagonist", Title: "Story Protagonist Profile",
 			Purpose: "provide the immutable story-owned protagonist identity and backstory",
 			Content: protagonistContext, Placement: agentcontext.PlacementLeadingMessage, Limit: StoryRuntimeContextMaxBytes, Included: true,
-			Stability: agent.ContextStablePrefix,
+			Stability: agentschema.ContextStablePrefix,
 			Note:      "source=StoryMeta.protagonist; lifecycle=immutable after first turn; actor_id=protagonist",
 		})
 	}
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
-			Purpose: "provide revisioned enabled resident lore for the current agent session",
+			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Lore Index",
+			Purpose: "provide the Markdown lore guide, always-loaded settings and discovery entries",
 			Content: residentLore, Placement: agentcontext.PlacementLeadingMessage, Limit: interactiveResidentLoreMessageMaxBytes, Included: true,
-			Stability: agent.ContextStablePrefix,
-			Note:      "source=enabled resident lore; lifecycle=replaceable stable prefix; revision=" + strings.TrimSpace(loreRevision),
+			Stability: agentschema.ContextStablePrefix,
+			Note:      "source=setting/lore/items.json index guide and enabled items; lifecycle=replaceable stable prefix; revision=" + strings.TrimSpace(loreRevision),
 		})
 	}
 	if strings.TrimSpace(tellerTurnContextPrompt) != "" {
@@ -583,14 +581,38 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		})
 	}
 	if strings.TrimSpace(runtimeContext) != "" {
+		// The Actor write contract is indivisible. Check the effective outer
+		// fragment limit before the shared assembler can truncate its tail.
+		limit := StoryRuntimeContextMaxBytes
+		if input.Budget.MaxFragmentBytes > 0 {
+			limit = min(limit, input.Budget.MaxFragmentBytes)
+		}
+		if len(runtimeContext) > limit {
+			slog.ErrorContext(ctx, "[interactive-agent] runtime context exceeds complete state contract budget", "story_id", c.storyID, "branch_id", c.branchID, "bytes", len(runtimeContext), "actor_state_bytes", len(actorStateRuntime), "limit_bytes", limit)
+			locale := ""
+			if c.cfg != nil {
+				locale = c.cfg.Language
+			}
+			return agentcontext.ModelContextResult{}, fmt.Errorf("%s", i18n.New(locale).T("interactive.contextTooLarge", "bytes", len(runtimeContext), "limit", limit))
+		}
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "interactive_runtime", Source: "interactive.runtime", Title: "Interactive Runtime Context for This Turn",
 			Purpose: "provide bounded story state, branch plan, active lore, actor state, and turn policy",
 			Content: runtimeContext, Placement: agentcontext.PlacementFinalUserPrefix, Limit: StoryRuntimeContextMaxBytes, Included: true,
 		})
 	}
+	presentationSource := interactiveContextSource{Source: "StageSelection", Title: "Turn Presentation", Purpose: "explain host-owned media selection", Content: "Stage media are selected automatically from the completed prose after submission. Do not select stage media.", Limit: presentationContextMaxBytes}
+	if !c.PresentationSelectedByHost() {
+		presentationSource = buildPresentationContext(c.workspace, storyCtx.Meta.PresentationSettings, snapshotPresentation(storyCtx.Snapshot, storyCtx.Meta.PresentationSettings), activeBranchPlan, input.UserMessage)
+	}
+	fragments = append(fragments, agentcontext.Fragment{
+		ID: "interactive_presentation", Source: presentationSource.Source, Title: presentationSource.Title,
+		Purpose: presentationSource.Purpose, Content: presentationSource.Content,
+		Placement: agentcontext.PlacementFinalUserPrefix, Limit: presentationSource.Limit, Included: true,
+		Note: presentationSource.Note,
+	})
 	baseInstruction := prompts.InteractiveStoryTurnInstruction(input.UserMessage, "", "")
-	history = append(history, agent.UserMessageWithAttachments(baseInstruction, input.Attachments))
+	history = append(history, agentschema.UserMessageWithAttachments(baseInstruction, input.Attachments))
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{Messages: history, Fragments: fragments})
 	if err != nil {
 		return agentcontext.ModelContextResult{}, err
@@ -600,6 +622,14 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	residentVisible := residentLore
 	for _, fragment := range assembled.Fragments {
 		if fragment.Source == "interactive.resident_lore" {
+			if fragment.Truncated {
+				locale := ""
+				if c.cfg != nil {
+					locale = c.cfg.Language
+				}
+				slog.ErrorContext(ctx, "[lore] game index context exceeds injection budget", "bytes", len(residentLore), "limit", fragment.Limit)
+				return agentcontext.ModelContextResult{}, fmt.Errorf("%s", i18n.New(locale).T("lore.index.contextTooLarge", "limit", fragment.Limit))
+			}
 			residentVisible = fragment.Content
 			if fragment.Included && fragment.Content != "" {
 				stableLeadingMessage = agentcontext.StandaloneMessage(fragment.Title, fragment.Content, "")
@@ -608,6 +638,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		}
 	}
 	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, protagonistContext, teller, checkpointSummary, branchPlan, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, turnHistory, input.UserMessage)
+	sourceParts = append(sourceParts, presentationSource)
 	for index, message := range pendingInputMessages {
 		sourceParts = append(sourceParts, interactiveContextSource{
 			Source: "InterruptedPlayerInput", Title: fmt.Sprintf("Accepted Player Input Without Narrative Output %d", index+1),
@@ -683,8 +714,8 @@ func (c *Conversation) CommitModelInput(ctx context.Context, _ string, assembled
 func (c *Conversation) MaterializeAgentCanonicalInput(
 	ctx context.Context,
 	message string,
-	attachments []agent.Attachment,
-	checkpoint agent.CanonicalCheckpoint,
+	attachments []agentschema.Attachment,
+	checkpoint agentcanonical.CanonicalCheckpoint,
 ) (interactive.PlayerInputReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.PlayerInputReceipt{}, fmt.Errorf("互动故事不存在")

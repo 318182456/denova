@@ -5,21 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
-	"github.com/alfredxw/denova/agent/providers"
-	toml "github.com/pelletier/go-toml/v2"
-
 	"denova/internal/revisionfile"
 	"denova/internal/style"
 	workspacelayout "denova/internal/workspace"
+
+	"github.com/alfredxw/denova/agent/model/providers"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // Settings 是用户设置的持久化模型。工作区文件只会从中取出 Agent 定制字段。
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
+	Decision             *DecisionSettings        `toml:"decision,omitempty" json:"decision,omitempty"`
+	Market               MarketSettings           `toml:"market,omitempty" json:"market,omitempty"`
+	Extensions           *ExtensionSettings       `toml:"extensions,omitempty" json:"extensions,omitempty"`
+	GameCreationDefaults *GameCreationDefaults    `toml:"game_creation_defaults,omitempty" json:"game_creation_defaults,omitempty"`
+	GameLastCreation     *GameCreationPreferences `toml:"game_last_creation,omitempty" json:"game_last_creation,omitempty"`
 
 	// 模型
 	OpenAIAPIKey              string                  `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
@@ -85,7 +91,9 @@ type Settings struct {
 	Language               string `toml:"language,omitempty" json:"language,omitempty"`
 	Theme                  string `toml:"theme,omitempty" json:"theme,omitempty"`
 	MotionIntensity        string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
+	StatisticsEnabled      *bool  `toml:"statistics_enabled,omitempty" json:"statistics_enabled,omitempty"`
 	UpdateCheckEnabled     *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
+	UpdateDownloadEnabled  *bool  `toml:"update_download_enabled,omitempty" json:"update_download_enabled,omitempty"`
 
 	// Agent
 	MaxIteration              *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -130,10 +138,15 @@ type Settings struct {
 	TerminalMaxSessions        *int `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
 	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
-	// 游戏模式
-	InteractiveStoryTellerID   string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
-	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
-	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
+	// Game display preferences.
+	InteractiveStageFontSize     *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
+	InteractiveStageScrimOpacity *float64 `toml:"interactive_stage_scrim_opacity,omitempty" json:"interactive_stage_scrim_opacity,omitempty"`
+	InteractiveStageLineHeight   *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
+	// Character layout is a user display preference shared by all Projects.
+	InteractiveStageCharacterLayout string `toml:"interactive_stage_character_layout,omitempty" json:"interactive_stage_character_layout,omitempty"`
+	// Character size is the fraction of stage height, independent of cast size.
+	InteractiveStageCharacterSize *float64 `toml:"interactive_stage_character_size,omitempty" json:"interactive_stage_character_size,omitempty"`
+	InteractiveStageTextMaxWidth  *int     `toml:"interactive_stage_text_max_width,omitempty" json:"interactive_stage_text_max_width,omitempty"`
 }
 
 func boolPtr(v bool) *bool        { return &v }
@@ -169,7 +182,15 @@ const (
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
+	backendPort := 7789
+	// Only the v0.5.1 updater handoff needs the former default. Keep this in
+	// the lowest configuration layer so explicit ports still win. The updater
+	// scopes this origin to one launch and clears it before subsequent updates.
+	if os.Getenv("DENOVA_UPDATE_ID") != "" && strings.TrimPrefix(os.Getenv("DENOVA_UPDATE_FROM_VERSION"), "v") == "0.5.1" {
+		backendPort = 8080
+	}
 	return Settings{
+		Market:                      MarketSettings{RegistryURL: DefaultMarketRegistryURL},
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
 		DefaultImageAgentID:         stringPtr(""),
 		ImageAPIEndpoints:           []ImageAPIEndpointSettings{DefaultImageAPIEndpoint()},
@@ -177,8 +198,8 @@ func DefaultSettings() Settings {
 		SkillsDir:                   "./skills",
 		DenovaDir:                   "./" + workspacelayout.DataDirName,
 		NovaDir:                     "./" + workspacelayout.DataDirName,
-		BackendPort:                 intPtr(8080),
-		FrontendPort:                intPtr(5173),
+		BackendPort:                 intPtr(backendPort),
+		FrontendPort:                intPtr(7788),
 		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
@@ -199,6 +220,8 @@ func DefaultSettings() Settings {
 		Theme:                       "dark",
 		MotionIntensity:             "system",
 		UpdateCheckEnabled:          boolPtr(true),
+		StatisticsEnabled:           boolPtr(true),
+		UpdateDownloadEnabled:       boolPtr(false),
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
@@ -221,20 +244,23 @@ func DefaultSettings() Settings {
 			VersionSummary:   AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 			ToolAgent:        AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 		},
-		AgentTools:                 DefaultAgentToolSettings(),
-		WebAccess:                  DefaultWebAccessSettings(),
-		Labs:                       DefaultLabSettings(),
-		AgentSkills:                AgentSkillSettings{},
-		AgentContexts:              DefaultAgentContextSettings(),
-		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
-		SubAgents:                  nil,
-		PlanModeDefault:            boolPtr(false),
-		IDEStoryTellerID:           style.DefaultID,
-		IDEImagePresetID:           "game-cg",
-		WritingSkillDefault:        DefaultWritingSkillName,
-		InteractiveStoryTellerID:   style.DefaultID,
-		InteractiveStageFontSize:   intPtr(16),
-		InteractiveStageLineHeight: floatPtr(1.78),
+		AgentTools:                      DefaultAgentToolSettings(),
+		WebAccess:                       DefaultWebAccessSettings(),
+		Labs:                            DefaultLabSettings(),
+		AgentSkills:                     AgentSkillSettings{},
+		AgentContexts:                   DefaultAgentContextSettings(),
+		GeneralSubAgents:                DefaultAgentGeneralSubAgentSettings(),
+		SubAgents:                       nil,
+		PlanModeDefault:                 boolPtr(false),
+		IDEStoryTellerID:                style.DefaultID,
+		IDEImagePresetID:                "game-cg",
+		WritingSkillDefault:             DefaultWritingSkillName,
+		InteractiveStageFontSize:        intPtr(16),
+		InteractiveStageLineHeight:      floatPtr(1.78),
+		InteractiveStageScrimOpacity:    floatPtr(0.75),
+		InteractiveStageTextMaxWidth:    intPtr(896),
+		InteractiveStageCharacterLayout: "center",
+		InteractiveStageCharacterSize:   floatPtr(0.7),
 	}
 }
 
@@ -244,6 +270,12 @@ func Merge(parent, child Settings) Settings {
 	parent = preserveTerminalCommandRegistryPresence(parent)
 	child = preserveTerminalCommandRegistryPresence(child)
 	out := parent
+	if child.Market.RegistryURL != "" {
+		out.Market.RegistryURL = child.Market.RegistryURL
+	}
+	if child.Market.GitHubToken != "" {
+		out.Market.GitHubToken = child.Market.GitHubToken
+	}
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
 	}
@@ -258,6 +290,10 @@ func Merge(parent, child Settings) Settings {
 	}
 	out.ModelEndpoints = mergeModelEndpoints(out.ModelEndpoints, child.ModelEndpoints)
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
+	if child.Decision != nil {
+		decision := *child.Decision
+		out.Decision = &decision
+	}
 	if child.Speech != nil {
 		speech := *child.Speech
 		out.Speech = &speech
@@ -366,6 +402,12 @@ func Merge(parent, child Settings) Settings {
 	if child.UpdateCheckEnabled != nil {
 		out.UpdateCheckEnabled = child.UpdateCheckEnabled
 	}
+	if child.StatisticsEnabled != nil {
+		out.StatisticsEnabled = child.StatisticsEnabled
+	}
+	if child.UpdateDownloadEnabled != nil {
+		out.UpdateDownloadEnabled = child.UpdateDownloadEnabled
+	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration
 	}
@@ -436,9 +478,6 @@ func Merge(parent, child Settings) Settings {
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
 	}
-	if child.InteractiveStoryTellerID != "" {
-		out.InteractiveStoryTellerID = child.InteractiveStoryTellerID
-	}
 	if child.IDEImagePresetID != "" {
 		out.IDEImagePresetID = child.IDEImagePresetID
 	}
@@ -454,8 +493,20 @@ func Merge(parent, child Settings) Settings {
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize
 	}
+	if child.InteractiveStageScrimOpacity != nil {
+		out.InteractiveStageScrimOpacity = child.InteractiveStageScrimOpacity
+	}
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
+	}
+	if child.InteractiveStageTextMaxWidth != nil {
+		out.InteractiveStageTextMaxWidth = child.InteractiveStageTextMaxWidth
+	}
+	if child.InteractiveStageCharacterLayout != "" {
+		out.InteractiveStageCharacterLayout = child.InteractiveStageCharacterLayout
+	}
+	if child.InteractiveStageCharacterSize != nil {
+		out.InteractiveStageCharacterSize = child.InteractiveStageCharacterSize
 	}
 	return out
 }
@@ -773,6 +824,10 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		global.NovaDir = globalDir
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
+	// Creation defaults are Project-owned, never inherited from another book
+	// or the user's last-used global resource selection.
+	eff.GameCreationDefaults = ws.GameCreationDefaults
+	eff.GameLastCreation = ws.GameLastCreation
 	inherited := SettingsInheritance{
 		User:      withResolvedLabs(Merge(Merge(def, global), ws)),
 		Workspace: withResolvedLabs(Merge(Merge(def, global), user)),
@@ -798,7 +853,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		)
 		resolvedContexts[customAgent.ID] = ResolveAgentContext(&customConfig, runtimeKind)
 	}
-	backendPort := settingsInt(eff.BackendPort, 8080)
+	backendPort := settingsInt(eff.BackendPort, 7789)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
 	if rev, err := UserSettingsRevision(novaDir); err == nil {
@@ -848,11 +903,13 @@ func withResolvedLabs(settings Settings) Settings {
 	return settings
 }
 
-// PrepareWorkspaceAgentSettingsForWrite replaces only the Agent overrides that
+// PrepareWorkspaceAgentSettingsForWrite replaces only the overrides that
 // are intentionally workspace-scoped. Legacy general settings remain on disk so
 // the transition is reversible, but LoadLayered no longer applies them.
 func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings {
 	scoped := workspaceAgentSettings(incoming)
+	// Last-creation preferences are server-owned. Settings edits preserve them.
+	existing.GameCreationDefaults = scoped.GameCreationDefaults
 	existing.AgentRuntimes = scoped.AgentRuntimes
 	existing.AgentTools = scoped.AgentTools
 	existing.AgentPrompts = scoped.AgentPrompts
@@ -867,10 +924,12 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 }
 
 // workspaceAgentSettings defines the narrow workspace configuration boundary.
-// Native model selection and general Settings remain user-scoped. External
-// runtime preferences are Agent configuration and may have workspace overrides.
+// Native model selection and display preferences remain user-scoped. External
+// runtime preferences may have workspace overrides.
 func workspaceAgentSettings(settings Settings) Settings {
 	return Settings{
+		GameCreationDefaults:     settings.GameCreationDefaults,
+		GameLastCreation:         settings.GameLastCreation,
 		AgentRuntimes:            settings.AgentRuntimes,
 		AgentTools:               settings.AgentTools,
 		AgentPrompts:             settings.AgentPrompts,
@@ -885,6 +944,8 @@ func workspaceAgentSettings(settings Settings) Settings {
 }
 
 func sanitizeEditableSettings(s Settings) Settings {
+	s.Market.RegistryURL = strings.TrimSpace(s.Market.RegistryURL)
+	s.Market.GitHubToken = strings.TrimSpace(s.Market.GitHubToken)
 	s = preserveTerminalCommandRegistryPresence(s)
 	s, _ = migrateModelEndpointSettings(s)
 	s, _ = migrateImageAPIEndpointSettings(s)
@@ -900,7 +961,6 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.IDEStoryTellerID = strings.TrimSpace(s.IDEStoryTellerID)
-	s.InteractiveStoryTellerID = strings.TrimSpace(s.InteractiveStoryTellerID)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.AgentQuickPrompts = normalizeAgentQuickPrompts(s.AgentQuickPrompts)

@@ -32,14 +32,9 @@ func (s *Service) gitStore() GitStore {
 func (g GitStore) OpenExisting() (*git.Repository, error) {
 	repo, err := openStateRepository(g.workspace, g.repository)
 	if errors.Is(err, git.ErrRepositoryNotExists) {
-		migrated, migrationErr := MigrateLegacyRepository(g.workspace, g.repository)
-		if migrationErr != nil {
-			return nil, migrationErr
-		}
-		if !migrated {
-			return nil, nil
-		}
-		return openStateRepository(g.workspace, g.repository)
+		// Registry.EnsureStore owns the released Book migration. A general
+		// Project's source repository must never become Denova version history.
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
@@ -411,7 +406,7 @@ func (s *Service) restoreCommitToWorkspace(id string) error {
 		return err
 	}
 	if err := s.withProtectedExcludedWorkspaceDirs(func() error {
-		return s.gitStore().CheckoutWhole(repo, id)
+		return s.preservingNewerLoreMedia(id, func() error { return s.gitStore().CheckoutWhole(repo, id) })
 	}); err != nil {
 		return err
 	}
